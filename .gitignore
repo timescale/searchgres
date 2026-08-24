@@ -30,3 +30,9 @@ bun-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Staged at pack time by scripts/copy-package-files.mjs; the originals live at
+# the repository root.
+packages/*/LICENSE
+packages/*/NOTICE
+packages/*/README.md

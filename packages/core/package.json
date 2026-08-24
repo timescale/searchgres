@@ -1,0 +1,58 @@
+{
+  "name": "searchgres",
+  "version": "0.0.0",
+  "description": "Postgres-native hybrid search: semantic + BM25 retrieval with composable hierarchy, metadata, temporal, and regex filtering.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "search",
+    "full-text-search",
+    "bm25",
+    "vector-search",
+    "hybrid-search",
+    "rag",
+    "pgvector",
+    "embeddings"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/timescale/searchgres.git",
+    "directory": "packages/core"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:unit": "node --test \"src/**/*.test.ts\"",
+    "prepack": "node ../../scripts/copy-package-files.mjs",
+    "postpack": "node ../../scripts/copy-package-files.mjs --clean"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "postgres": "^3.4.9",
+    "semver": "^7.8.5"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.8.0"
+  }
+}

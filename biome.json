@@ -1,0 +1,91 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": ["**", "!**/dist"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "warn"
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "Bun": "searchgres core must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Bun global.",
+                  "Deno": "searchgres core must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Deno global."
+                }
+              }
+            },
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["bun", "bun:*"],
+                    "message": "searchgres core must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of Bun-only APIs."
+                  },
+                  {
+                    "group": [
+                      "jsr:*",
+                      "jsr:*/**",
+                      "npm:*",
+                      "npm:*/**",
+                      "http://**",
+                      "https://**"
+                    ],
+                    "message": "searchgres core must run on Node, Bun, and Deno. jsr:/npm:/URL specifiers are Deno-only; use a bare package specifier resolved from package.json."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // Modern Node ESM. `nodenext` makes TypeScript resolve — and emit —
+    // exactly what Node and Deno need at runtime.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "lib": ["es2023"],
+
+    // Source imports name the real file (`./foo.ts`); the compiler rewrites the
+    // specifier to `./foo.js` on emit. Keeps source honest and output correct
+    // without a bundler, and lets Bun/Deno run the sources directly in dev.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+
+    // Type-only imports must say so, so emit never depends on type resolution.
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    // Strictness. `noUncheckedIndexedAccess` in particular: it types `arr[0]` as
+    // `T | undefined`, which catches a whole class of real bugs.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Third-party .d.ts files are not our problem to typecheck.
+    "skipLibCheck": true
+  }
+}

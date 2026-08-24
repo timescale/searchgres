@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A superseded run on the same branch has nothing useful left to say.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  test:
+    name: Unit tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the oldest supported line; 24 is current LTS. Both must pass,
+        # so we learn about version-specific breakage here rather than from a
+        # user's install.
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:unit
+
+  # The unit tests run from TypeScript source, so nothing above ever loads the
+  # compiled output. This job packs the tarball, installs it into a scratch
+  # project, and imports it *by package name* — which is the only way to
+  # exercise the exports map, the files array, and emitted ESM specifiers the
+  # way a real consumer would.
+  artifact:
+    name: Packaged install (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [node, bun, deno]
+    steps:
+      - uses: actions/checkout@v5
+      # Node is needed to build and pack regardless of which runtime consumes
+      # the result.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.runtime == 'bun'
+      - uses: denoland/setup-deno@v2
+        if: matrix.runtime == 'deno'
+        with:
+          deno-version: v2.x
+      - run: npm ci
+      - run: npm run build
+
+      - name: Pack and install into a scratch project
+        run: |
+          npm pack --workspace searchgres --pack-destination /tmp
+          mkdir -p /tmp/consumer
+          cd /tmp/consumer
+          npm init -y > /dev/null
+          npm install /tmp/searchgres-*.tgz
+
+      - name: Legal files are present in the published package
+        run: |
+          cd /tmp/consumer/node_modules/searchgres
+          for f in LICENSE NOTICE README.md; do
+            test -s "$f" || { echo "missing from published package: $f"; exit 1; }
+          done
+
+      - name: Import by package name
+        working-directory: /tmp/consumer
+        run: |
+          # "searchgres", not a relative path: resolving the bare specifier is
+          # what proves the exports map and files array are correct.
+          script='const m = await import("searchgres");
+                  if (!m.LIBRARY_VERSION) throw new Error("LIBRARY_VERSION missing from the published entry point");
+                  console.log("ok", m.LIBRARY_VERSION);'
+          case "${{ matrix.runtime }}" in
+            node) node --input-type=module -e "$script" ;;
+            bun)  bun -e "$script" ;;
+            deno) deno eval --no-lock "$script" ;;
+          esac
+

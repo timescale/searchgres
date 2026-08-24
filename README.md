@@ -31,7 +31,7 @@ and rank fusion — all executed in Postgres, filtered by the same query.
   - [`pgvector`](https://github.com/pgvector/pgvector) — vector storage + HNSW index
   - [`pg_textsearch`](https://github.com/timescale/pg_textsearch) — BM25 ranking
   - `ltree` — hierarchical paths (ships with Postgres)
-- **Node ≥ 20**, **Bun ≥ 1.2**, or **Deno ≥ 2.0**
+- **Node ≥ 22**, **Bun ≥ 1.2**, or **Deno ≥ 2.0**
 
 A Docker image with all three extensions preinstalled is provided for local
 development and self-hosting.
@@ -230,8 +230,7 @@ chatty.
 
 ## Documentation
 
-Full documentation is in progress. Until then, the design and rationale live in
-the requirements document in this repository.
+Full documentation is in progress and will land here as the API stabilizes.
 
 ## License
 
