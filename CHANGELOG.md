@@ -11,4 +11,8 @@ Pre-release development. Nothing published yet.
 
 ### Added
 
-- Project scaffolding: license, notice, readme.
+- Project scaffolding: license, notice, readme, npm workspace, TypeScript 7
+  build, runtime-portability lint rules, and cross-runtime package smoke tests.
+- Initial public core primitives: typed errors and Zod-backed schema, ltree, and
+  index-creation validation with inferred TypeScript types, structured
+  validation issues, and pgvector, pg_textsearch, and HNSW defaults and bounds.

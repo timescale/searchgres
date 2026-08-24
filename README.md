@@ -20,7 +20,7 @@ and rank fusion — all executed in Postgres, filtered by the same query.
 - **Filters that compose** — scope a search by tree path, JSONB metadata
   (containment or JSONPath), a time range, or a regex, in the same call.
 - **Bring your own embedding model** — any [AI SDK](https://sdk.vercel.ai)
-  provider, or none at all if you supply vectors yourself.
+  provider or a custom implementation of its embedding-model interface.
 - **Your database, your pool** — you pass in a `postgres.js` connection; the
   library never opens or closes connections behind your back.
 - **Runs anywhere JavaScript does** — Node, Bun, and Deno.
@@ -42,7 +42,7 @@ development and self-hosting.
 npm install searchgres postgres
 ```
 
-Add an embedding provider if you want searchgres to generate vectors:
+Add the embedding provider you want searchgres to use:
 
 ```bash
 npm install @ai-sdk/openai   # or any other AI SDK provider
@@ -59,11 +59,7 @@ const sql = postgres(process.env.DATABASE_URL);
 
 // Create an index. Each index is its own Postgres schema.
 await createIndex(sql, "docs_index", {
-  embedding: {
-    provider: "openai",
-    modelId: "text-embedding-3-small",
-    dimensions: 1536,
-  },
+  dimensions: 1536,
 });
 
 // Open it, supplying the model to embed with. The API key comes from the
@@ -77,6 +73,10 @@ await idx.upsert({
   tree: "docs.auth",
   meta: { source: "runbook", version: 3 },
 });
+
+// Writes are queued for embedding. Drain once on demand, or run a continuous
+// worker in another process.
+await idx.processEmbeddings();
 
 const hits = await idx.search({
   query: "how often do credentials refresh?",
@@ -135,7 +135,8 @@ chronological, since ids are UUIDv7 — and supports keyset pagination via
 ## Embeddings
 
 searchgres never handles API keys. You pass an `EmbeddingModel` from the AI SDK,
-and the provider package reads its own environment variable:
+and the provider package reads its own environment variable. Custom
+implementations of the AI SDK interface work too:
 
 ```ts
 import { openai } from "@ai-sdk/openai";      // reads OPENAI_API_KEY
@@ -146,24 +147,20 @@ const idx = await openIndex(sql, "docs_index", {
 });
 ```
 
-The model, provider, and dimensions you chose at `createIndex` are stored with
-the index and checked when you open it, so you can't accidentally mix vectors
-from two different models.
+The embedder is required when opening an index. searchgres does not persist or
+compare model identity: use the dimensions supplied to `createIndex`, and
+re-embed the corpus before switching models. Returned vector lengths are checked
+against the embedding column's PostgreSQL typmod.
 
-**The embedder is optional.** Omit it for keyword-only search, or when you
-compute vectors yourself and pass them in directly.
+### Queued by design
 
-### Synchronous or queued
+Every insert or content update is queued for embedding. This is enforced by a
+database trigger, including when application SQL, another service, or a database
+function writes directly to the index's `record` table without using searchgres.
+The queue is therefore part of the index's correctness model, not an optional
+write mode.
 
-By default, `upsert` embeds inline and stores the vector with the row. You can
-defer instead — the record is written immediately (and is searchable by keyword
-right away) while its embedding is queued:
-
-```ts
-await idx.upsert(record, { embed: "async" });
-```
-
-Anything can drain that queue later. Run one bounded pass from a cron job:
+Run one bounded drain from a cron job or after bulk ingestion:
 
 ```ts
 await idx.processEmbeddings({ batchSize: 50 });
@@ -176,10 +173,11 @@ const worker = idx.startEmbeddingWorker({ intervalMs: 1000 });
 // later: await worker.stop();
 ```
 
-Because the queue lives in the database, **the process doing the writing needs
-no AI credentials at all** — only the process draining the queue does. A web
-tier can ingest without an embedding model while a separate worker fills in
-vectors.
+Because the queue and trigger live in the database, **the process doing the
+writing needs no AI credentials at all**. A separate process can open the index
+with the required embedder and fill in vectors. Monitor `queueStats()`; records
+are available to filters and BM25 immediately, but do not participate in
+semantic retrieval until drained.
 
 ### Long inputs
 
@@ -209,7 +207,7 @@ const docs = await openIndex(sql, "docs_index", { embedding: model });
 const faqs = await openIndex(sql, "faq_index", { embedding: model });
 
 const other = postgres(process.env.OTHER_DATABASE_URL);
-const archive = await openIndex(other, "archive_index");
+const archive = await openIndex(other, "archive_index", { embedding: model });
 ```
 
 Every query is fully schema-qualified, so indexes sharing a pool never interfere
