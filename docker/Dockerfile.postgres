@@ -1,0 +1,50 @@
+# PostgreSQL 18 for searchgres development and testing.
+#
+# Bundles the three extensions searchgres requires:
+#   - pgvector      vector / halfvec columns + HNSW index   (from the base image)
+#   - pg_textsearch BM25 index and ranking                  (built below)
+#   - ltree         hierarchical paths                      (ships with Postgres)
+#
+# Build for the host architecture:
+#   docker build -t searchgres-postgres -f docker/Dockerfile.postgres docker/
+#
+# pg_textsearch is compiled from source rather than installed from a release
+# artifact. Upstream's prebuilt packages are architecture-specific and their
+# coverage varies by release — v1.4.0 publishes an x86-64 tarball only, so a
+# prebuilt install would break arm64 development. It is a plain PGXS C
+# extension, so building takes seconds and works on every architecture.
+
+ARG PG_MAJOR=18
+ARG PGVECTOR_VERSION=0.8.6
+ARG PG_TEXTSEARCH_VERSION=1.4.0
+
+# Stage 1: compile pg_textsearch against the matching server headers.
+FROM docker.io/pgvector/pgvector:${PGVECTOR_VERSION}-pg${PG_MAJOR}-trixie AS build
+ARG PG_MAJOR
+ARG PG_TEXTSEARCH_VERSION
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      curl \
+      postgresql-server-dev-${PG_MAJOR} \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN curl -fsSL -o src.tar.gz \
+      "https://github.com/timescale/pg_textsearch/archive/refs/tags/v${PG_TEXTSEARCH_VERSION}.tar.gz" \
+ && tar xzf src.tar.gz --strip-components=1 \
+ && make -j"$(nproc)" \
+ && make install
+
+# Stage 2: the runtime image — server plus the built extension files only, so
+# the toolchain stays out of the final image.
+FROM docker.io/pgvector/pgvector:${PGVECTOR_VERSION}-pg${PG_MAJOR}-trixie
+ARG PG_MAJOR
+COPY --from=build /usr/lib/postgresql/${PG_MAJOR}/lib/pg_textsearch.so \
+                  /usr/lib/postgresql/${PG_MAJOR}/lib/
+COPY --from=build /usr/share/postgresql/${PG_MAJOR}/extension/pg_textsearch* \
+                  /usr/share/postgresql/${PG_MAJOR}/extension/
+
+# pg_textsearch requires shared_preload_libraries. The sample file is what
+# initdb copies into a fresh data directory.
+RUN echo "shared_preload_libraries = 'pg_textsearch'" >> /usr/share/postgresql/postgresql.conf.sample
