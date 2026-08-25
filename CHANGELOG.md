@@ -23,3 +23,6 @@ Pre-release development. Nothing published yet.
   per-migration compatibility floor, and atomic run-once migration execution.
 - Core builds clean emitted artifacts first, preventing deleted source modules
   from remaining in published tarballs.
+- Initial DDL migrations: record and queue schemas, configured search indexes,
+  and integrity/enqueue triggers that protect asynchronous embedding for direct
+  SQL writers.

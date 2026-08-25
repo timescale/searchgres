@@ -1,6 +1,10 @@
 import type postgres from "postgres";
 import semver from "semver";
-import { MigrationError, SchemaVersionError } from "../errors.ts";
+import {
+  MigrationError,
+  SchemaVersionError,
+  SearchgresError,
+} from "../errors.ts";
 import { runSql } from "../sql/exec.ts";
 import { LIBRARY_VERSION } from "../version.ts";
 import type { AppliedMigration, Migration, MigrationContext } from "./types.ts";
@@ -86,6 +90,9 @@ export async function runMigrations(
       await migration.up(tx, context);
       await recordMigration(tx, options.schema, migration, libraryVersion);
     } catch (error) {
+      if (error instanceof SearchgresError) {
+        throw error;
+      }
       throw new MigrationError(migration.name, { cause: error });
     }
     newlyApplied.push(migration.name);
