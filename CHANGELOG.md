@@ -16,3 +16,6 @@ Pre-release development. Nothing published yet.
 - Initial public core primitives: typed errors and Zod-backed schema, ltree, and
   index-creation validation with inferred TypeScript types, structured
   validation issues, and pgvector, pg_textsearch, and HNSW defaults and bounds.
+- Database plumbing: PostgreSQL 18 preflight, serialized extension installation
+  and schema discovery, transaction-local migration timeouts, SQL spans, typed
+  timeout/extension failures, Docker-backed integration tests, and CI coverage.

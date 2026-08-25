@@ -47,6 +47,42 @@ jobs:
       - run: npm ci
       - run: npm run test:unit
 
+  # pg_textsearch must be in shared_preload_libraries, so a stock Postgres
+  # service image cannot run this suite. Build and start our tested image here.
+  test-db:
+    name: Database integration tests
+    runs-on: ubuntu-latest
+    needs: check
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build Postgres image
+        run: docker build -t searchgres-postgres -f docker/Dockerfile.postgres docker/
+      - name: Start Postgres
+        run: |
+          docker run --rm -d --name searchgres-postgres \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -p 127.0.0.1:5432:5432 \
+            searchgres-postgres
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0
+            sleep 1
+          done
+          docker logs searchgres-postgres
+          exit 1
+      - run: npm run test:db
+      - name: Stop Postgres
+        if: always()
+        run: docker stop searchgres-postgres
+
   # The unit tests run from TypeScript source, so nothing above ever loads the
   # compiled output. This job packs the tarball, installs it into a scratch
   # project, and imports it *by package name* — which is the only way to
@@ -105,4 +141,3 @@ jobs:
             bun)  bun -e "$script" ;;
             deno) deno eval --no-lock "$script" ;;
           esac
-

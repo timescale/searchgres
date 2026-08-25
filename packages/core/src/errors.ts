@@ -4,15 +4,20 @@ export type SearchgresErrorCode =
   | "CONFLICT"
   | "DIMENSION_MISMATCH"
   | "EMBEDDING_PROVIDER"
+  | "EXTENSION"
   | "INVALID_CONFIG"
   | "INVALID_INDEX"
+  | "LOCK_TIMEOUT"
   | "MIGRATION_FAILED"
   | "MIGRATION_REQUIRED"
   | "NOT_FOUND"
+  | "STATEMENT_TIMEOUT"
   | "RATE_LIMITED"
   | "SCHEMA_VERSION"
   | "STALE_VERSION"
-  | "TREE_PATH";
+  | "TRANSACTION_TIMEOUT"
+  | "TREE_PATH"
+  | "UNSUPPORTED_SERVER";
 
 /** Validator-neutral issue shape retained on typed validation errors. */
 export interface ValidationIssue {
@@ -132,6 +137,88 @@ export class DimensionMismatchError extends SearchgresError {
     );
     this.expected = expected;
     this.actual = actual;
+  }
+}
+
+export class UnsupportedServerError extends SearchgresError {
+  readonly serverVersionNum: number;
+  readonly minimumVersionNum: number;
+
+  constructor(
+    serverVersionNum: number,
+    minimumVersionNum: number,
+    options?: ErrorOptions,
+  ) {
+    super(
+      "UNSUPPORTED_SERVER",
+      `PostgreSQL ${minimumVersionNum} or newer is required; server reports ${serverVersionNum}`,
+      options,
+    );
+    this.serverVersionNum = serverVersionNum;
+    this.minimumVersionNum = minimumVersionNum;
+  }
+}
+
+export type ExtensionErrorReason =
+  | "missing"
+  | "permission_denied"
+  | "too_old"
+  | "unavailable";
+
+export class ExtensionError extends SearchgresError {
+  readonly extension: string;
+  readonly minimumVersion: string;
+  readonly foundVersion: string | null;
+  readonly reason: ExtensionErrorReason;
+
+  constructor(
+    extension: string,
+    minimumVersion: string,
+    reason: ExtensionErrorReason,
+    options?: ErrorOptions & { readonly foundVersion?: string | null },
+  ) {
+    const foundVersion = options?.foundVersion ?? null;
+    const detail = foundVersion ? `; found ${foundVersion}` : "";
+    const guidance =
+      reason === "permission_denied"
+        ? "; install it before connecting or grant CREATE EXTENSION"
+        : "";
+    super(
+      "EXTENSION",
+      `PostgreSQL extension ${JSON.stringify(extension)} >= ${minimumVersion} is required (${reason}${detail}${guidance})`,
+      options,
+    );
+    this.extension = extension;
+    this.minimumVersion = minimumVersion;
+    this.foundVersion = foundVersion;
+    this.reason = reason;
+  }
+}
+
+export class StatementTimeoutError extends SearchgresError {
+  constructor(
+    message = "PostgreSQL statement timed out",
+    options?: ErrorOptions,
+  ) {
+    super("STATEMENT_TIMEOUT", message, options);
+  }
+}
+
+export class LockTimeoutError extends SearchgresError {
+  constructor(
+    message = "PostgreSQL lock wait timed out",
+    options?: ErrorOptions,
+  ) {
+    super("LOCK_TIMEOUT", message, options);
+  }
+}
+
+export class TransactionTimeoutError extends SearchgresError {
+  constructor(
+    message = "PostgreSQL transaction timed out",
+    options?: ErrorOptions,
+  ) {
+    super("TRANSACTION_TIMEOUT", message, options);
   }
 }
 

@@ -4,12 +4,15 @@ import {
   BatchTooLargeError,
   ConflictError,
   DimensionMismatchError,
+  ExtensionError,
   InvalidConfigError,
   InvalidIndexError,
+  LockTimeoutError,
   MigrationRequiredError,
   RateLimitError,
   SchemaVersionError,
   SearchgresError,
+  UnsupportedServerError,
 } from "./errors.ts";
 
 test("all typed errors retain a stable code, class name, and cause", () => {
@@ -38,6 +41,19 @@ test("errors retain the fields callers need to recover", () => {
   const dimensions = new DimensionMismatchError(1536, 768);
   assert.equal(dimensions.expected, 1536);
   assert.equal(dimensions.actual, 768);
+
+  const server = new UnsupportedServerError(170_000, 180_000);
+  assert.equal(server.serverVersionNum, 170_000);
+  assert.equal(server.minimumVersionNum, 180_000);
+
+  const extension = new ExtensionError("vector", "0.8.0", "too_old", {
+    foundVersion: "0.7.4",
+  });
+  assert.equal(extension.reason, "too_old");
+  assert.equal(extension.foundVersion, "0.7.4");
+
+  const lockTimeout = new LockTimeoutError();
+  assert.equal(lockTimeout.code, "LOCK_TIMEOUT");
 
   const batch = new BatchTooLargeError(1001, 1000);
   assert.equal(batch.size, 1001);
