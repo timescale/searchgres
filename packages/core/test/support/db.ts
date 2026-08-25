@@ -19,3 +19,7 @@ export function randomTestSchema(): string {
   }
   return `sgtest_${suffix}`;
 }
+
+export async function dropTestSchema(sql: Sql, schema: string): Promise<void> {
+  await sql`drop schema if exists ${sql(schema)} cascade`;
+}

@@ -40,7 +40,7 @@
     "directory": "packages/core"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "typecheck": "tsc -p tsconfig.json",
     "test:unit": "node --test \"src/**/*.test.ts\"",
