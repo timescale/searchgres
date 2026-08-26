@@ -73,6 +73,9 @@ export async function createIndex(
     const embeddingType = tx`${tx(vector.schema)}.${tx(creation.vectorType)}(${tx.unsafe(String(creation.dimensions))})`;
     const ltreeType = tx`${tx(ltree.schema)}.ltree`;
     const cosineOpclass = tx`${tx(vector.schema)}.${tx(`${creation.vectorType}_cosine_ops`)}`;
+    const operatorSchemas = [
+      ...new Set([indexSchema, vector.schema, ltree.schema]),
+    ];
 
     let textConfig: { readonly literal: string } | undefined;
     try {
@@ -111,7 +114,7 @@ export async function createIndex(
     });
     // set local search path so certain extension-defined operators resolve
     await runSql(
-      tx`set local search_path to pg_catalog, ${tx(indexSchema)}, ${tx(vector.schema)}, ${tx(ltree.schema)}, pg_temp`,
+      tx`set local search_path to pg_catalog, ${tx(operatorSchemas)}, pg_temp`,
       {
         spanName: "setLocalSearchPath",
         dbOperationName: "SET",

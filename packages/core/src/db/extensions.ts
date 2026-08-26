@@ -93,9 +93,12 @@ async function extensionStatus(
       , n.nspname
       , available.default_version
       from (select 1) as singleton
-      left outer join pg_catalog.pg_extension installed (on installed.extname = ${name})
-      left outer join pg_catalog.pg_namespace n on (n.oid = installed.extnamespace)
-      left outer join pg_catalog.pg_available_extensions available on (available.name = ${name})
+      left outer join pg_catalog.pg_extension installed
+        on (installed.extname = ${name})
+      left outer join pg_catalog.pg_namespace n
+        on (n.oid = installed.extnamespace)
+      left outer join pg_catalog.pg_available_extensions available
+        on (available.name = ${name})
     `,
     { spanName: "checkExtension", dbOperationName: "SELECT" },
   );
