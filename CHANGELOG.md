@@ -27,3 +27,8 @@ Pre-release development. Nothing published yet.
   from remaining in published tarballs.
 - Catalog-derived `openIndex` validation with immutable schema-format checks,
   required embedding models, and vector/HNSW shape inspection.
+- Bulk `Index.upsertMany` and single-record `Index.upsert` writes with validated
+  record inputs, conflict handling, precomputed embeddings, and queue-safe
+  replacement behavior.
+- UUIDv7 enforcement for supplied and direct record IDs, plus concurrency-safe
+  skipped-conflict result resolution.

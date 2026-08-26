@@ -4,9 +4,9 @@ Postgres-native hybrid search for TypeScript. Semantic + BM25 retrieval with
 composable filtering — hierarchy, metadata, temporal, and regex — over a
 PostgreSQL database you own and run.
 
-> **Status: pre-release, under active development.** The API described below is
-> the design target and is not yet implemented. Expect breaking changes until
-> `1.0`. Don't build on it yet.
+> **Status: pre-release, under active development.** Index provisioning,
+> validation, and writes are implemented. Search, reads, workers, deletes, and
+> tree operations remain design targets. Expect breaking changes until `1.0`.
 
 ## Why
 
@@ -73,19 +73,10 @@ await idx.upsert({
   tree: "docs.auth",
   meta: { source: "runbook", version: 3 },
 });
-
-// Writes are queued for embedding. Drain once on demand, or run a continuous
-// worker in another process.
-await idx.processEmbeddings();
-
-const hits = await idx.search({
-  query: "how often do credentials refresh?",
-  mode: "hybrid",
-  limit: 10,
-});
 ```
 
-Each hit is the full record plus a `score`.
+`upsert()` returns an `{ id, status }` result. See
+[the library documentation](docs/library/README.md) for the implemented API.
 
 ## Search modes
 
@@ -181,6 +172,32 @@ with the required embedder and fill in vectors. Monitor `queueStats()`; records
 with null embeddings are available to filters and BM25 immediately, but do not
 participate in semantic retrieval until drained.
 
+### Direct Values
+
+Records accept either asynchronous or precomputed embeddings. A precomputed
+embedding remains on the row; omitting it queues asynchronous work. Temporal
+values are a one- or two-element tuple of `Date` or ISO timestamp strings with an
+explicit offset:
+
+```ts
+await index.upsert(
+  {
+    content: "Maintenance window begins at 14:30 UTC.",
+    tree: "docs.operations",
+    name: "maintenance-window",
+    temporal: [new Date("2026-08-26T14:30:00Z")],
+    // embedding: [0.012, -0.044, ...], // optional precomputed vector
+  },
+  { onConflict: "replace" },
+);
+```
+
+A one-element temporal tuple is stored as a point `[t, t]`; two elements are
+stored as `[start, end)`.
+
+Record IDs are UUIDv7. searchgres generates one when omitted; caller-supplied
+IDs must also be UUIDv7, which keeps primary-key indexes append-friendly.
+
 ### Long inputs
 
 searchgres can't know an arbitrary provider's token limit, so truncation is
@@ -230,7 +247,12 @@ chatty.
 
 ## Documentation
 
-Full documentation is in progress and will land here as the API stabilizes.
+The current library documentation is in [docs/library](docs/library/README.md):
+
+- [Installation](docs/library/installation.md)
+- [Creating and opening indexes](docs/library/indexes.md)
+- [Writing records](docs/library/writes.md)
+- [Extensions and schemas](docs/library/extensions.md)
 
 ## License
 

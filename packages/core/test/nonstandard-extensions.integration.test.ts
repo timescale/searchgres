@@ -65,6 +65,41 @@ test("createIndex supports extensions installed outside public", async () => {
       vectorSchema,
     );
 
+    const libraryAsync = await index.upsert({ content: "library async" });
+    const libraryPrecomputed = await index.upsert({
+      content: "library precomputed",
+      embedding: [1, 0, 0, 0],
+    });
+    assert.equal(libraryAsync.status, "inserted");
+    assert.equal(libraryPrecomputed.status, "inserted");
+    const libraryReplaced = await index.upsert(
+      {
+        id: libraryPrecomputed.id,
+        content: "library precomputed updated",
+        embedding: [0, 1, 0, 0],
+      },
+      { onConflict: "replace" },
+    );
+    assert.equal(libraryReplaced.id, libraryPrecomputed.id);
+    assert.equal(libraryReplaced.status, "updated");
+    const libraryRows = await indexSql<
+      { readonly id: string; readonly embedding: string | null }[]
+    >`
+      select id, embedding
+      from ${indexSql(indexSchema)}.record
+      where id = any(${[libraryAsync.id, libraryPrecomputed.id]}::uuid[])
+      order by id
+    `;
+    assert.deepEqual(
+      Array.from(libraryRows).sort((left, right) =>
+        left.id.localeCompare(right.id),
+      ),
+      [
+        { id: libraryAsync.id, embedding: null },
+        { id: libraryPrecomputed.id, embedding: "[0,1,0,0]" },
+      ].sort((left, right) => left.id.localeCompare(right.id)),
+    );
+
     const embeddingType = indexSql`${indexSql(vectorSchema)}.${indexSql("halfvec")}`;
     const record = indexSql`${indexSql(indexSchema)}.record`;
     const queue = indexSql`${indexSql(indexSchema)}.embedding_queue`;

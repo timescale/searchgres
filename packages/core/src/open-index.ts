@@ -9,6 +9,12 @@ import {
 } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
 import { runSql } from "./sql/exec.ts";
+import {
+  type UpsertOptions,
+  type UpsertRecord,
+  type UpsertResult,
+  upsertMany,
+} from "./write.ts";
 
 const REQUIRED_EXTENSIONS = [
   { name: "vector", minimumVersion: "0.8.0" },
@@ -45,6 +51,26 @@ export class Index {
     this.dimensions = options.dimensions;
     this.embedding = options.embedding;
     this.extensions = Object.freeze([...options.extensions]);
+  }
+
+  /** Insert one record, or resolve a conflict according to `options`. */
+  async upsert(
+    record: UpsertRecord,
+    options?: UpsertOptions,
+  ): Promise<UpsertResult> {
+    const [result] = await this.upsertMany([record], options);
+    if (!result) {
+      throw new Error("Upsert result invariant failed: expected one record");
+    }
+    return result;
+  }
+
+  /** Insert or replace up to 1,000 records in one bulk SQL statement. */
+  async upsertMany(
+    records: readonly UpsertRecord[],
+    options?: UpsertOptions,
+  ): Promise<readonly UpsertResult[]> {
+    return upsertMany(this, records, options);
   }
 }
 

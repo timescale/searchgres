@@ -147,7 +147,7 @@ export async function createIndex(
     await runSql(
       tx`
         create table ${tx(indexSchema)}.record
-        ( id uuid primary key default pg_catalog.uuidv7()
+        ( id uuid primary key default pg_catalog.uuidv7() check (pg_catalog.uuid_extract_version(id) = 7)
         , content text not null
         , meta jsonb not null default '{}'::jsonb check (pg_catalog.jsonb_typeof(meta) = 'object')
         , tree ${ltreeType} not null default ''::${ltreeType}

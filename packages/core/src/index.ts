@@ -12,3 +12,4 @@ export * from "./errors.ts";
 export * from "./identifiers.ts";
 export * from "./open-index.ts";
 export { LIBRARY_VERSION } from "./version.ts";
+export type { UpsertOptions, UpsertRecord, UpsertResult } from "./write.ts";
