@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex, SCHEMA_FORMAT_VERSION } from "../src/create-index.ts";
-import { ConflictError, InvalidConfigError } from "../src/errors.ts";
+import {
+  ConflictError,
+  InvalidConfigError,
+  InvalidIndexError,
+  SchemaVersionError,
+} from "../src/errors.ts";
+import { openIndex } from "../src/open-index.ts";
 import { expectSqlState } from "./support/assert.ts";
 import {
   columnType,
@@ -63,6 +69,46 @@ test("rejects an existing schema without mutating it", async () => {
     assert.equal(await schemaExists(sql, schema), true);
   } finally {
     await dropTestSchema(sql, schema);
+  }
+});
+
+test("opens an immutable index with catalog-derived vector shape", async () => {
+  const schema = randomTestSchema();
+  try {
+    await createIndex(sql, schema, { dimensions: 4 });
+    const index = await openIndex(sql, schema, { embedding: "mock-embedding" });
+
+    assert.equal(index.schema, schema);
+    assert.equal(index.vectorType, "halfvec");
+    assert.equal(index.dimensions, 4);
+    assert.equal(index.embedding, "mock-embedding");
+  } finally {
+    await dropTestSchema(sql, schema);
+  }
+});
+
+test("rejects plain schemas and unsupported schema formats", async () => {
+  const plainSchema = randomTestSchema();
+  const versionedSchema = randomTestSchema();
+  try {
+    await sql`create schema ${sql(plainSchema)}`;
+    await assert.rejects(
+      () => openIndex(sql, plainSchema, { embedding: "mock-embedding" }),
+      InvalidIndexError,
+    );
+
+    await createIndex(sql, versionedSchema, { dimensions: 4 });
+    await sql`
+      update ${sql(versionedSchema)}.version
+      set version = '2'
+    `;
+    await assert.rejects(
+      () => openIndex(sql, versionedSchema, { embedding: "mock-embedding" }),
+      SchemaVersionError,
+    );
+  } finally {
+    await dropTestSchema(sql, plainSchema);
+    await dropTestSchema(sql, versionedSchema);
   }
 });
 

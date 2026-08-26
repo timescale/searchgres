@@ -154,11 +154,13 @@ against the embedding column's PostgreSQL typmod.
 
 ### Queued by design
 
-Every insert or content update is queued for embedding. This is enforced by a
-database trigger, including when application SQL, another service, or a database
-function writes directly to the index's `record` table without using searchgres.
-The queue is therefore part of the index's correctness model, not an optional
-write mode.
+A null embedding on insert or content update is queued for embedding. This is
+enforced by database triggers, including when application SQL, another service,
+or a database function writes directly to the index's `record` table without
+using searchgres. A precomputed replacement embedding is preserved and skips the
+queue; a content update without one invalidates the prior embedding and queues
+work. The queue is therefore part of the index's correctness model, not an
+optional write mode.
 
 Run one bounded drain from a cron job or after bulk ingestion:
 
@@ -176,8 +178,8 @@ const worker = idx.startEmbeddingWorker({ intervalMs: 1000 });
 Because the queue and trigger live in the database, **the process doing the
 writing needs no AI credentials at all**. A separate process can open the index
 with the required embedder and fill in vectors. Monitor `queueStats()`; records
-are available to filters and BM25 immediately, but do not participate in
-semantic retrieval until drained.
+with null embeddings are available to filters and BM25 immediately, but do not
+participate in semantic retrieval until drained.
 
 ### Long inputs
 

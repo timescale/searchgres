@@ -69,19 +69,33 @@ export async function ensureExtension(
   );
 }
 
+/** Read one installed extension without creating or otherwise mutating it. */
+export async function getExtensionInfo(
+  sql: postgres.ISql,
+  requirement: ExtensionRequirement,
+): Promise<ExtensionInfo> {
+  return toExtensionInfo(
+    await extensionStatus(sql, requirement.name),
+    requirement,
+  );
+}
+
 async function extensionStatus(
-  tx: postgres.TransactionSql,
+  tx: postgres.ISql,
   name: string,
 ): Promise<ExtensionStatusRow> {
   const [status] = await runSql(
     tx<ExtensionStatusRow[]>`
       -- Preserve one status row even when this extension is neither installed
       -- nor available, so the caller receives a typed unavailable error.
-      select installed.extversion, n.nspname, available.default_version
+      select
+        installed.extversion
+      , n.nspname
+      , available.default_version
       from (select 1) as singleton
-      left join pg_catalog.pg_extension installed on installed.extname = ${name}
-      left join pg_catalog.pg_namespace n on n.oid = installed.extnamespace
-      left join pg_catalog.pg_available_extensions available on available.name = ${name}
+      left outer join pg_catalog.pg_extension installed (on installed.extname = ${name})
+      left outer join pg_catalog.pg_namespace n on (n.oid = installed.extnamespace)
+      left outer join pg_catalog.pg_available_extensions available on (available.name = ${name})
     `,
     { spanName: "checkExtension", dbOperationName: "SELECT" },
   );

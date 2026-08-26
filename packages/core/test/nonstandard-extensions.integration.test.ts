@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex } from "../src/create-index.ts";
+import { openIndex } from "../src/open-index.ts";
 import {
   columnType,
   connect,
@@ -34,7 +35,13 @@ test("createIndex supports extensions installed outside public", async () => {
     await indexSql`create extension ltree with schema ${indexSql(ltreeSchema)}`;
 
     await createIndex(indexSql, indexSchema, { dimensions: 4 });
+    const index = await openIndex(indexSql, indexSchema, {
+      embedding: "mock-embedding",
+    });
 
+    assert.equal(index.schema, indexSchema);
+    assert.equal(index.vectorType, "halfvec");
+    assert.equal(index.dimensions, 4);
     assert.equal(await extensionSchema(indexSql, "vector"), vectorSchema);
     assert.equal(
       await extensionSchema(indexSql, "pg_textsearch"),

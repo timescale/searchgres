@@ -25,3 +25,5 @@ Pre-release development. Nothing published yet.
   writers. Existing schemas are rebuilt rather than migrated in place.
 - Core builds clean emitted artifacts first, preventing deleted source modules
   from remaining in published tarballs.
+- Catalog-derived `openIndex` validation with immutable schema-format checks,
+  required embedding models, and vector/HNSW shape inspection.
