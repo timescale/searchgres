@@ -7,6 +7,7 @@
  */
 
 export * from "./config.ts";
+export * from "./create-index.ts";
 export * from "./errors.ts";
 export * from "./identifiers.ts";
 export { LIBRARY_VERSION } from "./version.ts";

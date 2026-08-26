@@ -8,8 +8,6 @@ export type SearchgresErrorCode =
   | "INVALID_CONFIG"
   | "INVALID_INDEX"
   | "LOCK_TIMEOUT"
-  | "MIGRATION_FAILED"
-  | "MIGRATION_REQUIRED"
   | "NOT_FOUND"
   | "STATEMENT_TIMEOUT"
   | "RATE_LIMITED"
@@ -54,45 +52,25 @@ export class InvalidIndexError extends SearchgresError {
   }
 }
 
-export class MigrationRequiredError extends SearchgresError {
-  readonly schema: string;
-  readonly pending: readonly string[];
-
-  constructor(
-    schema: string,
-    pending: readonly string[],
-    options?: ErrorOptions,
-  ) {
-    const detail = pending.length === 0 ? "unknown" : pending.join(", ");
-    super(
-      "MIGRATION_REQUIRED",
-      `Index ${JSON.stringify(schema)} requires pending migrations: ${detail}`,
-      options,
-    );
-    this.schema = schema;
-    this.pending = Object.freeze([...pending]);
-  }
-}
-
 export class SchemaVersionError extends SearchgresError {
   readonly schema: string;
-  readonly libraryVersion: string;
-  readonly minimumLibraryVersion: string;
+  readonly schemaVersion: string;
+  readonly supportedVersion: string;
 
   constructor(
     schema: string,
-    libraryVersion: string,
-    minimumLibraryVersion: string,
+    schemaVersion: string,
+    supportedVersion: string,
     options?: ErrorOptions,
   ) {
     super(
       "SCHEMA_VERSION",
-      `Index ${JSON.stringify(schema)} requires searchgres >= ${minimumLibraryVersion}; running ${libraryVersion}`,
+      `Index ${JSON.stringify(schema)} uses schema format ${schemaVersion}; this library supports ${supportedVersion}. Create a new index and reindex.`,
       options,
     );
     this.schema = schema;
-    this.libraryVersion = libraryVersion;
-    this.minimumLibraryVersion = minimumLibraryVersion;
+    this.schemaVersion = schemaVersion;
+    this.supportedVersion = supportedVersion;
   }
 }
 
@@ -286,18 +264,5 @@ export class RateLimitError extends SearchgresError {
   ) {
     super("RATE_LIMITED", message, options);
     this.retryAfterMs = retryAfterMs;
-  }
-}
-
-export class MigrationError extends SearchgresError {
-  readonly migration: string;
-
-  constructor(migration: string, options?: ErrorOptions) {
-    super(
-      "MIGRATION_FAILED",
-      `Migration ${JSON.stringify(migration)} failed`,
-      options,
-    );
-    this.migration = migration;
   }
 }

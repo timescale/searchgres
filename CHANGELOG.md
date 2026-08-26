@@ -19,10 +19,9 @@ Pre-release development. Nothing published yet.
 - Database plumbing: PostgreSQL 18 preflight, serialized extension installation
   and schema discovery, transaction-local migration timeouts, SQL spans, typed
   timeout/extension failures, Docker-backed integration tests, and CI coverage.
-- Migration infrastructure: transaction-scoped index bootstrap, a tracked
-  per-migration compatibility floor, and atomic run-once migration execution.
+- Immutable schema provisioning: one atomic `createIndex` flow, singleton format
+  marker, record and queue schemas, configured search indexes, and
+  integrity/enqueue triggers that protect asynchronous embedding for direct SQL
+  writers. Existing schemas are rebuilt rather than migrated in place.
 - Core builds clean emitted artifacts first, preventing deleted source modules
   from remaining in published tarballs.
-- Initial DDL migrations: record and queue schemas, configured search indexes,
-  and integrity/enqueue triggers that protect asynchronous embedding for direct
-  SQL writers.

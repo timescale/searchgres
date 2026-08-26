@@ -8,7 +8,6 @@ import {
   InvalidConfigError,
   InvalidIndexError,
   LockTimeoutError,
-  MigrationRequiredError,
   RateLimitError,
   SchemaVersionError,
   SearchgresError,
@@ -30,13 +29,9 @@ test("errors retain the fields callers need to recover", () => {
   const invalid = new InvalidIndexError("docs");
   assert.equal(invalid.schema, "docs");
 
-  const pending = new MigrationRequiredError("docs", ["002_indexes"]);
-  assert.deepEqual(pending.pending, ["002_indexes"]);
-  assert.equal(Object.isFrozen(pending.pending), true);
-
-  const version = new SchemaVersionError("docs", "1.2.0", "2.0.0");
-  assert.equal(version.libraryVersion, "1.2.0");
-  assert.equal(version.minimumLibraryVersion, "2.0.0");
+  const version = new SchemaVersionError("docs", "2", "1");
+  assert.equal(version.schemaVersion, "2");
+  assert.equal(version.supportedVersion, "1");
 
   const dimensions = new DimensionMismatchError(1536, 768);
   assert.equal(dimensions.expected, 1536);
@@ -70,9 +65,4 @@ test("errors retain the fields callers need to recover", () => {
   ]);
   assert.equal(Object.isFrozen(config.issues), true);
   assert.equal(Object.isFrozen(config.issues[0]?.path), true);
-});
-
-test("migration-required message remains useful when pending names are unknown", () => {
-  const error = new MigrationRequiredError("docs", []);
-  assert.match(error.message, /pending migrations: unknown/);
 });

@@ -5,23 +5,79 @@ const DEFAULT_TEST_DATABASE_URL =
 const SCHEMA_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 
 export function connect(): Sql {
-  return postgres(process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_DATABASE_URL, {
+  return connectToUrl(testDatabaseUrl());
+}
+
+export function connectToDatabase(database: string): Sql {
+  const url = new URL(testDatabaseUrl());
+  url.pathname = `/${database}`;
+  return connectToUrl(url.toString());
+}
+
+function connectToUrl(url: string): Sql {
+  return postgres(url, {
     onnotice: () => {},
   });
 }
 
 /** Generate a valid test-only schema name that cannot collide with production. */
 export function randomTestSchema(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return `sgtest_${randomSuffix(12)}`;
+}
+
+export function randomTestDatabase(): string {
+  return `sgtestdb_${randomSuffix(12)}`;
+}
+
+function randomSuffix(length: number): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
   let suffix = "";
   for (const byte of bytes) {
     suffix += SCHEMA_ALPHABET[byte % SCHEMA_ALPHABET.length];
   }
-  return `sgtest_${suffix}`;
+  return suffix;
 }
 
 export async function dropTestSchema(sql: Sql, schema: string): Promise<void> {
   await sql`drop schema if exists ${sql(schema)} cascade`;
+}
+
+export async function createTestDatabase(
+  sql: Sql,
+  database: string,
+): Promise<void> {
+  await sql`create database ${sql(database)} template template0`;
+}
+
+export async function dropTestDatabase(
+  sql: Sql,
+  database: string,
+): Promise<void> {
+  await sql`drop database if exists ${sql(database)}`;
+}
+
+export async function schemaExists(sql: Sql, schema: string): Promise<boolean> {
+  const [row] = await sql<{ readonly present: boolean }[]>`
+    select exists (
+      select 1
+      from pg_catalog.pg_namespace n
+      where n.nspname = ${schema}
+    ) as present
+  `;
+  return row?.present ?? false;
+}
+
+export async function extensionSchema(
+  sql: Sql,
+  extension: string,
+): Promise<string | null> {
+  const [row] = await sql<{ readonly nspname: string }[]>`
+    select n.nspname
+    from pg_catalog.pg_extension e
+    join pg_catalog.pg_namespace n on n.oid = e.extnamespace
+    where e.extname = ${extension}
+  `;
+  return row?.nspname ?? null;
 }
 
 export async function columnType(
@@ -87,6 +143,24 @@ export async function indexOpclass(
   return row?.opcname ?? null;
 }
 
+export async function indexOpclassSchema(
+  sql: Sql,
+  schema: string,
+  index: string,
+): Promise<string | null> {
+  const [row] = await sql<{ readonly nspname: string }[]>`
+    select opn.nspname
+    from pg_catalog.pg_index i
+    join pg_catalog.pg_class c on c.oid = i.indexrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    join pg_catalog.pg_opclass opc on opc.oid = i.indclass[0]
+    join pg_catalog.pg_namespace opn on opn.oid = opc.opcnamespace
+    where n.nspname = ${schema}
+      and c.relname = ${index}
+  `;
+  return row?.nspname ?? null;
+}
+
 export async function listTriggers(
   sql: Sql,
   schema: string,
@@ -103,4 +177,8 @@ export async function listTriggers(
     order by t.tgname
   `;
   return rows.map((row) => row.tgname);
+}
+
+function testDatabaseUrl(): string {
+  return process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_DATABASE_URL;
 }

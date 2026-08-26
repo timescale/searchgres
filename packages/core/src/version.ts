@@ -7,9 +7,7 @@
  * at runtime would mean shipping filesystem access in a library that otherwise
  * needs none.
  *
- * This is not cosmetic: every migration records the library version that
- * applied it, and the compatibility floor (see the migration runner) compares
- * against this value to decide whether the running library may operate on a
- * given index schema.
+ * This is package metadata only. Immutable index schemas use their own format
+ * marker and never derive compatibility from the library package version.
  */
 export const LIBRARY_VERSION = "0.0.0";
