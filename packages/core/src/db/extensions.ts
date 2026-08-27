@@ -12,7 +12,6 @@ export interface ExtensionRequirement {
 export interface ExtensionInfo {
   readonly name: string;
   readonly version: string;
-  readonly schema: string;
 }
 
 interface ExtensionStatusRow {
@@ -22,8 +21,10 @@ interface ExtensionStatusRow {
 }
 
 /**
- * Ensure one caller-selected extension is installed and version-compatible.
- * The caller owns the surrounding transaction and any advisory lock.
+ * Ensure one required extension is installed in `public` and version-compatible,
+ * creating it in `public` when absent. searchgres is public-only: an extension
+ * installed in another schema is rejected rather than moved. The caller owns the
+ * surrounding transaction and any advisory lock.
  */
 export async function ensureExtension(
   tx: postgres.TransactionSql,
@@ -122,6 +123,14 @@ function toExtensionInfo(
       "missing",
     );
   }
+  if (status.nspname !== "public") {
+    throw new ExtensionError(
+      requirement.name,
+      requirement.minimumVersion,
+      "wrong_schema",
+      { foundVersion: status.extversion },
+    );
+  }
   if (!versionAtLeast(status.extversion, requirement.minimumVersion)) {
     throw new ExtensionError(
       requirement.name,
@@ -133,7 +142,6 @@ function toExtensionInfo(
   return Object.freeze({
     name: requirement.name,
     version: status.extversion,
-    schema: status.nspname,
   });
 }
 

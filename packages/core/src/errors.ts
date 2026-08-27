@@ -141,7 +141,8 @@ export type ExtensionErrorReason =
   | "missing"
   | "permission_denied"
   | "too_old"
-  | "unavailable";
+  | "unavailable"
+  | "wrong_schema";
 
 export class ExtensionError extends SearchgresError {
   readonly extension: string;
@@ -160,7 +161,9 @@ export class ExtensionError extends SearchgresError {
     const guidance =
       reason === "permission_denied"
         ? "; install it before connecting or grant CREATE EXTENSION"
-        : "";
+        : reason === "wrong_schema"
+          ? "; searchgres requires it in the public schema"
+          : "";
     super(
       "EXTENSION",
       `PostgreSQL extension ${JSON.stringify(extension)} >= ${minimumVersion} is required (${reason}${detail}${guidance})`,

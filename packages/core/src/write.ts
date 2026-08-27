@@ -145,29 +145,17 @@ export async function upsertMany(
   if (ids.length === 0) return [];
 
   const { sql } = index;
-  const vector = index.extensions.find(
-    (extension) => extension.name === "vector",
-  );
-  const ltree = index.extensions.find(
-    (extension) => extension.name === "ltree",
-  );
-  if (!vector || !ltree) {
-    throw new Error("Opened index is missing required extension metadata");
-  }
-  const ltreeArray = sql`${sql(ltree.schema)}.ltree[]`;
-  const embeddingArray = sql`${sql(vector.schema)}.${sql(index.vectorType)}[]`;
-
   const rows = await runBatchUpsert(
     sql<BatchUpsertRow[]>`
       select ord, id, status
       from ${sql(index.schema)}.batch_upsert
-      ( ${ids}::uuid[]
-      , ${contents}::text[]
-      , ${sql.json(metas)}::jsonb
-      , ${pgArrayLiteral(trees)}::${ltreeArray}
-      , ${temporals}::tstzrange[]
-      , ${names}::text[]
-      , ${pgArrayLiteral(embeddings)}::${embeddingArray}
+      ( ${ids}
+      , ${contents}
+      , ${sql.json(metas)}
+      , ${trees}
+      , ${temporals}
+      , ${names}
+      , ${embeddings}
       , ${parsedOptions.onConflict}
       )
     `,
@@ -284,19 +272,4 @@ function encodeEmbedding(
   embedding: readonly number[] | undefined,
 ): string | null {
   return embedding === undefined ? null : JSON.stringify(embedding);
-}
-
-/**
- * Encode a Postgres array literal for the two schema-qualified array casts
- * (`ltree[]`, `halfvec[]`). postgres.js only serializes a bound array correctly
- * when the `::type[]` cast is literal template text; a schema-qualified type is
- * a fragment, so we pass a scalar array-literal string and let the cast coerce.
- */
-function pgArrayLiteral(elements: readonly (string | null)[]): string {
-  const items = elements.map((element) =>
-    element === null
-      ? "NULL"
-      : `"${element.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`,
-  );
-  return `{${items.join(",")}}`;
 }

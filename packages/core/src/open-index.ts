@@ -1,12 +1,8 @@
 import type { EmbeddingModel } from "ai";
 import type postgres from "postgres";
 import { SCHEMA_FORMAT_VERSION } from "./create-index.ts";
-import { type ExtensionInfo, getExtensionInfo } from "./db/extensions.ts";
-import {
-  ExtensionError,
-  InvalidIndexError,
-  SchemaVersionError,
-} from "./errors.ts";
+import { getExtensionInfo } from "./db/extensions.ts";
+import { InvalidIndexError, SchemaVersionError } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
 import { runSql } from "./sql/exec.ts";
 import {
@@ -32,9 +28,7 @@ export class Index {
   readonly dimensions: number;
   readonly embedding: EmbeddingModel;
 
-  /** @internal Extension schemas used by future query and worker methods. */
-  readonly extensions: readonly ExtensionInfo[];
-  /** @internal Caller-owned pool used by future query and worker methods. */
+  /** @internal Caller-owned pool used by query and worker methods. */
   readonly sql: postgres.Sql;
 
   constructor(options: {
@@ -43,14 +37,12 @@ export class Index {
     vectorType: "vector" | "halfvec";
     dimensions: number;
     embedding: EmbeddingModel;
-    extensions: readonly ExtensionInfo[];
   }) {
     this.sql = options.sql;
     this.schema = options.schema;
     this.vectorType = options.vectorType;
     this.dimensions = options.dimensions;
     this.embedding = options.embedding;
-    this.extensions = Object.freeze([...options.extensions]);
   }
 
   /** Insert one record, or resolve a conflict according to `options`. */
@@ -102,24 +94,21 @@ export async function openIndex(
     throw new SchemaVersionError(indexSchema, version, SCHEMA_FORMAT_VERSION);
   }
 
-  const extensions: ExtensionInfo[] = [];
+  // searchgres is public-only: every required extension must be installed in
+  // `public`, and the index objects must resolve to it.
   for (const requirement of REQUIRED_EXTENSIONS) {
-    extensions.push(await getExtensionInfo(sql, requirement));
-  }
-  const vector = extensions.find((extension) => extension.name === "vector");
-  if (!vector) {
-    throw new ExtensionError("vector", "0.8.0", "missing");
+    await getExtensionInfo(sql, requirement);
   }
 
   const embedding = await readEmbeddingColumn(sql, indexSchema);
-  if (embedding.type_schema !== vector.schema) {
+  if (embedding.type_schema !== "public") {
     throw new InvalidIndexError(indexSchema);
   }
   const vectorShape = parseVectorShape(embedding, indexSchema);
   const hnswOpclass = await readHnswOpclass(sql, indexSchema);
   if (
     hnswOpclass.amname !== "hnsw" ||
-    hnswOpclass.opclass_schema !== vector.schema ||
+    hnswOpclass.opclass_schema !== "public" ||
     hnswOpclass.opcname !== `${vectorShape.vectorType}_cosine_ops`
   ) {
     throw new InvalidIndexError(indexSchema);
@@ -131,7 +120,6 @@ export async function openIndex(
     vectorType: vectorShape.vectorType,
     dimensions: vectorShape.dimensions,
     embedding: options.embedding,
-    extensions,
   });
 }
 

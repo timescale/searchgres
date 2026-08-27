@@ -2,19 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex } from "../src/create-index.ts";
-import { openIndex } from "../src/open-index.ts";
+import { ExtensionError } from "../src/errors.ts";
 import {
-  columnType,
   connect,
   connectToDatabase,
   createTestDatabase,
   dropTestDatabase,
-  extensionSchema,
-  indexOpclassSchema,
   randomTestDatabase,
 } from "./support/db.ts";
 
-test("createIndex supports extensions installed outside public", async () => {
+test("createIndex requires extensions installed in public", async () => {
   const admin = connect();
   const database = randomTestDatabase();
   let indexSql: Sql | undefined;
@@ -34,136 +31,23 @@ test("createIndex supports extensions installed outside public", async () => {
     await indexSql`create extension pg_textsearch with schema ${indexSql(textsearchSchema)}`;
     await indexSql`create extension ltree with schema ${indexSql(ltreeSchema)}`;
 
-    await createIndex(indexSql, indexSchema, { dimensions: 4 });
-    const index = await openIndex(indexSql, indexSchema, {
-      embedding: "mock-embedding",
-    });
-
-    assert.equal(index.schema, indexSchema);
-    assert.equal(index.vectorType, "halfvec");
-    assert.equal(index.dimensions, 4);
-    assert.equal(await extensionSchema(indexSql, "vector"), vectorSchema);
-    assert.equal(
-      await extensionSchema(indexSql, "pg_textsearch"),
-      textsearchSchema,
-    );
-    assert.equal(await extensionSchema(indexSql, "ltree"), ltreeSchema);
-    assert.equal(
-      await columnType(indexSql, indexSchema, "record", "embedding"),
-      `${vectorSchema}.halfvec(4)`,
-    );
-    assert.equal(
-      await columnType(indexSql, indexSchema, "record", "tree"),
-      `${ltreeSchema}.ltree`,
-    );
-    assert.equal(
-      await indexOpclassSchema(
-        indexSql,
-        indexSchema,
-        "record_embedding_hnsw_idx",
-      ),
-      vectorSchema,
-    );
-
-    const libraryAsync = await index.upsert({ content: "library async" });
-    const libraryPrecomputed = await index.upsert({
-      content: "library precomputed",
-      embedding: [1, 0, 0, 0],
-    });
-    assert.equal(libraryAsync.status, "inserted");
-    assert.equal(libraryPrecomputed.status, "inserted");
-    const libraryReplaced = await index.upsert(
-      {
-        id: libraryPrecomputed.id,
-        content: "library precomputed updated",
-        embedding: [0, 1, 0, 0],
+    await assert.rejects(
+      () => createIndex(indexSql as Sql, indexSchema, { dimensions: 4 }),
+      (error: unknown) => {
+        assert.ok(error instanceof ExtensionError);
+        assert.equal(error.reason, "wrong_schema");
+        assert.equal(error.extension, "vector");
+        return true;
       },
-      { onConflict: "replace" },
-    );
-    assert.equal(libraryReplaced.id, libraryPrecomputed.id);
-    assert.equal(libraryReplaced.status, "updated");
-    const libraryRows = await indexSql<
-      { readonly id: string; readonly embedding: string | null }[]
-    >`
-      select id, embedding
-      from ${indexSql(indexSchema)}.record
-      where id = any(${[libraryAsync.id, libraryPrecomputed.id]}::uuid[])
-      order by id
-    `;
-    assert.deepEqual(
-      Array.from(libraryRows).sort((left, right) =>
-        left.id.localeCompare(right.id),
-      ),
-      [
-        { id: libraryAsync.id, embedding: null },
-        { id: libraryPrecomputed.id, embedding: "[0,1,0,0]" },
-      ].sort((left, right) => left.id.localeCompare(right.id)),
     );
 
-    const embeddingType = indexSql`${indexSql(vectorSchema)}.${indexSql("halfvec")}`;
-    const record = indexSql`${indexSql(indexSchema)}.record`;
-    const queue = indexSql`${indexSql(indexSchema)}.embedding_queue`;
-    const [precomputed] = await indexSql<
-      {
-        readonly id: string;
-        readonly embedding: string | null;
-        readonly content_version: number;
-      }[]
-    >`
-      insert into ${record} (content, embedding)
-      values (${"precomputed v1"}, ${"[1,0,0,0]"}::${embeddingType})
-      returning id, embedding, content_version
+    // The failed transaction must not leave the index schema behind.
+    const [present] = await indexSql<{ readonly present: boolean }[]>`
+      select exists (
+        select 1 from pg_catalog.pg_namespace where nspname = ${indexSchema}
+      ) as present
     `;
-    assert.ok(precomputed);
-    assert.equal(precomputed.embedding, "[1,0,0,0]");
-    assert.equal(precomputed.content_version, 1);
-
-    const [precomputedUpdated] = await indexSql<
-      {
-        readonly embedding: string | null;
-        readonly content_version: number;
-      }[]
-    >`
-      update ${record}
-      set content = ${"precomputed v2"},
-          embedding = ${"[0,1,0,0]"}::${embeddingType}
-      where id = ${precomputed.id}
-      returning embedding, content_version
-    `;
-    assert.ok(precomputedUpdated);
-    assert.equal(precomputedUpdated.embedding, "[0,1,0,0]");
-    assert.equal(precomputedUpdated.content_version, 2);
-    const precomputedQueue = await indexSql`
-      select id
-      from ${queue}
-      where record_id = ${precomputed.id}
-    `;
-    assert.deepEqual(Array.from(precomputedQueue), []);
-
-    const [asynchronous] = await indexSql<
-      { readonly id: string; readonly embedding: string | null }[]
-    >`
-      insert into ${record} (content)
-      values (${"async v1"})
-      returning id, embedding
-    `;
-    assert.ok(asynchronous);
-    assert.equal(asynchronous.embedding, null);
-    await indexSql`
-      update ${record}
-      set content = ${"async v2"}
-      where id = ${asynchronous.id}
-    `;
-    const asyncQueue = await indexSql<{ readonly content_version: number }[]>`
-      select content_version
-      from ${queue}
-      where record_id = ${asynchronous.id}
-      order by content_version
-    `;
-    assert.deepEqual(Array.from(asyncQueue), [
-      { content_version: 1 },
-      { content_version: 2 },
-    ]);
+    assert.equal(present?.present, false);
   } finally {
     await indexSql?.end();
     await dropTestDatabase(admin, database);

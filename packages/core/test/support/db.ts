@@ -67,19 +67,6 @@ export async function schemaExists(sql: Sql, schema: string): Promise<boolean> {
   return row?.present ?? false;
 }
 
-export async function extensionSchema(
-  sql: Sql,
-  extension: string,
-): Promise<string | null> {
-  const [row] = await sql<{ readonly nspname: string }[]>`
-    select n.nspname
-    from pg_catalog.pg_extension e
-    join pg_catalog.pg_namespace n on n.oid = e.extnamespace
-    where e.extname = ${extension}
-  `;
-  return row?.nspname ?? null;
-}
-
 export async function columnType(
   sql: Sql,
   schema: string,
@@ -141,24 +128,6 @@ export async function indexOpclass(
       and c.relname = ${index}
   `;
   return row?.opcname ?? null;
-}
-
-export async function indexOpclassSchema(
-  sql: Sql,
-  schema: string,
-  index: string,
-): Promise<string | null> {
-  const [row] = await sql<{ readonly nspname: string }[]>`
-    select opn.nspname
-    from pg_catalog.pg_index i
-    join pg_catalog.pg_class c on c.oid = i.indexrelid
-    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-    join pg_catalog.pg_opclass opc on opc.oid = i.indclass[0]
-    join pg_catalog.pg_namespace opn on opn.oid = opc.opcnamespace
-    where n.nspname = ${schema}
-      and c.relname = ${index}
-  `;
-  return row?.nspname ?? null;
 }
 
 export async function listTriggers(

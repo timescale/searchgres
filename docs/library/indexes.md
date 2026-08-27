@@ -79,7 +79,7 @@ model identity with stored data.
 `openIndex()` reads and validates:
 
 - the singleton format marker
-- installed extension schemas and minimum versions
+- the required extensions installed in `public` and their minimum versions
 - the `record.embedding` PostgreSQL type and dimensions
 - the HNSW access method and matching cosine opclass
 

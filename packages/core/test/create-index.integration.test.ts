@@ -14,7 +14,6 @@ import {
   columnType,
   connect,
   dropTestSchema,
-  extensionSchema,
   indexOpclass,
   indexReloptions,
   listFunctions,
@@ -173,9 +172,7 @@ test("direct SQL supports precomputed and asynchronous embeddings", async () => 
   const schema = randomTestSchema();
   try {
     await createIndex(sql, schema, { dimensions: 4 });
-    const vectorSchema = await extensionSchema(sql, "vector");
-    assert.ok(vectorSchema);
-    const embeddingType = sql`${sql(vectorSchema)}.${sql("halfvec")}`;
+    const embeddingType = sql`public.${sql("halfvec")}`;
     const record = sql`${sql(schema)}.record`;
     const queue = sql`${sql(schema)}.embedding_queue`;
 

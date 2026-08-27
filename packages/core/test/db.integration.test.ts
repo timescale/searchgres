@@ -53,7 +53,6 @@ test("ensures supplied extensions with an empty search path", async () => {
   );
   for (const extension of extensions) {
     assert.match(extension.version, /\S/);
-    assert.match(extension.schema, /\S/);
   }
 });
 

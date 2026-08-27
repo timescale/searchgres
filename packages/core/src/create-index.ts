@@ -1,6 +1,6 @@
 import type postgres from "postgres";
 import { type IndexConfig, normalizeIndexConfig } from "./config.ts";
-import { type ExtensionInfo, ensureExtension } from "./db/extensions.ts";
+import { ensureExtension } from "./db/extensions.ts";
 import { acquireAdvisoryLock, advisoryLockKey } from "./db/lock.ts";
 import { ensurePostgresVersion } from "./db/preflight.ts";
 import {
@@ -60,22 +60,15 @@ export async function createIndex(
       );
     }
 
-    const extensions: ExtensionInfo[] = [];
+    // searchgres is public-only: every required extension is installed in and
+    // resolved from `public`, so all extension objects are qualified as such.
     for (const requirement of INITIAL_EXTENSIONS) {
-      extensions.push(await ensureExtension(tx, requirement));
-    }
-    const vector = extensions.find((extension) => extension.name === "vector");
-    const ltree = extensions.find((extension) => extension.name === "ltree");
-    if (!vector || !ltree) {
-      throw new Error("Required extension setup invariant failed");
+      await ensureExtension(tx, requirement);
     }
 
-    const embeddingType = tx`${tx(vector.schema)}.${tx(creation.vectorType)}(${tx.unsafe(String(creation.dimensions))})`;
-    const ltreeType = tx`${tx(ltree.schema)}.ltree`;
-    const cosineOpclass = tx`${tx(vector.schema)}.${tx(`${creation.vectorType}_cosine_ops`)}`;
-    const operatorSchemas = [
-      ...new Set([indexSchema, vector.schema, ltree.schema]),
-    ];
+    const embeddingType = tx`public.${tx(creation.vectorType)}(${tx.unsafe(String(creation.dimensions))})`;
+    const ltreeType = tx`public.ltree`;
+    const cosineOpclass = tx`public.${tx(`${creation.vectorType}_cosine_ops`)}`;
 
     // ------------------------------------------------------------------------
     // validate text search configuration
@@ -119,14 +112,11 @@ export async function createIndex(
       namespace: indexSchema,
     });
     // set local search path so certain extension-defined operators resolve
-    await runSql(
-      tx`set local search_path to pg_catalog, ${tx(operatorSchemas)}, pg_temp`,
-      {
-        spanName: "setLocalSearchPath",
-        dbOperationName: "SET",
-        namespace: indexSchema,
-      },
-    );
+    await runSql(tx`set local search_path to pg_catalog, public, pg_temp`, {
+      spanName: "setLocalSearchPath",
+      dbOperationName: "SET",
+      namespace: indexSchema,
+    });
     await runSql(
       tx`
         create table ${tx(indexSchema)}.version
@@ -354,7 +344,7 @@ export async function createIndex(
         language plpgsql volatile security invoker
         set timezone to 'UTC'
         set datestyle to 'ISO, YMD'
-        set search_path to pg_catalog, ${tx(vector.schema)}, ${tx(ltree.schema)}, pg_temp
+        set search_path to pg_catalog, public, pg_temp
         as $function$
         begin
           if tg_op = 'INSERT' then
@@ -490,17 +480,17 @@ export async function createIndex(
         ( _ids uuid[]
         , _contents text[]
         , _metas jsonb
-        , _trees ${tx(ltree.schema)}.ltree[]
+        , _trees public.ltree[]
         , _temporals tstzrange[]
         , _names text[]
-        , _embeddings ${tx(vector.schema)}.${tx(creation.vectorType)}[]
+        , _embeddings public.${tx(creation.vectorType)}[]
         , _on_conflict text default 'error'
         )
         returns table (ord bigint, id uuid, status text)
         language plpgsql volatile security invoker
         set timezone to 'UTC'
         set datestyle to 'ISO, YMD'
-        set search_path to pg_catalog, ${tx(vector.schema)}, ${tx(ltree.schema)}, pg_temp
+        set search_path to pg_catalog, public, pg_temp
         as $function$
         -- The out columns (id, ...) shadow table columns inside the body; the
         -- body never reads them as variables, so resolve ambiguity to columns.

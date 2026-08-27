@@ -36,3 +36,8 @@ Pre-release development. Nothing published yet.
   with the index and callable directly from SQL; its body is part of the
   immutable schema format. The library validates inputs, calls the routine, and
   maps its conflict/validation SQLSTATEs to typed errors.
+- Extensions are now public-only: `vector`, `pg_textsearch`, and `ltree` must
+  live in `public`. `createIndex` installs missing ones there and rejects any
+  installed in another schema (`ExtensionError` `reason: "wrong_schema"`).
+  Bulk-write arrays are passed as bare parameters coerced by the routine
+  signature, removing the previous manual PostgreSQL array-literal encoding.
