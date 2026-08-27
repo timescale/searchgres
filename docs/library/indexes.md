@@ -43,13 +43,15 @@ Only `dimensions` is required. Defaults:
 2. Ensures PostgreSQL 18 and the required extensions.
 3. Rejects an existing schema with `ConflictError`.
 4. Creates the schema, immutable version marker, record table, indexes, queue,
-   and triggers.
+   triggers, and the `batch_upsert` write routine.
 5. Commits everything or rolls back the entire schema on failure.
 
 ## Immutable formats
 
 Each index schema contains a singleton `version` table with the schema format
-marker. The current format is `"1"`.
+marker. The current format is `"1"`. The format covers both the storage layout
+and the behavior of the schema-local routines (such as `batch_upsert`), so a
+change to either requires creating a new index and reindexing.
 
 Schemas are immutable. `createIndex()` never upgrades an existing schema. When a
 future DDL format is incompatible, create a new schema, reindex into it, then

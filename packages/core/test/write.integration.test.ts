@@ -448,6 +448,88 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
   }
 });
 
+test("batch_upsert is callable directly as SQL", async () => {
+  const schema = randomTestSchema();
+  try {
+    await createIndex(sql, schema, { dimensions: 4 });
+    const fn = sql`${sql(schema)}.batch_upsert`;
+
+    const inserted = await sql<
+      { readonly ord: string; readonly id: string; readonly status: string }[]
+    >`
+      select ord, id, status
+      from ${fn}
+      ( array[null]::uuid[]
+      , array['direct']::text[]
+      , '[{}]'::jsonb
+      , array['docs']::ltree[]
+      , array[null]::tstzrange[]
+      , array['leaf']::text[]
+      , array[null]::halfvec[]
+      , 'error'
+      )
+    `;
+    assert.equal(inserted.length, 1);
+    assert.equal(inserted[0]?.status, "inserted");
+    const id = inserted[0]?.id;
+    assert.ok(id);
+
+    const replaced = await sql<
+      { readonly id: string; readonly status: string }[]
+    >`
+      select ord, id, status
+      from ${fn}
+      ( array[null]::uuid[]
+      , array['direct v2']::text[]
+      , '[{}]'::jsonb
+      , array['docs']::ltree[]
+      , array[null]::tstzrange[]
+      , array['leaf']::text[]
+      , array[null]::halfvec[]
+      , 'replace'
+      )
+    `;
+    assert.equal(replaced[0]?.id, id);
+    assert.equal(replaced[0]?.status, "updated");
+
+    await expectSqlState(
+      () => sql`
+        select ord, id, status
+        from ${fn}
+        ( array[null]::uuid[]
+        , array['direct v3']::text[]
+        , '[{}]'::jsonb
+        , array['docs']::ltree[]
+        , array[null]::tstzrange[]
+        , array['leaf']::text[]
+        , array[null]::halfvec[]
+        , 'error'
+        )
+      `,
+      "23505",
+    );
+
+    await expectSqlState(
+      () => sql`
+        select ord, id, status
+        from ${fn}
+        ( array[null]::uuid[]
+        , array['a', 'b']::text[]
+        , '[{}]'::jsonb
+        , array['docs']::ltree[]
+        , array[null]::tstzrange[]
+        , array[null]::text[]
+        , array[null]::halfvec[]
+        , 'error'
+        )
+      `,
+      "22023",
+    );
+  } finally {
+    await dropTestSchema(sql, schema);
+  }
+});
+
 async function waitForBlockedTransaction(sql: Sql): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt++) {
     const [row] = await sql<{ readonly waiting: boolean }[]>`

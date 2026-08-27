@@ -1,3 +1,4 @@
+import type postgres from "postgres";
 import { z } from "zod";
 import {
   BatchTooLargeError,
@@ -7,6 +8,7 @@ import {
   type ValidationIssue,
 } from "./errors.ts";
 import type { Index } from "./open-index.ts";
+import { postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 
 const MAX_UPSERT_BATCH_SIZE = 1000;
@@ -66,28 +68,16 @@ export interface UpsertResult {
   readonly status: "inserted" | "updated" | "skipped";
 }
 
-interface NormalizedRecord {
+interface BatchUpsertRow {
+  readonly ord: string;
   readonly id: string | null;
-  readonly content: string;
-  readonly meta: z.output<typeof recordSchema>["meta"];
-  readonly tree: string;
-  readonly temporalStart: string | null;
-  readonly temporalEnd: string | null;
-  readonly temporalBounds: "[]" | "[)" | null;
-  readonly name: string | null;
-  readonly embedding: readonly number[] | null;
-}
-
-interface UpsertRow {
-  readonly position: string;
-  readonly id: string | null;
-  readonly source_id: string;
-  readonly tree: string;
-  readonly name: string | null;
   readonly status: "inserted" | "updated" | "skipped";
 }
 
-/** Validate, normalize, and write a batch of records in one SQL statement. */
+/**
+ * Validate a batch of records and write them through the schema-local
+ * `batch_upsert` routine, which owns the full conflict contract in one call.
+ */
 export async function upsertMany(
   index: Index,
   records: readonly UpsertRecord[],
@@ -97,241 +87,129 @@ export async function upsertMany(
     throw new BatchTooLargeError(records.length, MAX_UPSERT_BATCH_SIZE);
   }
 
-  const parsedRecords = parseRecords(records);
   const parsedOptions = parseOptions(options);
-  const normalized = parsedRecords.map((record) => normalizeRecord(record));
-  assertDistinctIdempotencyKeys(normalized);
-  for (const record of normalized) {
+  const ids: Array<string | null> = [];
+  const contents: string[] = [];
+  const metas: Array<z.output<typeof recordSchema>["meta"]> = [];
+  const trees: string[] = [];
+  const temporals: Array<string | null> = [];
+  const names: Array<string | null> = [];
+  const embeddings: Array<string | null> = [];
+  const explicitIds = new Set<string>();
+  const namedKeys = new Set<string>();
+
+  for (let position = 0; position < records.length; position++) {
+    const parsed = recordSchema.safeParse(records[position]);
+    if (!parsed.success) {
+      const [issue] = parsed.error.issues;
+      const mapped = issue
+        ? toValidationIssue(issue)
+        : { code: "custom", message: "validation failed", path: [] };
+      throwInvalidRecordInput(
+        [{ ...mapped, path: [position, ...mapped.path] }],
+        parsed.error,
+      );
+    }
+
+    const record = parsed.data;
     if (record.embedding && record.embedding.length !== index.dimensions) {
       throw new DimensionMismatchError(
         index.dimensions,
         record.embedding.length,
       );
     }
-  }
-  if (normalized.length === 0) {
-    return [];
-  }
-
-  const rows = await index.sql.begin(async (tx) => {
-    const vector = index.extensions.find(
-      (extension) => extension.name === "vector",
-    );
-    const ltree = index.extensions.find(
-      (extension) => extension.name === "ltree",
-    );
-    if (!vector || !ltree) {
-      throw new Error("Opened index is missing required extension metadata");
+    const id = record.id ?? null;
+    const name = record.name;
+    if (id !== null) {
+      if (explicitIds.has(id)) {
+        throw duplicateKeyError("duplicate explicit id within batch");
+      }
+      explicitIds.add(id);
+    }
+    if (name !== null) {
+      const key = `${record.tree}\0${name}`;
+      if (namedKeys.has(key)) {
+        throw duplicateKeyError("duplicate (tree, name) within batch");
+      }
+      namedKeys.add(key);
     }
 
-    const operatorSchemas = [
-      ...new Set([index.schema, vector.schema, ltree.schema]),
-    ];
-    await runSql(
-      tx`set local search_path to pg_catalog, ${tx(operatorSchemas)}, pg_temp`,
-      {
-        spanName: "setLocalWriteSearchPath",
-        dbOperationName: "SET",
-        namespace: index.schema,
-      },
-    );
-    await assertNoCrossKeyCollisions(tx, index, normalized);
-    const vectorType = tx`${tx(vector.schema)}.${tx(index.vectorType)}`;
-    const ltreeType = tx`${tx(ltree.schema)}.ltree`;
-    const replaceAction =
-      parsedOptions.onConflict === "replace"
-        ? tx`
-            do update
-            set content = excluded.content
-            , meta = excluded.meta
-            , tree = excluded.tree
-            , temporal = excluded.temporal
-            , name = excluded.name
-            , embedding = case
-                when excluded.embedding is null
-                  and record.content is not distinct from excluded.content
-                then record.embedding
-                else excluded.embedding
-              end
-            where record.content is distinct from excluded.content
-              or record.meta is distinct from excluded.meta
-              or record.tree is distinct from excluded.tree
-              or record.temporal is distinct from excluded.temporal
-              or (
-                excluded.embedding is not null
-                and record.embedding::text is distinct from excluded.embedding::text
-              )
-          `
-        : tx`do nothing`;
-    const namedConflictAction = tx`
-      on conflict (tree, name) where name is not null ${replaceAction}
-    `;
-    const idConflictAction = tx`on conflict (id) ${replaceAction}`;
+    ids.push(id);
+    contents.push(record.content);
+    metas.push(record.meta);
+    trees.push(record.tree);
+    temporals.push(normalizeTemporal(record.temporal));
+    names.push(name);
+    embeddings.push(encodeEmbedding(record.embedding));
+  }
+  if (ids.length === 0) return [];
 
-    const query = tx<UpsertRow[]>`
-      with source as
-      (
-        select
-          values.ordinality::integer as position
-        , values.id as explicit_id
-        , coalesce(values.id, pg_catalog.uuidv7()) as id
-        , values.content
-        , pg_catalog.jsonb_array_element(${tx.json(normalized.map((record) => record.meta))}::jsonb, values.ordinality::integer - 1) as meta
-        , values.tree::${ltreeType} as tree
-        , case
-            when values.temporal_start is null then null
-            else pg_catalog.tstzrange(
-              values.temporal_start,
-              values.temporal_end,
-              values.temporal_bounds
-            )
-          end as temporal
-        , values.name
-        , values.embedding::${vectorType} as embedding
-        from unnest
-        (
-          ${normalized.map((record) => record.id)}::uuid[]
-        , ${normalized.map((record) => record.content)}::text[]
-        , ${normalized.map((record) => record.tree)}::text[]
-        , ${normalized.map((record) => record.temporalStart)}::timestamptz[]
-        , ${normalized.map((record) => record.temporalEnd)}::timestamptz[]
-        , ${normalized.map((record) => record.temporalBounds)}::text[]
-        , ${normalized.map((record) => record.name)}::text[]
-        , ${normalized.map((record) => encodeEmbedding(record.embedding))}::text[]
-        ) with ordinality as values
-        (
-          id
-        , content
-        , tree
-        , temporal_start
-        , temporal_end
-        , temporal_bounds
-        , name
-        , embedding
-        , ordinality
-        )
+  const { sql } = index;
+  const vector = index.extensions.find(
+    (extension) => extension.name === "vector",
+  );
+  const ltree = index.extensions.find(
+    (extension) => extension.name === "ltree",
+  );
+  if (!vector || !ltree) {
+    throw new Error("Opened index is missing required extension metadata");
+  }
+  const ltreeArray = sql`${sql(ltree.schema)}.ltree[]`;
+  const embeddingArray = sql`${sql(vector.schema)}.${sql(index.vectorType)}[]`;
+
+  const rows = await runBatchUpsert(
+    sql<BatchUpsertRow[]>`
+      select ord, id, status
+      from ${sql(index.schema)}.batch_upsert
+      ( ${ids}::uuid[]
+      , ${contents}::text[]
+      , ${sql.json(metas)}::jsonb
+      , ${pgArrayLiteral(trees)}::${ltreeArray}
+      , ${temporals}::tstzrange[]
+      , ${names}::text[]
+      , ${pgArrayLiteral(embeddings)}::${embeddingArray}
+      , ${parsedOptions.onConflict}
       )
-    , named_mutation as
-      (
-        insert into ${tx(index.schema)}.record as record
-          (id, content, meta, tree, temporal, name, embedding)
-        select id, content, meta, tree, temporal, name, embedding
-        from source
-        where name is not null
-        ${namedConflictAction}
-        returning
-          record.id
-        , record.tree::text as tree
-        , record.name
-        , (xmax = 0) as inserted
-      )
-    , id_mutation as
-      (
-        insert into ${tx(index.schema)}.record as record
-          (id, content, meta, tree, temporal, name, embedding)
-        select id, content, meta, tree, temporal, name, embedding
-        from source
-        where name is null and explicit_id is not null
-        ${idConflictAction}
-        returning
-          record.id
-        , record.tree::text as tree
-        , record.name
-        , (xmax = 0) as inserted
-      )
-    , anonymous_mutation as
-      (
-        insert into ${tx(index.schema)}.record as record
-          (id, content, meta, tree, temporal, name, embedding)
-        select id, content, meta, tree, temporal, name, embedding
-        from source
-        where name is null and explicit_id is null
-        returning
-          record.id
-        , record.tree::text as tree
-        , record.name
-        , true as inserted
-      )
-    , mutation as
-      (
-        select id, tree, name, inserted from named_mutation
-        union all
-        select id, tree, name, inserted from id_mutation
-        union all
-        select id, tree, name, inserted from anonymous_mutation
-      )
-      select
-        source.position
-      , mutation.id
-      , source.id as source_id
-      , source.tree::text as tree
-      , source.name
-      , case
-          when mutation.id is null then 'skipped'
-          when mutation.inserted then 'inserted'
-          else 'updated'
-        end as status
-      from source
-      left join mutation
-        on (
-          source.name is not null
-          and mutation.tree = source.tree::text
-          and mutation.name = source.name
-        )
-        or (
-          source.name is null
-          and mutation.id = source.id
-        )
-      order by source.position
-    `;
-    const written = await runSql(query, {
-      spanName: "upsertMany",
-      dbOperationName: "INSERT",
-      namespace: index.schema,
-    });
-    const skippedNamed = written.filter(
-      (row) => row.status === "skipped" && row.name !== null,
-    );
-    const resolvedNamed = await resolveSkippedNamedRows(
-      tx,
-      index,
-      skippedNamed,
-    );
-    const results = written.map((row) => {
-      const id =
-        row.id ??
-        (row.name === null
-          ? row.source_id
-          : resolvedNamed.get(`${row.tree}\0${row.name}`));
-      if (!id) {
-        throw new ConflictError(
-          "A conflicting named record disappeared before its result could be resolved",
-        );
-      }
-      return { id, status: row.status };
-    });
-    if (
-      parsedOptions.onConflict === "error" &&
-      results.some((row) => row.status === "skipped")
-    ) {
+    `,
+    index.schema,
+  );
+
+  return rows.map((row) => {
+    if (!row.id) {
       throw new ConflictError(
-        "One or more records conflict with existing records",
+        "A conflicting named record disappeared before its result could be resolved",
       );
     }
-    return results;
+    return { id: row.id, status: row.status };
   });
-
-  return rows;
 }
 
-function parseRecords(
-  records: readonly UpsertRecord[],
-): readonly z.output<typeof recordSchema>[] {
-  const result = z.array(recordSchema).safeParse(records);
-  if (!result.success) {
-    throwInvalidRecordInput(result.error);
+async function runBatchUpsert(
+  query: postgres.PendingQuery<BatchUpsertRow[]>,
+  schema: string,
+): Promise<readonly BatchUpsertRow[]> {
+  try {
+    return await runSql(query, {
+      spanName: "batchUpsert",
+      dbOperationName: "SELECT",
+      namespace: schema,
+    });
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    if (code === "23505") {
+      throw new ConflictError(
+        "One or more records conflict with existing records",
+        { cause: error },
+      );
+    }
+    if (code === "22023") {
+      throw new InvalidConfigError(
+        error instanceof Error ? error.message : "Invalid record input",
+        { cause: error },
+      );
+    }
+    throw error;
   }
-  return result.data;
 }
 
 function parseOptions(
@@ -339,19 +217,25 @@ function parseOptions(
 ): z.output<typeof upsertOptionsSchema> {
   const result = upsertOptionsSchema.safeParse(options);
   if (!result.success) {
-    throwInvalidRecordInput(result.error);
+    const [issue] = result.error.issues;
+    const mapped = issue
+      ? toValidationIssue(issue)
+      : { code: "custom", message: "validation failed", path: [] };
+    throwInvalidRecordInput([mapped], result.error);
   }
   return result.data;
 }
 
-function throwInvalidRecordInput(error: z.ZodError): never {
-  const issues = error.issues.map(toValidationIssue);
+function throwInvalidRecordInput(
+  issues: readonly ValidationIssue[],
+  cause?: z.ZodError,
+): never {
   const first = issues[0];
   const detail = first
     ? `${first.path.join(".") || "record"}: ${first.message}`
     : "validation failed";
   throw new InvalidConfigError(`Invalid record input: ${detail}`, {
-    cause: error,
+    cause,
     issues,
   });
 }
@@ -366,120 +250,6 @@ function toValidationIssue(issue: z.core.$ZodIssue): ValidationIssue {
   };
 }
 
-function normalizeRecord(
-  record: z.output<typeof recordSchema>,
-): NormalizedRecord {
-  const temporal = normalizeTemporal(record.temporal);
-  return {
-    id: record.id ?? null,
-    content: record.content,
-    meta: record.meta,
-    tree: record.tree,
-    temporalStart: temporal?.start ?? null,
-    temporalEnd: temporal?.end ?? null,
-    temporalBounds: temporal?.bounds ?? null,
-    name: record.name,
-    embedding: record.embedding ?? null,
-  };
-}
-
-function assertDistinctIdempotencyKeys(
-  records: readonly NormalizedRecord[],
-): void {
-  const ids = new Set<string>();
-  const names = new Set<string>();
-  for (const record of records) {
-    if (record.id !== null) {
-      if (ids.has(record.id)) {
-        throw duplicateKeyError("duplicate explicit id within batch");
-      }
-      ids.add(record.id);
-    }
-    if (record.name !== null) {
-      const key = `${record.tree}\0${record.name}`;
-      if (names.has(key)) {
-        throw duplicateKeyError("duplicate (tree, name) within batch");
-      }
-      names.add(key);
-    }
-  }
-}
-
-async function assertNoCrossKeyCollisions(
-  tx: import("postgres").TransactionSql,
-  index: Index,
-  records: readonly NormalizedRecord[],
-): Promise<void> {
-  const ids = records
-    .filter((record) => record.name === null && record.id !== null)
-    .map((record) => record.id as string);
-  const names = records.filter((record) => record.name !== null);
-  if (ids.length === 0 || names.length === 0) {
-    return;
-  }
-  const [collision] = await runSql(
-    tx<{ readonly id: string }[]>`
-      select id
-      from
-      (
-        select record.id
-        from ${tx(index.schema)}.record
-        where id = any(${ids}::uuid[])
-        union all
-        select record.id
-        from ${tx(index.schema)}.record
-        join unnest(
-          ${names.map((record) => record.tree)}::text[],
-          ${names.map((record) => record.name)}::text[]
-        ) as key(tree, name)
-          on record.tree::text = key.tree
-          and record.name = key.name
-      ) as targets
-      group by id
-      having count(*) > 1
-      limit 1
-    `,
-    {
-      spanName: "checkUpsertCrossKeyCollisions",
-      dbOperationName: "SELECT",
-      namespace: index.schema,
-    },
-  );
-  if (collision) {
-    throw duplicateKeyError(
-      "batch inputs target the same existing record through id and (tree, name)",
-    );
-  }
-}
-
-async function resolveSkippedNamedRows(
-  tx: import("postgres").TransactionSql,
-  index: Index,
-  rows: readonly UpsertRow[],
-): Promise<ReadonlyMap<string, string>> {
-  if (rows.length === 0) {
-    return new Map();
-  }
-  const resolved = await runSql(
-    tx<{ readonly id: string; readonly tree: string; readonly name: string }[]>`
-      select record.id, record.tree::text as tree, record.name
-      from ${tx(index.schema)}.record
-      join unnest(
-        ${rows.map((row) => row.tree)}::text[],
-        ${rows.map((row) => row.name)}::text[]
-      ) as key(tree, name)
-        on record.tree::text = key.tree
-        and record.name = key.name
-    `,
-    {
-      spanName: "resolveSkippedNamedUpserts",
-      dbOperationName: "SELECT",
-      namespace: index.schema,
-    },
-  );
-  return new Map(resolved.map((row) => [`${row.tree}\0${row.name}`, row.id]));
-}
-
 function duplicateKeyError(message: string): InvalidConfigError {
   return new InvalidConfigError(`Invalid record input: ${message}`, {
     issues: [{ code: "custom", message, path: [] }],
@@ -488,26 +258,20 @@ function duplicateKeyError(message: string): InvalidConfigError {
 
 function normalizeTemporal(
   temporal: z.output<typeof temporalSchema> | undefined,
-):
-  | {
-      readonly start: string;
-      readonly end: string;
-      readonly bounds: "[]" | "[)";
-    }
-  | undefined {
+): string | null {
   if (!temporal) {
-    return undefined;
+    return null;
   }
   const start = normalizeTimestamp(temporal[0]);
   if (temporal.length === 1) {
-    return { start, end: start, bounds: "[]" };
+    return `[${start},${start}]`;
   }
   const end = normalizeTimestamp(temporal[1]);
-  return { start, end, bounds: "[)" };
+  return `[${start},${end})`;
 }
 
 function normalizeTimestamp(timestamp: Date | string): string {
-  return timestamp instanceof Date ? timestamp.toISOString() : timestamp;
+  return new Date(timestamp).toISOString();
 }
 
 function timestampMilliseconds(timestamp: Date | string): number {
@@ -516,6 +280,23 @@ function timestampMilliseconds(timestamp: Date | string): number {
     : Date.parse(timestamp);
 }
 
-function encodeEmbedding(embedding: readonly number[] | null): string | null {
-  return embedding === null ? null : JSON.stringify(embedding);
+function encodeEmbedding(
+  embedding: readonly number[] | undefined,
+): string | null {
+  return embedding === undefined ? null : JSON.stringify(embedding);
+}
+
+/**
+ * Encode a Postgres array literal for the two schema-qualified array casts
+ * (`ltree[]`, `halfvec[]`). postgres.js only serializes a bound array correctly
+ * when the `::type[]` cast is literal template text; a schema-qualified type is
+ * a fragment, so we pass a scalar array-literal string and let the cast coerce.
+ */
+function pgArrayLiteral(elements: readonly (string | null)[]): string {
+  const items = elements.map((element) =>
+    element === null
+      ? "NULL"
+      : `"${element.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`,
+  );
+  return `{${items.join(",")}}`;
 }

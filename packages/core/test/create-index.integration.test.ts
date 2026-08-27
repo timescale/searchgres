@@ -17,6 +17,7 @@ import {
   extensionSchema,
   indexOpclass,
   indexReloptions,
+  listFunctions,
   listIndexes,
   listTriggers,
   randomTestSchema,
@@ -135,6 +136,10 @@ test("creates the configured schema shape and search indexes", async () => {
       "record_enqueue_after_insert",
       "record_integrity_before_write",
     ]);
+    assert.ok(
+      (await listFunctions(sql, schema)).includes("batch_upsert"),
+      "missing batch_upsert routine",
+    );
 
     const indexes = await listIndexes(sql, schema, "record");
     for (const index of [

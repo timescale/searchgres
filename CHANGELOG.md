@@ -32,3 +32,7 @@ Pre-release development. Nothing published yet.
   replacement behavior.
 - UUIDv7 enforcement for supplied and direct record IDs, plus concurrency-safe
   skipped-conflict result resolution.
+- Writes execute through a schema-local `batch_upsert` PL/pgSQL routine created
+  with the index and callable directly from SQL; its body is part of the
+  immutable schema format. The library validates inputs, calls the routine, and
+  maps its conflict/validation SQLSTATEs to typed errors.

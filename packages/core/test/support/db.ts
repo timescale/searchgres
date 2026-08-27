@@ -182,3 +182,17 @@ export async function listTriggers(
 function testDatabaseUrl(): string {
   return process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_DATABASE_URL;
 }
+
+export async function listFunctions(
+  sql: Sql,
+  schema: string,
+): Promise<readonly string[]> {
+  const rows = await sql<{ readonly proname: string }[]>`
+    select p.proname
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = ${schema}
+    order by p.proname
+  `;
+  return rows.map((row) => row.proname);
+}

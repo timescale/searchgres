@@ -56,8 +56,10 @@ type UpsertResult = {
 };
 ```
 
-`upsertMany()` accepts at most 1,000 records. It binds a small constant number of
-parallel arrays through `unnest`, rather than one SQL parameter per record.
+`upsertMany()` accepts at most 1,000 records. It validates the batch in
+TypeScript and calls the index's `batch_upsert` routine, which binds a small
+constant number of parallel arrays through `unnest` rather than one SQL parameter
+per record.
 
 ## Record input
 
@@ -124,3 +126,32 @@ The database triggers support both write paths:
 | Metadata/tree/name/temporal update | Logical version/hash advance; no queue work is created. |
 
 This behavior also applies to direct SQL producers writing the index tables.
+
+## Calling the routine from SQL
+
+The write path lives in a schema-local PL/pgSQL routine, `batch_upsert`, created
+with the index. It is `security invoker` and callable directly, so SQL producers
+get the same conflict contract as the library:
+
+```sql
+select ord, id, status
+from docs_index.batch_upsert(
+  array[null]::uuid[],                 -- ids (null → generated UUIDv7)
+  array['First record']::text[],       -- contents
+  '[{}]'::jsonb,                       -- one JSON object per record
+  array['docs.example']::ltree[],      -- trees
+  array[null]::tstzrange[],            -- temporals
+  array['intro']::text[],              -- names (null → unnamed)
+  array[null]::halfvec[],              -- embeddings (null → queued)
+  'error'                              -- 'error' | 'ignore' | 'replace'
+);
+```
+
+The routine returns one `(ord, id, status)` row per input, in input order. It
+raises `unique_violation` (SQLSTATE `23505`) for an `'error'` conflict and
+`invalid_parameter_value` (`22023`) for malformed input (unequal array lengths,
+duplicate keys, or an id/name pair that targets the same existing record). The
+library maps these to `ConflictError` and `InvalidConfigError`.
+
+Because the routine body is part of the immutable schema format, a change to its
+semantics requires creating a new index and reindexing.
