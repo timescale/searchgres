@@ -13,16 +13,17 @@ The following library capabilities are implemented:
 - `openIndex()` validates and opens an existing schema.
 - `Index.upsert()` writes one record.
 - `Index.upsertMany()` writes up to 1,000 records in a bulk statement.
+- `Index.search()` runs filter-only, keyword, semantic, or hybrid retrieval.
 
-See [installation](installation.md), [index lifecycle](indexes.md), and
-[writing records](writes.md).
+See [installation](installation.md), [index lifecycle](indexes.md),
+[writing records](writes.md), and [searching records](search.md).
 
 ## Not implemented yet
 
-Search, record reads, deletes, tree operations, embedding workers, `dropIndex()`,
-and transaction-bound handles are still under development. The root README and
-design documents describe the larger target API; this directory documents only
-the public behavior available in the current implementation.
+Record reads by id/name, deletes, tree operations, embedding workers,
+`dropIndex()`, and transaction-bound handles are still under development. The
+root README and design documents describe the larger target API; this directory
+documents only the public behavior available in the current implementation.
 
 ## Core principles
 

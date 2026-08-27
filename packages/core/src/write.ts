@@ -11,10 +11,14 @@ import {
 import type { Index } from "./open-index.ts";
 import { postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
+import {
+  normalizeTimestamp,
+  timestampMilliseconds,
+  timestampSchema,
+} from "./temporal.ts";
 
 const MAX_UPSERT_BATCH_SIZE = 1000;
 
-const timestampSchema = z.union([z.date(), z.iso.datetime({ offset: true })]);
 const temporalSchema = z
   .union([
     z.tuple([timestampSchema]).readonly(),
@@ -297,18 +301,6 @@ function normalizeTemporal(
   }
   const end = normalizeTimestamp(temporal[1]);
   return `[${start},${end})`;
-}
-
-function normalizeTimestamp(timestamp: Date | string): string {
-  return timestamp instanceof Date
-    ? timestamp.toISOString()
-    : new Date(timestamp).toISOString();
-}
-
-function timestampMilliseconds(timestamp: Date | string): number {
-  return timestamp instanceof Date
-    ? timestamp.getTime()
-    : Date.parse(timestamp);
 }
 
 function encodeEmbedding(

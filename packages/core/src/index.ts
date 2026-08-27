@@ -11,5 +11,20 @@ export * from "./create-index.ts";
 export * from "./errors.ts";
 export * from "./identifiers.ts";
 export * from "./open-index.ts";
+export type {
+  Filter,
+  SearchOptions,
+  SearchResult,
+  TemporalRange,
+  Timestamp,
+} from "./search.ts";
+export {
+  noTruncation,
+  type TokenCodec,
+  type Truncator,
+  truncateBytes,
+  truncateCharacters,
+  truncateTokens,
+} from "./truncate.ts";
 export { LIBRARY_VERSION } from "./version.ts";
 export type { UpsertOptions, UpsertRecord, UpsertResult } from "./write.ts";

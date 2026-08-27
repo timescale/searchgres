@@ -5,8 +5,9 @@ composable filtering — hierarchy, metadata, temporal, and regex — over a
 PostgreSQL database you own and run.
 
 > **Status: pre-release, under active development.** Index provisioning,
-> validation, and writes are implemented. Search, reads, workers, deletes, and
-> tree operations remain design targets. Expect breaking changes until `1.0`.
+> validation, writes, and search are implemented. Record reads, deletes,
+> workers, and tree operations remain design targets. Expect breaking changes
+> until `1.0`.
 
 ## Why
 
@@ -80,48 +81,57 @@ await idx.upsert({
 
 ## Search modes
 
-| Mode | What it does |
-| --- | --- |
-| `semantic` | Vector similarity (cosine) over embeddings — finds related meaning when the wording differs. |
-| `keyword` | BM25 over content — finds exact identifiers, terms, and phrases. |
-| `hybrid` | Runs both and fuses the rankings with RRF. Results that rank well in both arms rise to the top. |
+The retrieval mode is inferred from the arms you pass — there is no `mode` flag:
 
-Hybrid search is a fused **top-k** operation. To see more results, raise
-`limit` — the fused score reflects rank position within a candidate window, so
-it isn't an absolute relevance measure and there's no cursor to page through.
+| Supplied | What it does |
+| --- | --- |
+| `semantic` or `vector` | Vector similarity (cosine) over embeddings. |
+| `fulltext` | BM25 over content — exact identifiers, terms, and phrases. |
+| a semantic arm **and** `fulltext` | Runs both and fuses the rankings with RRF. |
+| neither | Filter-only listing, ordered by id (chronological). |
+
+`semantic` is embedded with the index's model; `vector` is a precomputed query
+vector that skips the model. Hybrid search is a fused **top-k** operation — to
+see more results, raise `limit`; the fused score reflects rank within a
+candidate window, so there's no cursor to page through.
 
 ## Filtering
 
-Filters compose with any search mode, and can be used on their own:
+Filters are a composable boolean tree (`and` / `or` / `not` over leaves) and
+apply to every mode:
 
 ```ts
 await idx.search({
-  query: "rate limiting",
-  mode: "hybrid",
-
-  tree: "docs.api",                     // this subtree only
-  meta: { source: "runbook" },          // JSONB containment
-  metaPredicate: "$.version >= 3",      // JSONPath predicate
-  temporal: { overlaps: ["2026-01-01", "2026-07-01"] },
-  regexp: "429|throttl",                // case-insensitive POSIX
-
+  semantic: "rate limiting",
+  fulltext: "rate limit",
+  filter: {
+    and: [
+      { tree: "docs.api" },                 // subtree containment
+      { or: [
+        { meta: { source: "runbook" } },    // JSONB containment
+        { metaPredicate: "$.version >= 3" }, // JSONPath predicate
+      ] },
+      { temporalOverlaps: ["2026-01-01", "2026-07-01"] },
+      { not: { regexp: "deprecated" } },     // case-insensitive POSIX
+    ],
+  },
   limit: 20,
 });
 ```
 
-- **Hierarchy** — `tree` matches a path and everything under it. For patterns,
-  use `lquery` (`"docs.*.api"`) or `ltxtquery` (`"api & v2"`) instead. Paths are
+- **Hierarchy** — `tree` matches a path and everything under it; `lquery`
+  (`"docs.*.api"`) and `ltxtquery` (`"api & v2"`) are pattern leaves. Paths are
   dotted `ltree` values.
 - **Metadata** — `meta` for containment, `metaPredicate` for a JSONPath
   expression.
-- **Temporal** — records can carry a time range (a point in time or an
-  interval); filter by `within`, `overlaps`, `before`, `after`, or `contains`.
-- **Regex** — a precision filter. It must accompany another criterion, since a
-  regex alone would scan the whole index.
+- **Temporal** — `temporalWithin`, `temporalOverlaps`, `temporalBefore`,
+  `temporalAfter`, `temporalContains`.
+- **Regex** — a precision filter. In a filter-only search it must accompany an
+  indexable filter (a regex alone would scan the whole index).
 
-A filter-only search (no `query`) returns records in `id` order — which is
+A filter-only search (no ranking arm) returns records in `id` order — which is
 chronological, since ids are UUIDv7 — and supports keyset pagination via
-`after`.
+`after`/`before`.
 
 ## Embeddings
 
@@ -252,6 +262,7 @@ The current library documentation is in [docs/library](docs/library/README.md):
 - [Installation](docs/library/installation.md)
 - [Creating and opening indexes](docs/library/indexes.md)
 - [Writing records](docs/library/writes.md)
+- [Searching records](docs/library/search.md)
 - [Extensions and schemas](docs/library/extensions.md)
 
 ## License

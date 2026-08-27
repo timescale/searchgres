@@ -4,7 +4,9 @@ import { SCHEMA_FORMAT_VERSION } from "./create-index.ts";
 import { getExtensionInfo } from "./db/extensions.ts";
 import { InvalidIndexError, SchemaVersionError } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
+import { type SearchOptions, type SearchResult, search } from "./search.ts";
 import { runSql } from "./sql/exec.ts";
+import { noTruncation, type Truncator } from "./truncate.ts";
 import {
   type UpsertOptions,
   type UpsertRecord,
@@ -20,6 +22,12 @@ const REQUIRED_EXTENSIONS = [
 
 export interface OpenIndexOptions {
   readonly embedding: EmbeddingModel;
+  /**
+   * Applied to record content (by the worker) and to `semantic` query text
+   * before embedding. Runtime policy only — not persisted. Defaults to
+   * {@link noTruncation}.
+   */
+  readonly truncate?: Truncator;
 }
 
 export class Index {
@@ -27,6 +35,7 @@ export class Index {
   readonly vectorType: "vector" | "halfvec";
   readonly dimensions: number;
   readonly embedding: EmbeddingModel;
+  readonly truncate: Truncator;
 
   /** @internal Caller-owned pool used by query and worker methods. */
   readonly sql: postgres.Sql;
@@ -37,12 +46,14 @@ export class Index {
     vectorType: "vector" | "halfvec";
     dimensions: number;
     embedding: EmbeddingModel;
+    truncate: Truncator;
   }) {
     this.sql = options.sql;
     this.schema = options.schema;
     this.vectorType = options.vectorType;
     this.dimensions = options.dimensions;
     this.embedding = options.embedding;
+    this.truncate = options.truncate;
   }
 
   /** Insert one record, or resolve a conflict according to `options`. */
@@ -63,6 +74,15 @@ export class Index {
     options?: UpsertOptions,
   ): Promise<readonly UpsertResult[]> {
     return upsertMany(this, records, options);
+  }
+
+  /**
+   * Search the index. The retrieval mode is inferred from the supplied arms:
+   * `semantic`/`vector` only, `fulltext` only, both (hybrid RRF), or neither
+   * (filter-only listing).
+   */
+  async search(options?: SearchOptions): Promise<readonly SearchResult[]> {
+    return search(this, options ?? {});
   }
 }
 
@@ -120,6 +140,7 @@ export async function openIndex(
     vectorType: vectorShape.vectorType,
     dimensions: vectorShape.dimensions,
     embedding: options.embedding,
+    truncate: options.truncate ?? noTruncation,
   });
 }
 

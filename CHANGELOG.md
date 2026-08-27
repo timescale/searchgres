@@ -41,3 +41,19 @@ Pre-release development. Nothing published yet.
   installed in another schema (`ExtensionError` `reason: "wrong_schema"`).
   Bulk-write arrays are passed as bare parameters coerced by the routine
   signature, removing the previous manual PostgreSQL array-literal encoding.
+- `Index.search` for filter-only, keyword (BM25), semantic (cosine), and hybrid
+  (RRF) retrieval. The mode is inferred from the supplied arms (`semantic` or
+  `vector`, and/or `fulltext`); there is no `mode` field. Filters are a composable
+  boolean AST (`and`/`or`/`not` over `tree`, `lquery`, `ltxtquery`, `meta`,
+  `metaPredicate`, temporal, and `regexp` leaves) applied to every mode. Results
+  are always the full record plus a score. Filter-only listing supports `order`
+  and `after`/`before` keyset paging; ranked search is fused top-k.
+- Search executes through schema-local `search_records`, `hybrid_search_records`,
+  and `compile_filter` PL/pgSQL routines created with the index and callable
+  directly from SQL; their bodies are part of the immutable schema format. Filter
+  values are always bound data, never interpolated into SQL. The BM25
+  positive-match invariant and HNSW iterative strict-order scan are preserved, and
+  a `regexp` may not be the sole filter criterion.
+- Caller-supplied `Truncator` (`truncate` option on `openIndex`, default
+  `noTruncation`) with `truncateCharacters`, `truncateBytes`, and `truncateTokens`
+  built-ins, applied to semantic query text before embedding.
