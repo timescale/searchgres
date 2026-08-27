@@ -36,6 +36,14 @@ test("errors retain the fields callers need to recover", () => {
   const dimensions = new DimensionMismatchError(1536, 768);
   assert.equal(dimensions.expected, 1536);
   assert.equal(dimensions.actual, 768);
+  assert.equal(dimensions.position, undefined);
+  assert.doesNotMatch(dimensions.message, /at record/);
+
+  const batchDimensions = new DimensionMismatchError(1536, 768, {
+    position: 7,
+  });
+  assert.equal(batchDimensions.position, 7);
+  assert.match(batchDimensions.message, /at record 7/);
 
   const server = new UnsupportedServerError(170_000, 180_000);
   assert.equal(server.serverVersionNum, 170_000);

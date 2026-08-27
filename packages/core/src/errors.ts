@@ -106,15 +106,24 @@ export class TreePathError extends SearchgresError {
 export class DimensionMismatchError extends SearchgresError {
   readonly expected: number;
   readonly actual: number;
+  /** Zero-based index of the offending record within a batch write. */
+  readonly position: number | undefined;
 
-  constructor(expected: number, actual: number, options?: ErrorOptions) {
+  constructor(
+    expected: number,
+    actual: number,
+    options?: ErrorOptions & { readonly position?: number },
+  ) {
+    const position = options?.position;
+    const at = position === undefined ? "" : ` at record ${position}`;
     super(
       "DIMENSION_MISMATCH",
-      `Embedding dimension mismatch: index expects ${expected}, received ${actual}`,
+      `Embedding dimension mismatch${at}: index expects ${expected}, received ${actual}`,
       options,
     );
     this.expected = expected;
     this.actual = actual;
+    this.position = position;
   }
 }
 

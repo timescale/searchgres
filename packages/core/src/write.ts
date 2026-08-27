@@ -5,6 +5,7 @@ import {
   ConflictError,
   DimensionMismatchError,
   InvalidConfigError,
+  SearchgresError,
   type ValidationIssue,
 } from "./errors.ts";
 import type { Index } from "./open-index.ts";
@@ -116,20 +117,30 @@ export async function upsertMany(
       throw new DimensionMismatchError(
         index.dimensions,
         record.embedding.length,
+        { position },
       );
     }
     const id = record.id ?? null;
     const name = record.name;
+    // Fail fast before the round trip. `batch_upsert` enforces both rules too and
+    // is authoritative (its body is part of the immutable schema format), so keep
+    // these checks in sync with it rather than treating either side as the truth.
     if (id !== null) {
-      if (explicitIds.has(id)) {
-        throw duplicateKeyError("duplicate explicit id within batch");
+      // PostgreSQL `uuid` equality is case-insensitive, so compare on the
+      // lowercased form; `ids` keeps the caller's spelling for the write.
+      const key = id.toLowerCase();
+      if (explicitIds.has(key)) {
+        throw duplicateKeyError("duplicate explicit id within batch", position);
       }
-      explicitIds.add(id);
+      explicitIds.add(key);
     }
     if (name !== null) {
       const key = `${record.tree}\0${name}`;
       if (namedKeys.has(key)) {
-        throw duplicateKeyError("duplicate (tree, name) within batch");
+        throw duplicateKeyError(
+          "duplicate (tree, name) within batch",
+          position,
+        );
       }
       namedKeys.add(key);
     }
@@ -162,14 +173,36 @@ export async function upsertMany(
     index.schema,
   );
 
-  return rows.map((row) => {
+  // `ord` mirrors the routine's 1-based `with ordinality` position, so each
+  // outcome lands on its input index instead of relying on the row order.
+  const results = new Array<UpsertResult>(records.length);
+  let resolved = 0;
+  for (const row of rows) {
     if (!row.id) {
       throw new ConflictError(
         "A conflicting named record disappeared before its result could be resolved",
       );
     }
-    return { id: row.id, status: row.status };
-  });
+    const position = Number(row.ord) - 1;
+    if (
+      !Number.isInteger(position) ||
+      position < 0 ||
+      position >= results.length ||
+      results[position] !== undefined
+    ) {
+      throw new Error(
+        `Upsert result invariant failed: unexpected position ${row.ord}`,
+      );
+    }
+    results[position] = { id: row.id, status: row.status };
+    resolved++;
+  }
+  if (resolved !== results.length) {
+    throw new Error(
+      `Upsert result invariant failed: expected ${results.length} results, received ${resolved}`,
+    );
+  }
+  return results;
 }
 
 async function runBatchUpsert(
@@ -183,6 +216,11 @@ async function runBatchUpsert(
       namespace: schema,
     });
   } catch (error) {
+    // `runSql` already mapped the context-free SQLSTATEs to typed errors; those
+    // carry a searchgres `code`, so never re-inspect them as a SQLSTATE.
+    if (error instanceof SearchgresError) {
+      throw error;
+    }
     const code = postgresErrorCode(error);
     if (code === "23505") {
       throw new ConflictError(
@@ -191,10 +229,7 @@ async function runBatchUpsert(
       );
     }
     if (code === "22023") {
-      throw new InvalidConfigError(
-        error instanceof Error ? error.message : "Invalid record input",
-        { cause: error },
-      );
+      throw new InvalidConfigError("Invalid record input", { cause: error });
     }
     throw error;
   }
@@ -238,10 +273,16 @@ function toValidationIssue(issue: z.core.$ZodIssue): ValidationIssue {
   };
 }
 
-function duplicateKeyError(message: string): InvalidConfigError {
-  return new InvalidConfigError(`Invalid record input: ${message}`, {
-    issues: [{ code: "custom", message, path: [] }],
-  });
+function duplicateKeyError(
+  message: string,
+  position: number,
+): InvalidConfigError {
+  return new InvalidConfigError(
+    `Invalid record input: ${position}: ${message}`,
+    {
+      issues: [{ code: "custom", message, path: [position] }],
+    },
+  );
 }
 
 function normalizeTemporal(
@@ -259,7 +300,9 @@ function normalizeTemporal(
 }
 
 function normalizeTimestamp(timestamp: Date | string): string {
-  return new Date(timestamp).toISOString();
+  return timestamp instanceof Date
+    ? timestamp.toISOString()
+    : new Date(timestamp).toISOString();
 }
 
 function timestampMilliseconds(timestamp: Date | string): number {

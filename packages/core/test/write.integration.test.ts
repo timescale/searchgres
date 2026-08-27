@@ -398,7 +398,11 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
           { content: "named duplicate one", tree: "docs", name: "duplicate" },
           { content: "named duplicate two", tree: "docs", name: "duplicate" },
         ]),
-      InvalidConfigError,
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidConfigError);
+        assert.deepEqual(error.issues[0]?.path, [1]);
+        return true;
+      },
     );
     await assert.rejects(
       () =>
@@ -414,6 +418,21 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
         assert.ok(error instanceof DimensionMismatchError);
         assert.equal(error.expected, 4);
         assert.equal(error.actual, 3);
+        assert.equal(error.position, 0);
+        return true;
+      },
+    );
+    await assert.rejects(
+      () =>
+        index.upsertMany([
+          { content: "right vector", embedding: [1, 0, 0, 0] },
+          { content: "wrong vector", embedding: [1, 0] },
+        ]),
+      (error: unknown) => {
+        assert.ok(error instanceof DimensionMismatchError);
+        assert.equal(error.actual, 2);
+        assert.equal(error.position, 1);
+        assert.match(error.message, /at record 1/);
         return true;
       },
     );
@@ -429,7 +448,31 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
             content: "duplicate two",
           },
         ]),
-      InvalidConfigError,
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidConfigError);
+        assert.deepEqual(error.issues[0]?.path, [1]);
+        return true;
+      },
+    );
+    // PostgreSQL `uuid` equality ignores case, so the fast-path must too.
+    await assert.rejects(
+      () =>
+        index.upsertMany([
+          {
+            id: "019ce89d-f8b4-7000-8000-000000000008",
+            content: "mixed case one",
+          },
+          {
+            id: "019CE89D-F8B4-7000-8000-000000000008",
+            content: "mixed case two",
+          },
+        ]),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidConfigError);
+        assert.deepEqual(error.issues[0]?.path, [1]);
+        assert.match(error.message, /duplicate explicit id/);
+        return true;
+      },
     );
     await assert.rejects(
       () =>
