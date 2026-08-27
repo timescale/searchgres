@@ -77,6 +77,9 @@ export async function createIndex(
       ...new Set([indexSchema, vector.schema, ltree.schema]),
     ];
 
+    // ------------------------------------------------------------------------
+    // validate text search configuration
+    // ------------------------------------------------------------------------
     let textConfig: { readonly literal: string } | undefined;
     try {
       [textConfig] = await runSql(
@@ -107,6 +110,9 @@ export async function createIndex(
       );
     }
 
+    // ------------------------------------------------------------------------
+    // create schema and version marker table
+    // ------------------------------------------------------------------------
     await runSql(tx`create schema ${tx(indexSchema)}`, {
       spanName: "createIndexSchema",
       dbOperationName: "CREATE",
@@ -144,6 +150,10 @@ export async function createIndex(
         namespace: indexSchema,
       },
     );
+
+    // ------------------------------------------------------------------------
+    // create record table and its indexes
+    // ------------------------------------------------------------------------
     await runSql(
       tx`
         create table ${tx(indexSchema)}.record
@@ -266,6 +276,10 @@ export async function createIndex(
         namespace: indexSchema,
       },
     );
+
+    // ------------------------------------------------------------------------
+    // create embedding queue table and its indexes
+    // ------------------------------------------------------------------------
     await runSql(
       tx`
         create table ${tx(indexSchema)}.embedding_queue
@@ -329,6 +343,10 @@ export async function createIndex(
         namespace: indexSchema,
       },
     );
+
+    // ------------------------------------------------------------------------
+    // create record integrity trigger
+    // ------------------------------------------------------------------------
     await runSql(
       tx`
         create function ${tx(indexSchema)}.record_integrity()
@@ -405,6 +423,10 @@ export async function createIndex(
         namespace: indexSchema,
       },
     );
+
+    // ------------------------------------------------------------------------
+    // create embedding enqueue function and triggers
+    // ------------------------------------------------------------------------
     await runSql(
       tx`
         create function ${tx(indexSchema)}.enqueue_record_embedding()
@@ -458,6 +480,10 @@ export async function createIndex(
         namespace: indexSchema,
       },
     );
+
+    // ------------------------------------------------------------------------
+    // create batch_upsert routine
+    // ------------------------------------------------------------------------
     await runSql(
       tx`
         create function ${tx(indexSchema)}.batch_upsert
@@ -731,6 +757,10 @@ export async function createIndex(
         namespace: indexSchema,
       },
     );
+
+    // ------------------------------------------------------------------------
+    // record the schema format marker
+    // ------------------------------------------------------------------------
     await runSql(
       tx`
         insert into ${tx(indexSchema)}.version (version)
