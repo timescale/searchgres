@@ -72,3 +72,21 @@ Pre-release development. Nothing published yet.
   precomputed vector supplied after enqueue invalidates the stale queue row. The
   enqueue trigger fires on content-or-embedding changes that leave the row
   needing a vector, and covers direct SQL writers.
+- Record operations: `Index.get()` / `getByName()` read a full record (throwing
+  `NotFoundError`); `Index.patch()` optimistically updates by `versionHash`
+  (distinguishing `NotFoundError` from `StaleVersionError` in one round trip,
+  returning the updated record, and accepting an optional precomputed embedding);
+  `Index.delete()` / `deleteByName()` remove a record.
+- Tree operations: `Index.moveTree()` / `copyTree()` / `deleteTree()` operate on
+  inclusive subtrees (with `dryRun`), returning affected counts; `countTree()`
+  takes one explicit filter kind (`tree`/`lquery`/`ltxtquery`) with an optional
+  cap; `listTree()` returns per-node descendant counts.
+- `Index.with(tx)` returns a `TransactionIndex` binding record/tree/search/write
+  operations to a caller-owned transaction; embedding and queue methods are
+  excluded by design.
+- `dropIndex()` / `Index.drop()` removes a searchgres index (`drop schema …
+  cascade`) after verifying the schema is one.
+- These record and tree behaviors run through new schema-local routines
+  (`get_record`, `get_record_by_name`, `patch_record`, `delete_record`,
+  `delete_record_by_name`, `move_tree`, `copy_tree`, `delete_tree`, `count_tree`,
+  `list_tree`) created with the index and callable directly from SQL.

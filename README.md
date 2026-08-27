@@ -4,10 +4,10 @@ Postgres-native hybrid search for TypeScript. Semantic + BM25 retrieval with
 composable filtering — hierarchy, metadata, temporal, and regex — over a
 PostgreSQL database you own and run.
 
-> **Status: pre-release, under active development.** Index provisioning,
-> validation, writes, search, and the async embedding engine are implemented.
-> Record reads, deletes, and tree operations remain design targets. Expect
-> breaking changes until `1.0`.
+> **Status: pre-release, under active development.** The core library —
+> provisioning, writes, search, the async embedding engine, record and tree
+> operations, and transaction composition — is implemented. Surfaces (server,
+> client, CLI, MCP) come next. Expect breaking changes until `1.0`.
 
 ## Why
 
@@ -263,6 +263,7 @@ The current library documentation is in [docs/library](docs/library/README.md):
 - [Creating and opening indexes](docs/library/indexes.md)
 - [Writing records](docs/library/writes.md)
 - [Searching records](docs/library/search.md)
+- [Records and tree operations](docs/library/records.md)
 - [Embeddings and the drain engine](docs/library/embeddings.md)
 - [Extensions and schemas](docs/library/extensions.md)
 

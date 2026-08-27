@@ -9,6 +9,7 @@
 export * from "./config.ts";
 export * from "./create-index.ts";
 export type { QueueStats } from "./db/embedding-queue.ts";
+export { dropIndex } from "./drop-index.ts";
 export type {
   EmbeddingWorker,
   EmbeddingWorkerOptions,
@@ -18,6 +19,7 @@ export type {
 export * from "./errors.ts";
 export * from "./identifiers.ts";
 export * from "./open-index.ts";
+export type { PatchInput, StoredRecord } from "./records.ts";
 export type {
   Filter,
   SearchOptions,
@@ -25,6 +27,14 @@ export type {
   TemporalRange,
   Timestamp,
 } from "./search.ts";
+export type {
+  TreeCountOptions,
+  TreeCountResult,
+  TreeCountSelector,
+  TreeListEntry,
+  TreeMutationOptions,
+  TreeMutationResult,
+} from "./tree.ts";
 export {
   noTruncation,
   type TokenCodec,

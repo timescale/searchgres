@@ -4,7 +4,9 @@ import { ensureExtension } from "./db/extensions.ts";
 import { acquireAdvisoryLock, advisoryLockKey } from "./db/lock.ts";
 import { ensurePostgresVersion } from "./db/preflight.ts";
 import { createBatchUpsertRoutine } from "./db/routines/batch-upsert.ts";
+import { createRecordRoutines } from "./db/routines/records.ts";
 import { createSearchRoutines } from "./db/routines/search.ts";
+import { createTreeRoutines } from "./db/routines/tree.ts";
 import {
   applySessionTimeouts,
   DEFAULT_MIGRATION_LOCK_TIMEOUT,
@@ -510,6 +512,13 @@ export async function createIndex(
     // create the schema-local routines
     // ------------------------------------------------------------------------
     await createBatchUpsertRoutine(tx, indexSchema, creation.vectorType);
+    await createRecordRoutines(
+      tx,
+      indexSchema,
+      creation.vectorType,
+      creation.dimensions,
+    );
+    await createTreeRoutines(tx, indexSchema);
     await createSearchRoutines(
       tx,
       indexSchema,

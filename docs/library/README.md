@@ -10,22 +10,29 @@ marker.
 The following library capabilities are implemented:
 
 - `createIndex()` provisions a new immutable index schema.
-- `openIndex()` validates and opens an existing schema.
+- `openIndex()` validates and opens an existing schema; `dropIndex()` /
+  `Index.drop()` removes one.
 - `Index.upsert()` writes one record.
 - `Index.upsertMany()` writes up to 1,000 records in a bulk statement.
 - `Index.search()` runs filter-only, keyword, semantic, or hybrid retrieval.
+- `Index.get()` / `getByName()` read a record; `Index.patch()` updates one
+  optimistically; `Index.delete()` / `deleteByName()` remove one.
+- `Index.moveTree()` / `copyTree()` / `deleteTree()` / `countTree()` /
+  `listTree()` operate on subtrees.
 - `Index.processEmbeddings()` / `Index.startEmbeddingWorker()` drain the async
   embedding queue; `Index.queueStats()` / `Index.pruneEmbeddingQueue()` inspect
   and maintain it.
+- `Index.with(tx)` binds record/tree operations to a caller transaction.
 
 See [installation](installation.md), [index lifecycle](indexes.md),
-[writing records](writes.md), [searching records](search.md), and
+[writing records](writes.md), [searching records](search.md),
+[records and tree operations](records.md), and
 [embeddings and the drain engine](embeddings.md).
 
 ## Not implemented yet
 
-Record reads by id/name, deletes, tree operations, `dropIndex()`, and
-transaction-bound handles are still under development. The root README and
+Transaction-bound handles cover record and tree operations; a reranker hook,
+audit log, and `tsvector` fallback remain designed seams. The root README and
 design documents describe the larger target API; this directory documents only
 the public behavior available in the current implementation.
 

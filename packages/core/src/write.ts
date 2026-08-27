@@ -11,30 +11,9 @@ import {
 import type { Index } from "./open-index.ts";
 import { postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
-import {
-  normalizeTimestamp,
-  timestampMilliseconds,
-  timestampSchema,
-} from "./temporal.ts";
+import { normalizeTemporalTuple, temporalTupleSchema } from "./temporal.ts";
 
 const MAX_UPSERT_BATCH_SIZE = 1000;
-
-const temporalSchema = z
-  .union([
-    z.tuple([timestampSchema]).readonly(),
-    z.tuple([timestampSchema, timestampSchema]).readonly(),
-  ])
-  .superRefine((temporal, context) => {
-    if (
-      temporal.length === 2 &&
-      timestampMilliseconds(temporal[0]) >= timestampMilliseconds(temporal[1])
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "interval start must be before its end",
-      });
-    }
-  });
 
 const recordSchema = z
   .object({
@@ -50,7 +29,7 @@ const recordSchema = z
         "expected dot-separated ltree labels matching [A-Za-z0-9_-]+ (or an empty string for the root)",
       )
       .default(""),
-    temporal: temporalSchema.optional(),
+    temporal: temporalTupleSchema.optional(),
     name: z.string().nullable().default(null),
     embedding: z.array(z.number().finite()).readonly().optional(),
   })
@@ -153,7 +132,9 @@ export async function upsertMany(
     contents.push(record.content);
     metas.push(record.meta);
     trees.push(record.tree);
-    temporals.push(normalizeTemporal(record.temporal));
+    temporals.push(
+      record.temporal ? normalizeTemporalTuple(record.temporal) : null,
+    );
     names.push(name);
     embeddings.push(encodeEmbedding(record.embedding));
   }
@@ -287,20 +268,6 @@ function duplicateKeyError(
       issues: [{ code: "custom", message, path: [position] }],
     },
   );
-}
-
-function normalizeTemporal(
-  temporal: z.output<typeof temporalSchema> | undefined,
-): string | null {
-  if (!temporal) {
-    return null;
-  }
-  const start = normalizeTimestamp(temporal[0]);
-  if (temporal.length === 1) {
-    return `[${start},${start}]`;
-  }
-  const end = normalizeTimestamp(temporal[1]);
-  return `[${start},${end})`;
 }
 
 function encodeEmbedding(

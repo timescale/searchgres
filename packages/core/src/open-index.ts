@@ -7,6 +7,7 @@ import {
   queueStats,
 } from "./db/embedding-queue.ts";
 import { getExtensionInfo } from "./db/extensions.ts";
+import { dropIndex } from "./drop-index.ts";
 import {
   type EmbeddingWorker,
   type EmbeddingWorkerOptions,
@@ -17,8 +18,30 @@ import {
 } from "./embedding-worker.ts";
 import { InvalidIndexError, SchemaVersionError } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
+import {
+  deleteByName,
+  deleteRecord,
+  get,
+  getByName,
+  type PatchInput,
+  patch,
+  type StoredRecord,
+} from "./records.ts";
 import { type SearchOptions, type SearchResult, search } from "./search.ts";
 import { runSql } from "./sql/exec.ts";
+import {
+  copyTree,
+  countTree,
+  deleteTree,
+  listTree,
+  moveTree,
+  type TreeCountOptions,
+  type TreeCountResult,
+  type TreeCountSelector,
+  type TreeListEntry,
+  type TreeMutationOptions,
+  type TreeMutationResult,
+} from "./tree.ts";
 import { noTruncation, type Truncator } from "./truncate.ts";
 import {
   type UpsertOptions,
@@ -33,6 +56,50 @@ const REQUIRED_EXTENSIONS = [
   { name: "ltree", minimumVersion: "1.3.0" },
 ] as const;
 
+/**
+ * The subset of {@link Index} that is safe to compose inside one caller-owned
+ * transaction: record and tree operations only. Embedding-drain and queue
+ * maintenance are intentionally excluded — the worker owns multiple short
+ * transactions around remote provider calls and must not run inside (or outlive)
+ * a caller transaction. Obtained via {@link Index.with}.
+ */
+export interface TransactionIndex {
+  upsert(record: UpsertRecord, options?: UpsertOptions): Promise<UpsertResult>;
+  upsertMany(
+    records: readonly UpsertRecord[],
+    options?: UpsertOptions,
+  ): Promise<readonly UpsertResult[]>;
+  search(options?: SearchOptions): Promise<readonly SearchResult[]>;
+  get(id: string): Promise<StoredRecord>;
+  getByName(tree: string, name: string): Promise<StoredRecord>;
+  patch(
+    id: string,
+    priorVersionHash: string,
+    input: PatchInput,
+  ): Promise<StoredRecord>;
+  delete(id: string): Promise<void>;
+  deleteByName(tree: string, name: string): Promise<void>;
+  moveTree(
+    source: string,
+    destination: string,
+    options?: TreeMutationOptions,
+  ): Promise<TreeMutationResult>;
+  copyTree(
+    source: string,
+    destination: string,
+    options?: TreeMutationOptions,
+  ): Promise<TreeMutationResult>;
+  deleteTree(
+    tree: string,
+    options?: TreeMutationOptions,
+  ): Promise<TreeMutationResult>;
+  countTree(
+    selector: TreeCountSelector,
+    options?: TreeCountOptions,
+  ): Promise<TreeCountResult>;
+  listTree(lquery: string): Promise<readonly TreeListEntry[]>;
+}
+
 export interface OpenIndexOptions {
   readonly embedding: EmbeddingModel;
   /**
@@ -43,14 +110,14 @@ export interface OpenIndexOptions {
   readonly truncate?: Truncator;
 }
 
-export class Index {
+export class Index implements TransactionIndex {
   readonly schema: string;
   readonly vectorType: "vector" | "halfvec";
   readonly dimensions: number;
   readonly embedding: EmbeddingModel;
   readonly truncate: Truncator;
 
-  /** @internal Caller-owned pool used by query and worker methods. */
+  /** @internal Caller-owned pool or transaction used by every method. */
   readonly sql: postgres.Sql;
 
   constructor(options: {
@@ -98,6 +165,78 @@ export class Index {
     return search(this, options ?? {});
   }
 
+  /** Read one record by id. Throws `NotFoundError` when it does not exist. */
+  async get(id: string): Promise<StoredRecord> {
+    return get(this, id);
+  }
+
+  /** Read one record by its `(tree, name)` address. Throws `NotFoundError`. */
+  async getByName(tree: string, name: string): Promise<StoredRecord> {
+    return getByName(this, tree, name);
+  }
+
+  /**
+   * Optimistically update a record. `priorVersionHash` must match the current
+   * row: a missing row throws `NotFoundError`, a changed row `StaleVersionError`.
+   * Returns the updated record.
+   */
+  async patch(
+    id: string,
+    priorVersionHash: string,
+    input: PatchInput,
+  ): Promise<StoredRecord> {
+    return patch(this, id, priorVersionHash, input);
+  }
+
+  /** Delete one record by id. Throws `NotFoundError` when it does not exist. */
+  async delete(id: string): Promise<void> {
+    return deleteRecord(this, id);
+  }
+
+  /** Delete one record by its `(tree, name)` address. Throws `NotFoundError`. */
+  async deleteByName(tree: string, name: string): Promise<void> {
+    return deleteByName(this, tree, name);
+  }
+
+  /** Move a subtree: rewrite the `source` prefix to `destination`. */
+  async moveTree(
+    source: string,
+    destination: string,
+    options?: TreeMutationOptions,
+  ): Promise<TreeMutationResult> {
+    return moveTree(this, source, destination, options);
+  }
+
+  /** Copy a subtree under `destination` as fresh records. */
+  async copyTree(
+    source: string,
+    destination: string,
+    options?: TreeMutationOptions,
+  ): Promise<TreeMutationResult> {
+    return copyTree(this, source, destination, options);
+  }
+
+  /** Delete an inclusive subtree. */
+  async deleteTree(
+    tree: string,
+    options?: TreeMutationOptions,
+  ): Promise<TreeMutationResult> {
+    return deleteTree(this, tree, options);
+  }
+
+  /** Count records matching one explicit tree filter kind. */
+  async countTree(
+    selector: TreeCountSelector,
+    options?: TreeCountOptions,
+  ): Promise<TreeCountResult> {
+    return countTree(this, selector, options);
+  }
+
+  /** List the tree nodes matching an lquery with per-node descendant counts. */
+  async listTree(lquery: string): Promise<readonly TreeListEntry[]> {
+    return listTree(this, lquery);
+  }
+
   /**
    * Drain pending embedding work in one bounded pass and return the outcome.
    * For cron, post-bulk-ingest, or a serverless invocation. Concurrency-safe
@@ -127,6 +266,29 @@ export class Index {
     readonly retentionMs: number;
   }): Promise<number> {
     return pruneQueue(this.sql, this.schema, options.retentionMs);
+  }
+
+  /**
+   * Bind record/tree operations to a caller-owned transaction so they compose
+   * atomically. A no-I/O clone; the caller owns commit/rollback and the pool.
+   * Embedding-drain and queue methods are intentionally not exposed here.
+   */
+  with(tx: postgres.TransactionSql): TransactionIndex {
+    return new Index({
+      // A TransactionSql is a query runner just like Sql (minus pool lifecycle,
+      // which the handle never calls); the cast keeps the field type simple.
+      sql: tx as unknown as postgres.Sql,
+      schema: this.schema,
+      vectorType: this.vectorType,
+      dimensions: this.dimensions,
+      embedding: this.embedding,
+      truncate: this.truncate,
+    });
+  }
+
+  /** Drop this index's schema and everything in it (`drop schema … cascade`). */
+  async drop(): Promise<void> {
+    return dropIndex(this.sql, this.schema);
   }
 }
 

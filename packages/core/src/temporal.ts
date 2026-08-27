@@ -42,3 +42,39 @@ export function normalizeRangeLiteral(
     literal: `[${normalizeTimestamp(start)},${normalizeTimestamp(end)})`,
   };
 }
+
+/**
+ * A temporal value on a record write: a single-element tuple for a point in
+ * time, or a two-element tuple for a half-open interval. Strings must carry an
+ * explicit offset (enforced by {@link timestampSchema}).
+ */
+export const temporalTupleSchema = z
+  .union([
+    z.tuple([timestampSchema]).readonly(),
+    z.tuple([timestampSchema, timestampSchema]).readonly(),
+  ])
+  .superRefine((temporal, context) => {
+    if (
+      temporal.length === 2 &&
+      timestampMilliseconds(temporal[0]) >= timestampMilliseconds(temporal[1])
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "interval start must be before its end",
+      });
+    }
+  });
+
+/**
+ * Canonical tstzrange literal for a validated temporal tuple: a point becomes
+ * the closed `[t,t]`; an interval becomes the half-open `[start,end)`.
+ */
+export function normalizeTemporalTuple(
+  temporal: z.output<typeof temporalTupleSchema>,
+): string {
+  const start = normalizeTimestamp(temporal[0]);
+  if (temporal.length === 1) {
+    return `[${start},${start}]`;
+  }
+  return `[${start},${normalizeTimestamp(temporal[1])})`;
+}
