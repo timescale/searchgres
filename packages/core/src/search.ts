@@ -1,10 +1,9 @@
 import { trace } from "@opentelemetry/api";
-import { embed } from "ai";
 import type postgres from "postgres";
 import { z } from "zod";
+import { embedQuery } from "./embedding.ts";
 import {
   DimensionMismatchError,
-  EmbeddingProviderError,
   InvalidConfigError,
   SearchgresError,
   type ValidationIssue,
@@ -382,25 +381,6 @@ export async function search(
       span.end();
     }
   });
-}
-
-async function embedQuery(
-  index: Index,
-  text: string,
-): Promise<readonly number[]> {
-  const truncated = await index.truncate(text);
-  let embedding: number[];
-  try {
-    ({ embedding } = await embed({ model: index.embedding, value: truncated }));
-  } catch (error) {
-    throw new EmbeddingProviderError("Failed to embed the search query", {
-      cause: error,
-    });
-  }
-  if (embedding.length !== index.dimensions) {
-    throw new DimensionMismatchError(index.dimensions, embedding.length);
-  }
-  return embedding;
 }
 
 async function runSingle(

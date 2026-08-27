@@ -131,7 +131,7 @@ test("creates the configured schema shape and search indexes", async () => {
       "uuid",
     );
     assert.deepEqual(await listTriggers(sql, schema, "record"), [
-      "record_enqueue_after_content_update",
+      "record_enqueue_after_embedding_input",
       "record_enqueue_after_insert",
       "record_integrity_before_write",
     ]);

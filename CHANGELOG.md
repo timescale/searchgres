@@ -57,3 +57,18 @@ Pre-release development. Nothing published yet.
 - Caller-supplied `Truncator` (`truncate` option on `openIndex`, default
   `noTruncation`) with `truncateCharacters`, `truncateBytes`, and `truncateTokens`
   built-ins, applied to semantic query text before embedding.
+- Asynchronous embedding engine: `Index.processEmbeddings()` drains the queue in
+  a bounded pass; `Index.startEmbeddingWorker()` runs a continuous, concurrency-
+  safe drainer whose `stop()` finishes the in-flight batch and never closes the
+  caller's pool; `Index.queueStats()` and `Index.pruneEmbeddingQueue()` inspect
+  and maintain the queue. The queue is the retry authority: claims use `for
+  update skip locked` with a lease, write-back is version-guarded so a stale
+  vector can never overwrite a newer one, ordinary failures retry until
+  `maxAttempts`, and rate limits / wrong dimensions release the work and throw.
+  Durations are milliseconds (`leaseDurationMs`, `maxAttempts`,
+  `pruneRetentionMs`); batch size is clamped to the model's `maxEmbeddingsPerCall`.
+- The record integrity trigger now treats `content_version` as the embedding-
+  input fence: it advances when the content or the stored vector changes, so a
+  precomputed vector supplied after enqueue invalidates the stale queue row. The
+  enqueue trigger fires on content-or-embedding changes that leave the row
+  needing a vector, and covers direct SQL writers.

@@ -8,6 +8,13 @@
 
 export * from "./config.ts";
 export * from "./create-index.ts";
+export type { QueueStats } from "./db/embedding-queue.ts";
+export type {
+  EmbeddingWorker,
+  EmbeddingWorkerOptions,
+  ProcessEmbeddingsOptions,
+  ProcessEmbeddingsResult,
+} from "./embedding-worker.ts";
 export * from "./errors.ts";
 export * from "./identifiers.ts";
 export * from "./open-index.ts";

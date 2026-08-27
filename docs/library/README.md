@@ -14,16 +14,20 @@ The following library capabilities are implemented:
 - `Index.upsert()` writes one record.
 - `Index.upsertMany()` writes up to 1,000 records in a bulk statement.
 - `Index.search()` runs filter-only, keyword, semantic, or hybrid retrieval.
+- `Index.processEmbeddings()` / `Index.startEmbeddingWorker()` drain the async
+  embedding queue; `Index.queueStats()` / `Index.pruneEmbeddingQueue()` inspect
+  and maintain it.
 
 See [installation](installation.md), [index lifecycle](indexes.md),
-[writing records](writes.md), and [searching records](search.md).
+[writing records](writes.md), [searching records](search.md), and
+[embeddings and the drain engine](embeddings.md).
 
 ## Not implemented yet
 
-Record reads by id/name, deletes, tree operations, embedding workers,
-`dropIndex()`, and transaction-bound handles are still under development. The
-root README and design documents describe the larger target API; this directory
-documents only the public behavior available in the current implementation.
+Record reads by id/name, deletes, tree operations, `dropIndex()`, and
+transaction-bound handles are still under development. The root README and
+design documents describe the larger target API; this directory documents only
+the public behavior available in the current implementation.
 
 ## Core principles
 

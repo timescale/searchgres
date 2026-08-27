@@ -1,7 +1,20 @@
 import type { EmbeddingModel } from "ai";
 import type postgres from "postgres";
 import { SCHEMA_FORMAT_VERSION } from "./create-index.ts";
+import {
+  pruneQueue,
+  type QueueStats,
+  queueStats,
+} from "./db/embedding-queue.ts";
 import { getExtensionInfo } from "./db/extensions.ts";
+import {
+  type EmbeddingWorker,
+  type EmbeddingWorkerOptions,
+  type ProcessEmbeddingsOptions,
+  type ProcessEmbeddingsResult,
+  processEmbeddings,
+  startEmbeddingWorker,
+} from "./embedding-worker.ts";
 import { InvalidIndexError, SchemaVersionError } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
 import { type SearchOptions, type SearchResult, search } from "./search.ts";
@@ -83,6 +96,37 @@ export class Index {
    */
   async search(options?: SearchOptions): Promise<readonly SearchResult[]> {
     return search(this, options ?? {});
+  }
+
+  /**
+   * Drain pending embedding work in one bounded pass and return the outcome.
+   * For cron, post-bulk-ingest, or a serverless invocation. Concurrency-safe
+   * with other drainers via `for update skip locked`.
+   */
+  async processEmbeddings(
+    options?: ProcessEmbeddingsOptions,
+  ): Promise<ProcessEmbeddingsResult> {
+    return processEmbeddings(this, options);
+  }
+
+  /**
+   * Start a continuous background drainer. Returns a handle whose `stop()`
+   * finishes the in-flight batch and halts; it never closes the caller's pool.
+   */
+  startEmbeddingWorker(options?: EmbeddingWorkerOptions): EmbeddingWorker {
+    return startEmbeddingWorker(this, options);
+  }
+
+  /** Aggregate embedding-queue snapshot for operational visibility. */
+  async queueStats(): Promise<QueueStats> {
+    return queueStats(this.sql, this.schema);
+  }
+
+  /** Delete terminal queue rows older than `retentionMs`. Returns rows removed. */
+  async pruneEmbeddingQueue(options: {
+    readonly retentionMs: number;
+  }): Promise<number> {
+    return pruneQueue(this.sql, this.schema, options.retentionMs);
   }
 }
 

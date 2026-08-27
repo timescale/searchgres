@@ -5,9 +5,9 @@ composable filtering — hierarchy, metadata, temporal, and regex — over a
 PostgreSQL database you own and run.
 
 > **Status: pre-release, under active development.** Index provisioning,
-> validation, writes, and search are implemented. Record reads, deletes,
-> workers, and tree operations remain design targets. Expect breaking changes
-> until `1.0`.
+> validation, writes, search, and the async embedding engine are implemented.
+> Record reads, deletes, and tree operations remain design targets. Expect
+> breaking changes until `1.0`.
 
 ## Why
 
@@ -263,6 +263,7 @@ The current library documentation is in [docs/library](docs/library/README.md):
 - [Creating and opening indexes](docs/library/indexes.md)
 - [Writing records](docs/library/writes.md)
 - [Searching records](docs/library/search.md)
+- [Embeddings and the drain engine](docs/library/embeddings.md)
 - [Extensions and schemas](docs/library/extensions.md)
 
 ## License
