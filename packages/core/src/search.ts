@@ -16,6 +16,7 @@ import { runSql } from "./sql/exec.ts";
 import {
   normalizeRangeLiteral,
   normalizeTimestamp,
+  type Timestamp,
   timestampSchema,
 } from "./temporal.ts";
 import { LIBRARY_VERSION } from "./version.ts";
@@ -27,32 +28,8 @@ const MAX_FILTER_DEPTH = 16;
 const MAX_FILTER_NODES = 100;
 
 // ---------------------------------------------------------------------------
-// public types (inferred from the internal schemas where possible)
+// filter + options schemas (public types are inferred from these)
 // ---------------------------------------------------------------------------
-
-export type Timestamp = Date | string;
-export type TemporalRange = readonly [Timestamp, Timestamp];
-
-/**
- * A composable boolean filter over records. Every leaf is a predicate on one
- * record; `and`/`or`/`not` compose them. Leaves are filter criteria only —
- * ranking (semantic/fulltext) stays on {@link SearchOptions}.
- */
-export type Filter =
-  | { readonly and: readonly Filter[] }
-  | { readonly or: readonly Filter[] }
-  | { readonly not: Filter }
-  | { readonly tree: string }
-  | { readonly lquery: string }
-  | { readonly ltxtquery: string }
-  | { readonly meta: Record<string, unknown> }
-  | { readonly metaPredicate: string }
-  | { readonly temporalWithin: TemporalRange }
-  | { readonly temporalOverlaps: TemporalRange }
-  | { readonly temporalBefore: Timestamp }
-  | { readonly temporalAfter: Timestamp }
-  | { readonly temporalContains: Timestamp }
-  | { readonly regexp: string };
 
 const nonEmptyString = z.string().min(1);
 
@@ -69,7 +46,34 @@ const metaFilterLeaf = z
 
 const rangeLeaf = z.tuple([timestampSchema, timestampSchema]).readonly();
 
-const filterSchema: z.ZodType<Filter> = z.lazy(() =>
+/** A timestamp accepted by a temporal filter. */
+export type { Timestamp };
+/** A `[start, end]` window accepted by a temporal-range filter. */
+export type TemporalRange = z.input<typeof rangeLeaf>;
+
+/**
+ * Internal recursion anchor for {@link filterSchema}. Zod's `z.lazy` needs an
+ * explicit TypeScript type for a self-referential schema; the exported public
+ * {@link Filter} is still derived from the schema via `z.input`, so this stays
+ * internal and the two cannot drift on anything the schema validates.
+ */
+type FilterNode =
+  | { readonly and: readonly FilterNode[] }
+  | { readonly or: readonly FilterNode[] }
+  | { readonly not: FilterNode }
+  | { readonly tree: z.input<typeof treeFilterLeaf> }
+  | { readonly lquery: z.input<typeof nonEmptyString> }
+  | { readonly ltxtquery: z.input<typeof nonEmptyString> }
+  | { readonly meta: z.input<typeof metaFilterLeaf> }
+  | { readonly metaPredicate: z.input<typeof nonEmptyString> }
+  | { readonly temporalWithin: TemporalRange }
+  | { readonly temporalOverlaps: TemporalRange }
+  | { readonly temporalBefore: Timestamp }
+  | { readonly temporalAfter: Timestamp }
+  | { readonly temporalContains: Timestamp }
+  | { readonly regexp: z.input<typeof nonEmptyString> };
+
+const filterSchema: z.ZodType<FilterNode> = z.lazy(() =>
   z.union([
     z.strictObject({ and: z.array(filterSchema).min(2) }),
     z.strictObject({ or: z.array(filterSchema).min(2) }),
@@ -87,6 +91,13 @@ const filterSchema: z.ZodType<Filter> = z.lazy(() =>
     z.strictObject({ regexp: nonEmptyString }),
   ]),
 );
+
+/**
+ * A composable boolean filter over records. Every leaf is a predicate on one
+ * record; `and`/`or`/`not` compose them. Leaves are filter criteria only —
+ * ranking (semantic/fulltext) stays on {@link SearchOptions}.
+ */
+export type Filter = z.input<typeof filterSchema>;
 
 const searchOptionsSchema = z
   .strictObject({
@@ -212,9 +223,9 @@ interface FilterAnalysis {
  * and enforce the regex-safety rule. `ranked` relaxes the rule because a
  * semantic/keyword arm already bounds the scan.
  */
-function normalizeFilter(filter: Filter, ranked: boolean): CanonicalFilter {
+function normalizeFilter(filter: FilterNode, ranked: boolean): CanonicalFilter {
   let nodes = 0;
-  const walk = (node: Filter, depth: number): CanonicalFilter => {
+  const walk = (node: FilterNode, depth: number): CanonicalFilter => {
     if (depth > MAX_FILTER_DEPTH) {
       throwInvalidFilter(
         `filter nesting exceeds the maximum depth of ${MAX_FILTER_DEPTH}`,
@@ -266,7 +277,7 @@ function normalizeFilter(filter: Filter, ranked: boolean): CanonicalFilter {
 }
 
 /** Two-pass helper: guard/regex analysis that also rejects regex under `not`. */
-function analyzeFilter(node: Filter): FilterAnalysis {
+function analyzeFilter(node: FilterNode): FilterAnalysis {
   if ("and" in node) {
     const children = node.and.map(analyzeFilter);
     return {

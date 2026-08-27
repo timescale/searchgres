@@ -10,7 +10,7 @@ export const timestampSchema = z.union([
   z.iso.datetime({ offset: true }),
 ]);
 
-export type TimestampInput = z.input<typeof timestampSchema>;
+export type Timestamp = z.input<typeof timestampSchema>;
 
 /** Canonical UTC ISO-8601 rendering of a validated timestamp. */
 export function normalizeTimestamp(timestamp: Date | string): string {
