@@ -6,7 +6,16 @@ import { runSql } from "../../sql/exec.ts";
  * Create the schema-local record routines: `get_record`, `get_record_by_name`,
  * `patch_record`, `delete_record`, and `delete_record_by_name`. All bodies are
  * part of the immutable schema format, created inside the caller's provisioning
- * transaction, `security invoker` with a fixed function-local search_path.
+ * transaction, `security invoker`.
+ *
+ * The two read routines (`get_record`, `get_record_by_name`) are SQL `stable`
+ * single-`SELECT` functions and deliberately OMIT a function-level `set
+ * search_path`: a `SET` clause records `proconfig` on the function, which makes
+ * PostgreSQL refuse to inline it. Without it they can be folded into the calling
+ * query. To stay correct under an arbitrary caller `search_path`, every
+ * reference in their bodies is fully qualified — the table by schema, ltree
+ * operators by `public`, and built-in operators by `pg_catalog` — so nothing
+ * resolves through the caller's path. The mutating routines keep a fixed path.
  */
 export async function createRecordRoutines(
   tx: postgres.TransactionSql,
@@ -36,14 +45,13 @@ export async function createRecordRoutines(
       , updated_at timestamptz
       )
       language sql stable security invoker
-      set search_path to pg_catalog, public, pg_temp
       as $function$
         select
           m.id, m.content, m.meta, m.tree, m.temporal, m.name
         , (m.embedding is not null)
         , m.version, m.version_hash, m.created_at, m.updated_at
         from ${tx(indexSchema)}.record m
-        where m.id = _id
+        where m.id operator(pg_catalog.=) _id
       $function$
     `,
     {
@@ -69,14 +77,13 @@ export async function createRecordRoutines(
       , updated_at timestamptz
       )
       language sql stable security invoker
-      set search_path to pg_catalog, public, pg_temp
       as $function$
         select
           m.id, m.content, m.meta, m.tree, m.temporal, m.name
         , (m.embedding is not null)
         , m.version, m.version_hash, m.created_at, m.updated_at
         from ${tx(indexSchema)}.record m
-        where m.tree operator(public.=) _tree and m.name = _name
+        where m.tree operator(public.=) _tree and m.name operator(pg_catalog.=) _name
       $function$
     `,
     {

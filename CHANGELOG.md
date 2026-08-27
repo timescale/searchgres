@@ -90,3 +90,14 @@ Pre-release development. Nothing published yet.
   (`get_record`, `get_record_by_name`, `patch_record`, `delete_record`,
   `delete_record_by_name`, `move_tree`, `copy_tree`, `delete_tree`, `count_tree`,
   `list_tree`) created with the index and callable directly from SQL.
+
+### Changed
+
+- The SQL `stable` read routines (`get_record`, `get_record_by_name`,
+  `list_tree`, and the three `count_tree` overloads) no longer carry a
+  function-level `set search_path`, which lets PostgreSQL inline the
+  set-returning ones (`get_record`, `get_record_by_name`, `list_tree`) into the
+  calling query instead of planning an opaque function scan. Their bodies are
+  fully qualified — table by schema, ltree objects by `public`, and built-in
+  operators/functions by `pg_catalog` — so they remain correct under any caller
+  `search_path`. Mutating and PL/pgSQL routines keep their fixed path.

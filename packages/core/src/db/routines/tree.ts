@@ -172,15 +172,18 @@ export async function createTreeRoutines(
   // count_tree (three explicit filter kinds)
   // ------------------------------------------------------------------------
   // `_max_count` bounds the scan; the TS layer passes max+1 so it can tell an
-  // exact count from a capped one. `limit null` means no cap.
+  // exact count from a capped one. `limit null` means no cap. These SQL `stable`
+  // routines omit `set search_path` (a SET clause records proconfig, which
+  // — though these are not inlineable, having a relation scan/subquery/aggregate
+  // — needlessly costs a per-call GUC save/restore); every reference is fully
+  // qualified so they are correct under any caller path.
   await runSql(
     tx`
       create function ${tx(indexSchema)}.count_tree(_tree public.ltree, _max_count bigint default null)
       returns bigint
       language sql stable security invoker
-      set search_path to pg_catalog, public, pg_temp
       as $function$
-        select count(*) from
+        select pg_catalog.count(*) from
         (
           select 1 from ${tx(indexSchema)}.record m
           where _tree operator(public.@>) m.tree
@@ -199,9 +202,8 @@ export async function createTreeRoutines(
       create function ${tx(indexSchema)}.count_tree(_query public.lquery, _max_count bigint default null)
       returns bigint
       language sql stable security invoker
-      set search_path to pg_catalog, public, pg_temp
       as $function$
-        select count(*) from
+        select pg_catalog.count(*) from
         (
           select 1 from ${tx(indexSchema)}.record m
           where m.tree operator(public.~) _query
@@ -220,9 +222,8 @@ export async function createTreeRoutines(
       create function ${tx(indexSchema)}.count_tree(_query public.ltxtquery, _max_count bigint default null)
       returns bigint
       language sql stable security invoker
-      set search_path to pg_catalog, public, pg_temp
       as $function$
-        select count(*) from
+        select pg_catalog.count(*) from
         (
           select 1 from ${tx(indexSchema)}.record m
           where m.tree operator(public.@) _query
@@ -244,12 +245,16 @@ export async function createTreeRoutines(
   // prefixes and count how many records fall under each. A matching record thus
   // contributes to every ancestor node, so counts are descendant totals, not
   // immediate-child counts. Ordered by tree for a stable listing.
+  //
+  // SQL `stable`, single-`SELECT`, `security invoker`, and — like the record
+  // reads — it omits `set search_path` so PostgreSQL can inline it. Everything
+  // is fully qualified (table by schema, ltree ops/functions by `public`,
+  // aggregate and set function by `pg_catalog`) to stay correct under any path.
   await runSql(
     tx`
       create function ${tx(indexSchema)}.list_tree(_query public.lquery)
       returns table (tree public.ltree, count bigint)
       language sql stable security invoker
-      set search_path to pg_catalog, public, pg_temp
       as $function$
         with matched as
         (
@@ -259,9 +264,9 @@ export async function createTreeRoutines(
         )
         select
           public.subltree(matched.tree, 0, i) as tree
-        , count(matched.id) as count
+        , pg_catalog.count(matched.id) as count
         from matched
-        cross join lateral generate_series(1, public.nlevel(matched.tree)) i
+        cross join lateral pg_catalog.generate_series(1, public.nlevel(matched.tree)) i
         group by 1
         order by 1
       $function$
