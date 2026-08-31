@@ -264,7 +264,7 @@ export async function createTreeRoutines(
         (
           public.nlevel(_base)
         , case when _levels is null then public.nlevel(matched.tree)
-               else pg_catalog.least(public.nlevel(matched.tree), public.nlevel(_base) + _levels)
+               else least(public.nlevel(matched.tree), public.nlevel(_base) + _levels)
           end
         ) i
         group by 1

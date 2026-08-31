@@ -95,6 +95,43 @@ index:
   await waitForReady(serverUrl, server);
 });
 
+test("compiled sg CLI calls the running server", async () => {
+  const server = serverUrl.toString().replace(/\/$/, "");
+  expect(JSON.parse(await runSg(["info", "--server", server]))).toMatchObject({
+    apiVersion: "v1",
+    capabilities: { readOnly: false },
+  });
+  const created = JSON.parse(
+    await runSg([
+      "upsert",
+      "--server",
+      server,
+      "--input",
+      '{"record":{"content":"A CLI cat","tree":"cli","name":"cat"}}',
+    ]),
+  ) as { readonly result: { readonly id: string } };
+  expect(created.result.id).toBeString();
+  expect(
+    JSON.parse(
+      await runSg(["get", "--server", server, "--id", created.result.id]),
+    ),
+  ).toMatchObject({
+    record: { name: "cat" },
+  });
+  expect(await runSg(["tree", "cli", "--server", server])).toContain("cli (1)");
+  expect(
+    await runSg([
+      "upsert-many",
+      "--server",
+      server,
+      "--input",
+      '{"records":[{"content":"one"},{"content":"two"}]}',
+      "--output-format",
+      "ndjson",
+    ]),
+  ).toContain("inserted");
+});
+
 test("compiled sg writes through the queue and performs semantic and hybrid search", async () => {
   const client = createSearchgresClient({ url: new URL("rpc", serverUrl) });
   const discovered = await client.discover();
@@ -200,6 +237,21 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   ).toBe(4);
   expect((await client.deleteTree({ tree: "zoo" })).count).toBe(4);
 });
+
+async function runSg(args: readonly string[]): Promise<string> {
+  const process = Bun.spawn({
+    cmd: ["./dist/sg", ...args],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited,
+  ]);
+  if (exitCode !== 0) throw new Error(`sg failed (${exitCode}): ${stderr}`);
+  return stdout.trim();
+}
 
 function embeddingFor(input: string): number[] {
   const text = input.toLowerCase();
