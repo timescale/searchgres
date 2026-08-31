@@ -38,6 +38,10 @@ export async function runCommand(argv: readonly string[]): Promise<void> {
     await runDestroy(args);
     return;
   }
+  if (command === "tree") {
+    await runTree(args);
+    return;
+  }
   if (command && remoteMethod(command)) {
     await runRemote(command, args);
     return;
@@ -64,6 +68,49 @@ async function runServer(args: readonly string[]): Promise<void> {
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+}
+
+async function runTree(args: readonly string[]): Promise<void> {
+  const root = args[0]?.startsWith("--") ? "" : (args[0] ?? "");
+  const flags = parseFlags(root ? args.slice(1) : args);
+  rejectUnknownFlags(flags, new Set(["server", "levels", "output-format"]));
+  const levels = optionalFlag(flags, "levels");
+  const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
+  if (!server) throw new Error("--server or SEARCHGRES_URL is required");
+  const client = createClient({
+    transport: createFetchTransport({
+      url: `${server.replace(/\/$/, "")}/rpc`,
+    }),
+  });
+  const result = await client.treeView({
+    ...(root ? { tree: root } : {}),
+    ...(levels === undefined
+      ? {}
+      : { levels: nonnegativeInteger(levels, "levels") }),
+  });
+  const output = optionalFlag(flags, "output-format");
+  if (output) return writeStructuredOutput(result, output);
+  renderTree(result.entries, root);
+}
+
+function renderTree(
+  entries: readonly { readonly tree: string; readonly count: number }[],
+  root: string,
+): void {
+  const sorted = [...entries].sort((left, right) =>
+    left.tree.localeCompare(right.tree),
+  );
+  const baseDepth = root === "" ? 0 : root.split(".").length;
+  for (const [index, entry] of sorted.entries()) {
+    const depth =
+      entry.tree === "" ? 0 : entry.tree.split(".").length - baseDepth;
+    const label =
+      entry.tree === "" ? "." : (entry.tree.split(".").at(-1) ?? entry.tree);
+    const branch = index === sorted.length - 1 ? "└──" : "├──";
+    console.log(
+      `${"│   ".repeat(Math.max(0, depth))}${branch} ${label} (${entry.count})`,
+    );
+  }
 }
 
 function remoteMethod(command: string): string | undefined {
@@ -412,6 +459,13 @@ function rejectUnknownFlags(
   for (const name of flags.keys())
     if (!allowed.has(name)) throw new Error(`Unknown flag: --${name}`);
 }
+function nonnegativeInteger(value: string, name: string): number {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0)
+    throw new Error(`--${name} must be a nonnegative integer`);
+  return number;
+}
+
 function positiveInteger(value: string, name: string): number {
   const number = Number(value);
   if (!Number.isInteger(number) || number < 1)

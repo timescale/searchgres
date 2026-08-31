@@ -13,7 +13,7 @@
   "scripts": {
     "build": "npm run build --workspace=searchgres && npm run build --workspace=@searchgres/protocol && npm run build --workspace=@searchgres/client && npm run build --workspace=@searchgres/server",
     "clean": "npm run clean --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspace=searchgres && npm run typecheck --workspace=@searchgres/protocol && npm run typecheck --workspace=@searchgres/client && npm run typecheck --workspace=@searchgres/server",
+    "typecheck": "npm run typecheck --workspace=searchgres && npm run build --workspace=@searchgres/protocol && npm run typecheck --workspace=@searchgres/protocol && npm run build --workspace=@searchgres/client && npm run typecheck --workspace=@searchgres/client && npm run typecheck --workspace=@searchgres/server",
     "lint": "biome check",
     "format": "biome check --write",
     "test:unit": "npm run build --workspace=@searchgres/protocol && npm run test:unit --workspaces --if-present",

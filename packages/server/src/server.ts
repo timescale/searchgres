@@ -337,6 +337,15 @@ async function invoke(
       const input = methods[method].params.parse(params);
       return { entries: await index.listTree(input.lquery) };
     }
+    case "searchgres.v1.tree.view": {
+      const input = methods[method].params.parse(params);
+      return {
+        entries: await index.treeView(
+          input.tree,
+          input.levels === undefined ? undefined : { levels: input.levels },
+        ),
+      };
+    }
     case "searchgres.v1.search": {
       const input = methods[method].params.parse(params);
       const results = await index.search(input as SearchOptions);

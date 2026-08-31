@@ -195,6 +195,11 @@ export const listTreeResultSchema = z.strictObject({
     }),
   ),
 });
+export const treeViewParamsSchema = z.strictObject({
+  tree: treePathSchema.optional(),
+  levels: z.number().int().nonnegative().optional(),
+});
+export const treeViewResultSchema = listTreeResultSchema;
 
 export const searchParamsSchema = z
   .strictObject({
@@ -365,6 +370,11 @@ export const methods = {
     listTreeParamsSchema,
     listTreeResultSchema,
   ),
+  "searchgres.v1.tree.view": method(
+    "List an inclusive display tree rooted at a path with descendant counts.",
+    treeViewParamsSchema,
+    treeViewResultSchema,
+  ),
   "searchgres.v1.search": method(
     "Run a filter-only, full-text, semantic-text, or hybrid search.",
     searchParamsSchema,
@@ -478,4 +488,5 @@ export type CopyTreeParams = z.input<typeof copyTreeParamsSchema>;
 export type DeleteTreeParams = z.input<typeof deleteTreeParamsSchema>;
 export type CountTreeParams = z.input<typeof countTreeParamsSchema>;
 export type ListTreeParams = z.input<typeof listTreeParamsSchema>;
+export type TreeViewParams = z.input<typeof treeViewParamsSchema>;
 export type RpcError = z.output<typeof rpcErrorSchema>;

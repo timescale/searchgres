@@ -20,6 +20,7 @@ import {
   rpcResponseSchema,
   rpcSuccessResponseSchema,
   type SearchParams,
+  type TreeViewParams,
   type UpsertManyParams,
   type UpsertParams,
 } from "@searchgres/protocol";
@@ -168,6 +169,10 @@ export interface SearchgresClient {
     params: ListTreeParams,
     options?: { readonly signal?: AbortSignal },
   ): Promise<RpcResult<"searchgres.v1.tree.list">>;
+  treeView(
+    params: TreeViewParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.tree.view">>;
   search(
     params: SearchParams,
     options?: { readonly signal?: AbortSignal },
@@ -265,6 +270,8 @@ export function createClient(
       call("searchgres.v1.tree.count", params, callOptions),
     listTree: (params, callOptions) =>
       call("searchgres.v1.tree.list", params, callOptions),
+    treeView: (params, callOptions) =>
+      call("searchgres.v1.tree.view", params, callOptions),
     search: (params, callOptions) =>
       call("searchgres.v1.search", params, callOptions),
   };
