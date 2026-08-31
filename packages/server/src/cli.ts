@@ -154,6 +154,7 @@ async function runRemote(
   args: readonly string[],
 ): Promise<void> {
   const flags = parseFlags(args);
+  rejectUnknownFlags(flags, allowedRemoteFlags(command));
   const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
   if (!server) throw new Error("--server or SEARCHGRES_URL is required");
   const outputFormat = optionalFlag(flags, "output-format") ?? "json";
@@ -162,6 +163,15 @@ async function runRemote(
     optionalFlag(flags, "input"),
     optionalFlag(flags, "input-format"),
   );
+  if (input !== undefined) {
+    const fieldFlags = [...flags.keys()].filter(
+      (name) =>
+        !["server", "output-format", "input", "input-format"].includes(name),
+    );
+    if (fieldFlags.length > 0) {
+      throw new Error(`--input cannot be combined with --${fieldFlags[0]}`);
+    }
+  }
   const params = input ?? paramsFromFlags(command, flags);
   const client = createClient({
     transport: createFetchTransport({
@@ -173,6 +183,29 @@ async function runRemote(
     params as never,
   );
   writeStructuredOutput(result, outputFormat);
+}
+
+function allowedRemoteFlags(command: string): ReadonlySet<string> {
+  const shared = ["server", "output-format", "input", "input-format"];
+  const commandFlags: Record<string, readonly string[]> = {
+    info: [],
+    upsert: [],
+    "upsert-many": [],
+    insert: [],
+    "insert-many": [],
+    patch: [],
+    get: ["id"],
+    delete: ["id"],
+    "get-by-name": ["tree", "name"],
+    "delete-by-name": ["tree", "name"],
+    move: ["source", "destination", "dry-run"],
+    copy: ["source", "destination", "dry-run"],
+    deltree: ["tree", "dry-run"],
+    count: ["tree", "lquery", "ltxtquery", "limit"],
+    list: ["lquery"],
+    search: ["semantic", "fulltext", "tree", "limit"],
+  };
+  return new Set([...shared, ...(commandFlags[command] ?? [])]);
 }
 
 function paramsFromFlags(

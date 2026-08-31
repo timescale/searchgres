@@ -95,7 +95,7 @@ index:
   await waitForReady(serverUrl, server);
 });
 
-test("compiled sg CLI calls the running server", async () => {
+async function assertCliCommands(): Promise<void> {
   const server = serverUrl.toString().replace(/\/$/, "");
   expect(JSON.parse(await runSg(["info", "--server", server]))).toMatchObject({
     apiVersion: "v1",
@@ -130,7 +130,7 @@ test("compiled sg CLI calls the running server", async () => {
       "ndjson",
     ]),
   ).toContain("inserted");
-});
+}
 
 test("compiled sg writes through the queue and performs semantic and hybrid search", async () => {
   const client = createSearchgresClient({ url: new URL("rpc", serverUrl) });
@@ -236,6 +236,7 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
     (await client.deleteTree({ tree: "zoo", options: { dryRun: true } })).count,
   ).toBe(4);
   expect((await client.deleteTree({ tree: "zoo" })).count).toBe(4);
+  await assertCliCommands();
 });
 
 async function runSg(args: readonly string[]): Promise<string> {
