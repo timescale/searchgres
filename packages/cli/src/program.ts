@@ -142,6 +142,7 @@ function register(
     .option("--tokenizer <preset>", "tokenizer preset")
     .option("--max-tokens <n>", "raw content token budget");
 
+  if (name === "tree") command.argument("[tree]", "root tree path");
   hideIrrelevantOptions(command, name);
   command.action(async (...actionArgs: unknown[]) => {
     const command = actionArgs.at(-1) as Command;
