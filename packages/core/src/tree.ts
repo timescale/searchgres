@@ -43,6 +43,12 @@ export interface TreeListEntry {
   readonly count: number;
 }
 
+/** Inclusive subtree nodes for a display-oriented tree view. */
+export interface TreeViewOptions {
+  /** Maximum relative depth below the requested root. */
+  readonly levels?: number;
+}
+
 export async function moveTree(
   index: Index,
   source: string,
@@ -126,6 +132,30 @@ export async function countTree(
   const raw = await runScalar(query, index.schema, "countTree");
   const capped = limit !== undefined && raw > limit;
   return { count: capped ? limit : raw, capped };
+}
+
+export async function treeView(
+  index: Index,
+  tree = "",
+  options?: TreeViewOptions,
+): Promise<readonly TreeListEntry[]> {
+  const path = assertTreePath(tree);
+  const levels = options?.levels;
+  if (levels !== undefined && (!Number.isInteger(levels) || levels < 0)) {
+    throw new InvalidConfigError(
+      "treeView levels must be a nonnegative integer",
+    );
+  }
+  const { sql } = index;
+  const rows = await runTreeSql(
+    sql<{ tree: string; count: string }[]>`
+      select tree, count
+      from ${sql(index.schema)}.tree_view(${path}::public.ltree, ${levels ?? null})
+    `,
+    index.schema,
+    "treeView",
+  );
+  return rows.map((row) => ({ tree: row.tree, count: Number(row.count) }));
 }
 
 export async function listTree(

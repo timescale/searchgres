@@ -41,6 +41,8 @@ import {
   type TreeListEntry,
   type TreeMutationOptions,
   type TreeMutationResult,
+  type TreeViewOptions,
+  treeView,
 } from "./tree.ts";
 import { noTruncation, type Truncator } from "./truncate.ts";
 import {
@@ -106,6 +108,10 @@ export interface TransactionIndex {
     options?: TreeCountOptions,
   ): Promise<TreeCountResult>;
   listTree(lquery: string): Promise<readonly TreeListEntry[]>;
+  treeView(
+    tree?: string,
+    options?: TreeViewOptions,
+  ): Promise<readonly TreeListEntry[]>;
 }
 
 export interface OpenIndexOptions {
@@ -255,6 +261,13 @@ export class Index implements TransactionIndex {
   /** List the tree nodes matching an lquery with per-node descendant counts. */
   async listTree(lquery: string): Promise<readonly TreeListEntry[]> {
     return listTree(this, lquery);
+  }
+
+  async treeView(
+    tree?: string,
+    options?: TreeViewOptions,
+  ): Promise<readonly TreeListEntry[]> {
+    return treeView(this, tree, options);
   }
 
   /**

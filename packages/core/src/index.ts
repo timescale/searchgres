@@ -34,6 +34,7 @@ export type {
   TreeListEntry,
   TreeMutationOptions,
   TreeMutationResult,
+  TreeViewOptions,
 } from "./tree.ts";
 export {
   noTruncation,
