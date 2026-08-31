@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/dist"]
+    "includes": ["**", "!**/dist", "!packages/server/assets"]
   },
   "formatter": {
     "enabled": true,

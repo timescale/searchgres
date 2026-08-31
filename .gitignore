@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 *.tsbuildinfo
+packages/server/src/tokenizer.worker.generated.cjs
 
 # Test / coverage
 coverage/

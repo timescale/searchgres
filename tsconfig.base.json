@@ -7,6 +7,10 @@
     "moduleResolution": "nodenext",
     "target": "es2023",
     "lib": ["es2023"],
+    "paths": {
+      "@searchgres/protocol": ["./packages/protocol/src/index.ts"],
+      "searchgres": ["./packages/core/src/index.ts"]
+    },
 
     // Source imports name the real file (`./foo.ts`); the compiler rewrites the
     // specifier to `./foo.js` on emit. Keeps source honest and output correct

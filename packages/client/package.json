@@ -1,0 +1,27 @@
+{
+  "name": "@searchgres/client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runtime-neutral JSON-RPC client for searchgres.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:unit": "node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@searchgres/protocol": "file:../protocol"
+  }
+}
