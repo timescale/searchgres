@@ -9,11 +9,12 @@ COPY packages/server/package.json packages/server/package.json
 COPY packages/cli/package.json packages/cli/package.json
 RUN bun install --frozen-lockfile
 COPY . .
-# The image's bun is already the pinned version, so drive the package scripts
-# directly: the root `compile` script goes through ./bun, which would download
-# a redundant second copy into the build layer.
-RUN bun run --filter @searchgres/server bundle:tokenizer-worker \
-  && bun run --filter @searchgres/cli compile
+# The scripts invoke bun as ./bun (or ../../bun), which downloads the pinned
+# version. This image already *is* that version, so shim those paths to the
+# image's bun and skip a redundant ~100MB download per build.
+RUN printf '#!/bin/sh\nexec bun "$@"\n' > ./bun \
+  && chmod +x ./bun \
+  && bun run compile
 
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \

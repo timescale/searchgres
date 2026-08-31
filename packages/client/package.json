@@ -22,6 +22,6 @@
     "test:unit": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@searchgres/protocol": "file:../protocol"
+    "@searchgres/protocol": "workspace:*"
   }
 }

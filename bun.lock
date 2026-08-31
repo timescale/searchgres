@@ -19,17 +19,17 @@
       },
       "dependencies": {
         "@clack/prompts": "^0.11.0",
-        "@searchgres/client": "file:../client",
-        "@searchgres/server": "file:../server",
+        "@searchgres/client": "workspace:*",
+        "@searchgres/server": "workspace:*",
         "commander": "^14.0.0",
-        "searchgres": "file:../core",
+        "searchgres": "workspace:*",
       },
     },
     "packages/client": {
       "name": "@searchgres/client",
       "version": "0.0.0",
       "dependencies": {
-        "@searchgres/protocol": "file:../protocol",
+        "@searchgres/protocol": "workspace:*",
       },
     },
     "packages/core": {
@@ -60,10 +60,10 @@
       "dependencies": {
         "@ai-sdk/openai": "^4.0.52",
         "@huggingface/tokenizers": "^0.1.3",
-        "@searchgres/protocol": "file:../protocol",
+        "@searchgres/protocol": "workspace:*",
         "gpt-tokenizer": "^3.4.0",
         "postgres": "^3.4.9",
-        "searchgres": "file:../core",
+        "searchgres": "workspace:*",
       },
     },
   },
@@ -206,26 +206,8 @@
 
     "@ai-sdk/gateway/@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@5.0.30", "", { "dependencies": { "@ai-sdk/provider": "4.0.8", "@standard-schema/spec": "^1.1.0", "@workflow/serde": "4.1.0", "eventsource-parser": "^3.0.8", "undici": "^7.28.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-9TyxUXolql77ntHIeygLqt7PO1O0HZPB73cJhLG2OsPecSBRIZhNXLxT1T7rlL6Zpm1eDoLMFrMV99kAJ28/Sg=="],
 
-    "@searchgres/cli/@searchgres/client": ["@searchgres/client@file:packages/client", { "dependencies": { "@searchgres/protocol": "file:../protocol" } }],
-
-    "@searchgres/cli/@searchgres/server": ["@searchgres/server@file:packages/server", { "dependencies": { "@ai-sdk/openai": "^4.0.52", "@huggingface/tokenizers": "^0.1.3", "@searchgres/protocol": "file:../protocol", "gpt-tokenizer": "^3.4.0", "postgres": "^3.4.9", "searchgres": "file:../core" } }],
-
-    "@searchgres/cli/searchgres": ["searchgres@file:packages/core", { "dependencies": { "@opentelemetry/api": "^1.9.1", "ai": "^7.0.79", "postgres": "^3.4.9", "semver": "^7.8.5", "zod": "^4.4.3" }, "devDependencies": { "@opentelemetry/sdk-trace-base": "^2.10.0", "@types/semver": "^7.8.0" } }],
-
-    "@searchgres/client/@searchgres/protocol": ["@searchgres/protocol@file:packages/protocol", { "dependencies": { "zod": "^4.4.3" } }],
-
-    "@searchgres/server/@searchgres/protocol": ["@searchgres/protocol@file:packages/protocol", { "dependencies": { "zod": "^4.4.3" } }],
-
-    "@searchgres/server/searchgres": ["searchgres@file:packages/core", { "dependencies": { "@opentelemetry/api": "^1.9.1", "ai": "^7.0.79", "postgres": "^3.4.9", "semver": "^7.8.5", "zod": "^4.4.3" }, "devDependencies": { "@opentelemetry/sdk-trace-base": "^2.10.0", "@types/semver": "^7.8.0" } }],
-
     "ai/@ai-sdk/provider": ["@ai-sdk/provider@4.0.8", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-aWO7iwhFUGf347tCwNGggggfmZigaSu7TF739IZSrWWABUp7zkb4Cr3fMqvBe5EIS7ABJJu3Cadn0g/zs1G0QQ=="],
 
     "ai/@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@5.0.30", "", { "dependencies": { "@ai-sdk/provider": "4.0.8", "@standard-schema/spec": "^1.1.0", "@workflow/serde": "4.1.0", "eventsource-parser": "^3.0.8", "undici": "^7.28.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-9TyxUXolql77ntHIeygLqt7PO1O0HZPB73cJhLG2OsPecSBRIZhNXLxT1T7rlL6Zpm1eDoLMFrMV99kAJ28/Sg=="],
-
-    "@searchgres/cli/@searchgres/client/@searchgres/protocol": ["@searchgres/protocol@file:packages/protocol", {}],
-
-    "@searchgres/cli/@searchgres/server/@searchgres/protocol": ["@searchgres/protocol@file:packages/protocol", {}],
-
-    "@searchgres/cli/@searchgres/server/searchgres": ["searchgres@file:packages/core", {}],
   }
 }

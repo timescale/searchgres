@@ -14,15 +14,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
-    "compile": "bun build ./src/bin.ts --compile --outfile dist/sg",
-    "compile:all": "bun scripts/compile-all.ts",
+    "compile": "../../bun build ./src/bin.ts --compile --outfile dist/sg",
+    "compile:all": "../../bun scripts/compile-all.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
-    "@searchgres/client": "file:../client",
-    "@searchgres/server": "file:../server",
+    "@searchgres/client": "workspace:*",
+    "@searchgres/server": "workspace:*",
     "commander": "^14.0.0",
-    "searchgres": "file:../core"
+    "searchgres": "workspace:*"
   }
 }
