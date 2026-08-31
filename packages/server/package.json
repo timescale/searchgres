@@ -23,6 +23,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.52",
     "@huggingface/tokenizers": "^0.1.3",
+    "@searchgres/client": "file:../client",
     "@searchgres/protocol": "file:../protocol",
     "gpt-tokenizer": "^3.4.0",
     "postgres": "^3.4.9",

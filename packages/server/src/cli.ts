@@ -1,5 +1,6 @@
 import { mkdir, rename } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { createClient, createFetchTransport } from "@searchgres/client";
 import { JSON5, YAML } from "bun";
 import postgres from "postgres";
 import { createIndex, dropIndex } from "searchgres";
@@ -37,6 +38,10 @@ export async function runCommand(argv: readonly string[]): Promise<void> {
     await runDestroy(args);
     return;
   }
+  if (command === "info" || command === "search") {
+    await runRemote(command, args);
+    return;
+  }
   if (command === "--help" || command === "-h" || command === undefined) {
     console.log(usage);
     return;
@@ -59,6 +64,46 @@ async function runServer(args: readonly string[]): Promise<void> {
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+}
+
+async function runRemote(
+  command: "info" | "search",
+  args: readonly string[],
+): Promise<void> {
+  const flags = parseFlags(args);
+  rejectUnknownFlags(
+    flags,
+    new Set(["server", "semantic", "fulltext", "tree", "limit"]),
+  );
+  const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
+  if (!server) throw new Error("--server or SEARCHGRES_URL is required");
+  const client = createClient({
+    transport: createFetchTransport({
+      url: `${server.replace(/\/$/, "")}/rpc`,
+    }),
+  });
+  if (command === "info") {
+    if (flags.size !== (flags.has("server") ? 1 : 0))
+      throw new Error("sg info accepts only --server");
+    console.log(JSON.stringify(await client.info()));
+    return;
+  }
+  const semantic = optionalFlag(flags, "semantic");
+  const fulltext = optionalFlag(flags, "fulltext");
+  const tree = optionalFlag(flags, "tree");
+  const limit = optionalFlag(flags, "limit");
+  if (!semantic && !fulltext && !tree)
+    throw new Error("search requires --semantic, --fulltext, or --tree");
+  console.log(
+    JSON.stringify(
+      await client.search({
+        ...(semantic ? { semantic } : {}),
+        ...(fulltext ? { fulltext } : {}),
+        ...(tree ? { filter: { tree } } : {}),
+        ...(limit ? { limit: positiveInteger(limit, "limit") } : {}),
+      }),
+    ),
+  );
 }
 
 async function runDestroy(args: readonly string[]): Promise<void> {
