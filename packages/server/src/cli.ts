@@ -38,7 +38,7 @@ export async function runCommand(argv: readonly string[]): Promise<void> {
     await runDestroy(args);
     return;
   }
-  if (command === "info" || command === "search") {
+  if (command && remoteMethod(command)) {
     await runRemote(command, args);
     return;
   }
@@ -66,44 +66,136 @@ async function runServer(args: readonly string[]): Promise<void> {
   process.once("SIGTERM", stop);
 }
 
+function remoteMethod(command: string): string | undefined {
+  return {
+    info: "searchgres.v1.server.info",
+    upsert: "searchgres.v1.record.upsert",
+    "upsert-many": "searchgres.v1.record.upsertMany",
+    insert: "searchgres.v1.record.insert",
+    "insert-many": "searchgres.v1.record.insertMany",
+    get: "searchgres.v1.record.get",
+    "get-by-name": "searchgres.v1.record.getByName",
+    patch: "searchgres.v1.record.patch",
+    delete: "searchgres.v1.record.delete",
+    "delete-by-name": "searchgres.v1.record.deleteByName",
+    move: "searchgres.v1.tree.move",
+    copy: "searchgres.v1.tree.copy",
+    deltree: "searchgres.v1.tree.delete",
+    count: "searchgres.v1.tree.count",
+    list: "searchgres.v1.tree.list",
+    search: "searchgres.v1.search",
+  }[command];
+}
+
 async function runRemote(
-  command: "info" | "search",
+  command: string,
   args: readonly string[],
 ): Promise<void> {
   const flags = parseFlags(args);
-  rejectUnknownFlags(
-    flags,
-    new Set(["server", "semantic", "fulltext", "tree", "limit"]),
-  );
   const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
   if (!server) throw new Error("--server or SEARCHGRES_URL is required");
+  const outputFormat = optionalFlag(flags, "output-format") ?? "json";
+  const input = await readStructuredInput(
+    optionalFlag(flags, "input"),
+    optionalFlag(flags, "input-format"),
+  );
+  const params = input ?? paramsFromFlags(command, flags);
   const client = createClient({
     transport: createFetchTransport({
       url: `${server.replace(/\/$/, "")}/rpc`,
     }),
   });
-  if (command === "info") {
-    if (flags.size !== (flags.has("server") ? 1 : 0))
-      throw new Error("sg info accepts only --server");
-    console.log(JSON.stringify(await client.info()));
-    return;
-  }
-  const semantic = optionalFlag(flags, "semantic");
-  const fulltext = optionalFlag(flags, "fulltext");
-  const tree = optionalFlag(flags, "tree");
-  const limit = optionalFlag(flags, "limit");
-  if (!semantic && !fulltext && !tree)
-    throw new Error("search requires --semantic, --fulltext, or --tree");
-  console.log(
-    JSON.stringify(
-      await client.search({
-        ...(semantic ? { semantic } : {}),
-        ...(fulltext ? { fulltext } : {}),
-        ...(tree ? { filter: { tree } } : {}),
-        ...(limit ? { limit: positiveInteger(limit, "limit") } : {}),
-      }),
-    ),
+  const result = await client.call(
+    remoteMethod(command) as never,
+    params as never,
   );
+  writeStructuredOutput(result, outputFormat);
+}
+
+function paramsFromFlags(
+  command: string,
+  flags: Map<string, string | true>,
+): unknown {
+  const value = (name: string) => requiredFlag(flags, name);
+  const dry = flags.has("dry-run") ? { options: { dryRun: true } } : {};
+  if (command === "info") return undefined;
+  if (command === "get" || command === "delete") return { id: value("id") };
+  if (command === "get-by-name" || command === "delete-by-name")
+    return { tree: value("tree"), name: value("name") };
+  if (command === "move" || command === "copy")
+    return {
+      source: value("source"),
+      destination: value("destination"),
+      ...dry,
+    };
+  if (command === "deltree") return { tree: value("tree"), ...dry };
+  if (command === "list") return { lquery: value("lquery") };
+  if (command === "count") {
+    const names = ["tree", "lquery", "ltxtquery"].filter((name) =>
+      optionalFlag(flags, name),
+    );
+    if (names.length !== 1)
+      throw new Error(
+        "count requires exactly one of --tree, --lquery, or --ltxtquery",
+      );
+    const name = names[0]!;
+    return {
+      selector: { [name]: value(name) },
+      ...(optionalFlag(flags, "limit")
+        ? { limit: positiveInteger(value("limit"), "limit") }
+        : {}),
+    };
+  }
+  if (command === "search") {
+    const semantic = optionalFlag(flags, "semantic");
+    const fulltext = optionalFlag(flags, "fulltext");
+    const tree = optionalFlag(flags, "tree");
+    if (!semantic && !fulltext && !tree)
+      throw new Error(
+        "search requires --input, --semantic, --fulltext, or --tree",
+      );
+    return {
+      ...(semantic ? { semantic } : {}),
+      ...(fulltext ? { fulltext } : {}),
+      ...(tree ? { filter: { tree } } : {}),
+      ...(optionalFlag(flags, "limit")
+        ? { limit: positiveInteger(value("limit"), "limit") }
+        : {}),
+    };
+  }
+  throw new Error(`${command} requires --input`);
+}
+
+async function readStructuredInput(
+  input: string | undefined,
+  format: string | undefined,
+): Promise<unknown | undefined> {
+  if (!input) return undefined;
+  const source =
+    input === "-"
+      ? await Bun.stdin.text()
+      : input.startsWith("@")
+        ? await Bun.file(input.slice(1)).text()
+        : input;
+  const kind =
+    format ??
+    (input.endsWith(".json5")
+      ? "json5"
+      : input.endsWith(".yaml") || input.endsWith(".yml")
+        ? "yaml"
+        : "json");
+  if (kind === "json") return JSON.parse(source);
+  if (kind === "json5") return JSON5.parse(source);
+  if (kind === "yaml") return YAML.parse(source);
+  throw new Error("NDJSON input is not yet supported");
+}
+function writeStructuredOutput(value: unknown, format: string): void {
+  if (format === "json") return void console.log(JSON.stringify(value));
+  if (format === "json5")
+    return void console.log(JSON5.stringify(value, null, 2));
+  if (format === "yaml") return void console.log(YAML.stringify(value));
+  if (format === "ndjson") return void console.log(JSON.stringify(value));
+  throw new Error("--output-format must be json, ndjson, json5, or yaml");
 }
 
 async function runDestroy(args: readonly string[]): Promise<void> {
