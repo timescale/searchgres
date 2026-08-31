@@ -2,12 +2,13 @@ import { mkdir, rename } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { JSON5, YAML } from "bun";
 import postgres from "postgres";
-import { createIndex } from "searchgres";
+import { createIndex, dropIndex } from "searchgres";
 import { parseServerConfig } from "./config.ts";
 import { startServer } from "./server.ts";
 
 const usage = `Usage:
   sg server --config <config.yaml|config.json5>
+  sg destroy --config <config.yaml|config.json5> --yes
   sg init --config <path> --database-url-env <name> --schema <schema>
           --embedding-model <model> --dimensions <n> [options]
 
@@ -32,6 +33,10 @@ export async function runCommand(argv: readonly string[]): Promise<void> {
     await runInit(args);
     return;
   }
+  if (command === "destroy") {
+    await runDestroy(args);
+    return;
+  }
   if (command === "--help" || command === "-h" || command === undefined) {
     console.log(usage);
     return;
@@ -54,6 +59,30 @@ async function runServer(args: readonly string[]): Promise<void> {
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+}
+
+async function runDestroy(args: readonly string[]): Promise<void> {
+  const flags = parseFlags(args);
+  rejectUnknownFlags(flags, new Set(["config", "yes"]));
+  if (!flags.has("yes")) {
+    throw new Error("sg destroy is destructive; pass --yes to confirm");
+  }
+  const configPath = requiredFlag(flags, "config");
+  const { loadServerConfig } = await import("./config.ts");
+  const config = await loadServerConfig(configPath);
+  const databaseUrl = process.env[config.database.urlEnv];
+  if (!databaseUrl) {
+    throw new Error(
+      `Environment variable ${config.database.urlEnv} is required to destroy this index`,
+    );
+  }
+  const sql = postgres(databaseUrl, { max: 1 });
+  try {
+    await dropIndex(sql, config.index.schema);
+  } finally {
+    await sql.end();
+  }
+  console.log(`Destroyed index ${JSON.stringify(config.index.schema)}`);
 }
 
 async function runInit(args: readonly string[]): Promise<void> {
