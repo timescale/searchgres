@@ -16,6 +16,7 @@ import {
   InvalidConfigError,
   noTruncation,
   openIndex,
+  type PatchInput,
   SearchgresError,
   type SearchOptions,
   type SearchResult,
@@ -246,12 +247,64 @@ async function invoke(
           workerManagedByServer: true,
         },
       };
+    case "searchgres.v1.record.upsert": {
+      const input = methods[method].params.parse(params);
+      const result = await index.upsert(input.record as UpsertRecord, {
+        onConflict: input.onConflict,
+      });
+      return { result: mapUpsertResult(result) };
+    }
     case "searchgres.v1.record.upsertMany": {
       const input = methods[method].params.parse(params);
       const results = await index.upsertMany(input.records as UpsertRecord[], {
         onConflict: input.onConflict,
       });
       return { results: results.map(mapUpsertResult) };
+    }
+    case "searchgres.v1.record.insert": {
+      const input = methods[method].params.parse(params);
+      return {
+        result: mapUpsertResult(
+          await index.insert(input.record as UpsertRecord),
+        ),
+      };
+    }
+    case "searchgres.v1.record.insertMany": {
+      const input = methods[method].params.parse(params);
+      const results = await index.insertMany(input.records as UpsertRecord[]);
+      return { results: results.map(mapUpsertResult) };
+    }
+    case "searchgres.v1.record.get": {
+      const input = methods[method].params.parse(params);
+      return { record: mapStoredRecord(await index.get(input.id)) };
+    }
+    case "searchgres.v1.record.getByName": {
+      const input = methods[method].params.parse(params);
+      return {
+        record: mapStoredRecord(await index.getByName(input.tree, input.name)),
+      };
+    }
+    case "searchgres.v1.record.patch": {
+      const input = methods[method].params.parse(params);
+      return {
+        record: mapStoredRecord(
+          await index.patch(
+            input.id,
+            input.priorVersionHash,
+            input.patch as PatchInput,
+          ),
+        ),
+      };
+    }
+    case "searchgres.v1.record.delete": {
+      const input = methods[method].params.parse(params);
+      await index.delete(input.id);
+      return {};
+    }
+    case "searchgres.v1.record.deleteByName": {
+      const input = methods[method].params.parse(params);
+      await index.deleteByName(input.tree, input.name);
+      return {};
     }
     case "searchgres.v1.search": {
       const input = methods[method].params.parse(params);

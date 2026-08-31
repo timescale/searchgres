@@ -118,6 +118,16 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   });
   expect(upsert.results).toHaveLength(2);
 
+  const cat = await client.getByName({ tree: "pets", name: "cat" });
+  expect(cat.record.content).toBe("A cat naps in the sun");
+  expect((await client.get({ id: cat.record.id })).record.name).toBe("cat");
+  const patched = await client.patch({
+    id: cat.record.id,
+    priorVersionHash: cat.record.versionHash,
+    patch: { meta: { species: "cat" } },
+  });
+  expect(patched.record.meta).toEqual({ species: "cat" });
+
   const semantic = await eventually(async () => {
     const result = await client.search({ semantic: "cat", limit: 10 });
     return result.results[0]?.content === "A cat naps in the sun" &&
@@ -134,6 +144,30 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   });
   expect(hybrid.results[0]?.name).toBe("cat");
   expect(hybrid.results[0]?.score).toBeGreaterThan(0);
+
+  const bird = await client.upsert({
+    record: { content: "A bird sings", tree: "pets", name: "bird" },
+  });
+  expect(bird.result.status).toBe("inserted");
+  expect(
+    (
+      await client.insert({
+        record: { content: "A fish swims", tree: "pets", name: "fish" },
+      })
+    ).result.status,
+  ).toBe("inserted");
+  expect(
+    (
+      await client.insertMany({
+        records: [
+          { content: "A hamster runs", tree: "pets", name: "hamster" },
+          { content: "A lizard rests", tree: "pets", name: "lizard" },
+        ],
+      })
+    ).results,
+  ).toHaveLength(2);
+  await client.delete({ id: bird.result.id });
+  await client.deleteByName({ tree: "pets", name: "fish" });
 });
 
 function embeddingFor(input: string): number[] {

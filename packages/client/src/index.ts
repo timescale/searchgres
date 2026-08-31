@@ -1,5 +1,12 @@
 import {
+  type DeleteByNameParams,
+  type DeleteParams,
+  type GetByNameParams,
+  type GetParams,
+  type InsertManyParams,
+  type InsertParams,
   methods,
+  type PatchParams,
   type RpcError,
   type RpcMethod,
   type RpcParams,
@@ -9,6 +16,7 @@ import {
   rpcSuccessResponseSchema,
   type SearchParams,
   type UpsertManyParams,
+  type UpsertParams,
 } from "@searchgres/protocol";
 import { z } from "zod";
 
@@ -99,10 +107,42 @@ export interface SearchgresClient {
   info(options?: {
     readonly signal?: AbortSignal;
   }): Promise<RpcResult<"searchgres.v1.server.info">>;
+  upsert(
+    params: UpsertParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.upsert">>;
   upsertMany(
     params: UpsertManyParams,
     options?: { readonly signal?: AbortSignal },
   ): Promise<RpcResult<"searchgres.v1.record.upsertMany">>;
+  insert(
+    params: InsertParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.insert">>;
+  insertMany(
+    params: InsertManyParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.insertMany">>;
+  get(
+    params: GetParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.get">>;
+  getByName(
+    params: GetByNameParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.getByName">>;
+  patch(
+    params: PatchParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.patch">>;
+  delete(
+    params: DeleteParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.delete">>;
+  deleteByName(
+    params: DeleteByNameParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.record.deleteByName">>;
   search(
     params: SearchParams,
     options?: { readonly signal?: AbortSignal },
@@ -172,8 +212,24 @@ export function createClient(
     discover: (callOptions) => call("rpc.discover", undefined, callOptions),
     info: (callOptions) =>
       call("searchgres.v1.server.info", undefined, callOptions),
+    upsert: (params, callOptions) =>
+      call("searchgres.v1.record.upsert", params, callOptions),
     upsertMany: (params, callOptions) =>
       call("searchgres.v1.record.upsertMany", params, callOptions),
+    insert: (params, callOptions) =>
+      call("searchgres.v1.record.insert", params, callOptions),
+    insertMany: (params, callOptions) =>
+      call("searchgres.v1.record.insertMany", params, callOptions),
+    get: (params, callOptions) =>
+      call("searchgres.v1.record.get", params, callOptions),
+    getByName: (params, callOptions) =>
+      call("searchgres.v1.record.getByName", params, callOptions),
+    patch: (params, callOptions) =>
+      call("searchgres.v1.record.patch", params, callOptions),
+    delete: (params, callOptions) =>
+      call("searchgres.v1.record.delete", params, callOptions),
+    deleteByName: (params, callOptions) =>
+      call("searchgres.v1.record.deleteByName", params, callOptions),
     search: (params, callOptions) =>
       call("searchgres.v1.search", params, callOptions),
   };

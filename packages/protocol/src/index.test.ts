@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   createOpenRpcDocument,
   methods,
+  patchParamsSchema,
   searchParamsSchema,
   upsertManyParamsSchema,
 } from "./index.ts";
@@ -13,6 +14,17 @@ test("server wire records reject user-supplied embeddings", () => {
     records: [{ content: "hello", embedding: [1, 2, 3] }],
   });
   assert.equal(result.success, false);
+});
+
+test("record patches reject a user-supplied embedding", () => {
+  assert.equal(
+    patchParamsSchema.safeParse({
+      id: "019ce89d-f8b4-7000-8000-000000000001",
+      priorVersionHash: "prior",
+      patch: { embedding: [1, 2, 3] },
+    }).success,
+    false,
+  );
 });
 
 test("search wire schema retains core hybrid and paging constraints", () => {
@@ -40,7 +52,15 @@ test("generated OpenRPC document describes the vertical slice", () => {
     [
       "rpc.discover",
       "searchgres.v1.server.info",
+      "searchgres.v1.record.upsert",
       "searchgres.v1.record.upsertMany",
+      "searchgres.v1.record.insert",
+      "searchgres.v1.record.insertMany",
+      "searchgres.v1.record.get",
+      "searchgres.v1.record.getByName",
+      "searchgres.v1.record.patch",
+      "searchgres.v1.record.delete",
+      "searchgres.v1.record.deleteByName",
       "searchgres.v1.search",
     ],
   );

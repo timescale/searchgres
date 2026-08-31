@@ -105,13 +105,55 @@ export const filterSchema: z.ZodType<FilterNode> = z.lazy(() =>
   ]),
 );
 
+const onConflictSchema = z.enum(["error", "ignore", "replace"]);
+const recordArraySchema = z.array(recordInputSchema).min(1).max(1000);
+
+export const upsertParamsSchema = z.strictObject({
+  record: recordInputSchema,
+  onConflict: onConflictSchema.default("replace"),
+});
+export const upsertResultEnvelopeSchema = z.strictObject({
+  result: upsertResultSchema,
+});
 export const upsertManyParamsSchema = z.strictObject({
-  records: z.array(recordInputSchema).min(1).max(1000),
-  onConflict: z.enum(["error", "ignore", "replace"]).default("replace"),
+  records: recordArraySchema,
+  onConflict: onConflictSchema.default("replace"),
 });
 export const upsertManyResultSchema = z.strictObject({
   results: z.array(upsertResultSchema),
 });
+export const insertParamsSchema = z.strictObject({ record: recordInputSchema });
+export const insertManyParamsSchema = z.strictObject({
+  records: recordArraySchema,
+});
+export const getParamsSchema = z.strictObject({ id: uuidSchema });
+export const getByNameParamsSchema = z.strictObject({
+  tree: treePathSchema,
+  name: z.string().min(1),
+});
+export const storedRecordEnvelopeSchema = z.strictObject({
+  record: storedRecordSchema,
+});
+const patchInputSchema = z
+  .strictObject({
+    content: z.string().optional(),
+    meta: jsonObjectSchema.optional(),
+    tree: treePathSchema.optional(),
+    name: z.string().nullable().optional(),
+    temporal: temporalTupleSchema.nullable().optional(),
+  })
+  .refine(
+    (patch) => Object.values(patch).some((value) => value !== undefined),
+    "patch must set at least one field",
+  );
+export const patchParamsSchema = z.strictObject({
+  id: uuidSchema,
+  priorVersionHash: z.string().min(1),
+  patch: patchInputSchema,
+});
+export const deleteParamsSchema = z.strictObject({ id: uuidSchema });
+export const deleteByNameParamsSchema = getByNameParamsSchema;
+export const emptyResultSchema = z.strictObject({});
 
 export const searchParamsSchema = z
   .strictObject({
@@ -212,10 +254,50 @@ export const methods = {
     z.undefined(),
     serverInfoResultSchema,
   ),
+  "searchgres.v1.record.upsert": method(
+    "Insert or replace one record. Embeddings are server-managed.",
+    upsertParamsSchema,
+    upsertResultEnvelopeSchema,
+  ),
   "searchgres.v1.record.upsertMany": method(
     "Insert or replace up to 1,000 records. Embeddings are server-managed.",
     upsertManyParamsSchema,
     upsertManyResultSchema,
+  ),
+  "searchgres.v1.record.insert": method(
+    "Insert one record and fail on a conflict.",
+    insertParamsSchema,
+    upsertResultEnvelopeSchema,
+  ),
+  "searchgres.v1.record.insertMany": method(
+    "Insert up to 1,000 records atomically and fail on any conflict.",
+    insertManyParamsSchema,
+    upsertManyResultSchema,
+  ),
+  "searchgres.v1.record.get": method(
+    "Get one record by UUIDv7 id.",
+    getParamsSchema,
+    storedRecordEnvelopeSchema,
+  ),
+  "searchgres.v1.record.getByName": method(
+    "Get one record by its explicit tree and name.",
+    getByNameParamsSchema,
+    storedRecordEnvelopeSchema,
+  ),
+  "searchgres.v1.record.patch": method(
+    "Optimistically patch one record without accepting an embedding.",
+    patchParamsSchema,
+    storedRecordEnvelopeSchema,
+  ),
+  "searchgres.v1.record.delete": method(
+    "Delete one record by UUIDv7 id.",
+    deleteParamsSchema,
+    emptyResultSchema,
+  ),
+  "searchgres.v1.record.deleteByName": method(
+    "Delete one record by its explicit tree and name.",
+    deleteByNameParamsSchema,
+    emptyResultSchema,
   ),
   "searchgres.v1.search": method(
     "Run a filter-only, full-text, semantic-text, or hybrid search.",
@@ -316,5 +398,13 @@ export type SearchResult = z.output<typeof searchResultSchema>;
 export type UpsertResult = z.output<typeof upsertResultSchema>;
 export type Filter = z.input<typeof filterSchema>;
 export type SearchParams = z.input<typeof searchParamsSchema>;
+export type UpsertParams = z.input<typeof upsertParamsSchema>;
 export type UpsertManyParams = z.input<typeof upsertManyParamsSchema>;
+export type InsertParams = z.input<typeof insertParamsSchema>;
+export type InsertManyParams = z.input<typeof insertManyParamsSchema>;
+export type GetParams = z.input<typeof getParamsSchema>;
+export type GetByNameParams = z.input<typeof getByNameParamsSchema>;
+export type PatchParams = z.input<typeof patchParamsSchema>;
+export type DeleteParams = z.input<typeof deleteParamsSchema>;
+export type DeleteByNameParams = z.input<typeof deleteByNameParamsSchema>;
 export type RpcError = z.output<typeof rpcErrorSchema>;
