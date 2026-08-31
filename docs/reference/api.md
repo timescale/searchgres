@@ -77,8 +77,10 @@ Obtain a handle from `openIndex()`. Read-only properties: `schema`,
 
 | Method | Returns | Guide |
 | --- | --- | --- |
-| `upsert(record, options?)` | `UpsertResult` | [Ingest](../guides/ingest.md) |
-| `upsertMany(records, options?)` | `readonly UpsertResult[]` | [Ingest](../guides/ingest.md) |
+| `upsert(record, options?)` | `UpsertResult` | Replaces conflicts by default. [Ingest](../guides/ingest.md) |
+| `upsertMany(records, options?)` | `readonly UpsertResult[]` | Replaces conflicts by default. [Ingest](../guides/ingest.md) |
+| `insert(record)` | `UpsertResult` | Throws `ConflictError` on a conflict. [Ingest](../guides/ingest.md) |
+| `insertMany(records)` | `readonly UpsertResult[]` | Throws `ConflictError` on any conflict. [Ingest](../guides/ingest.md) |
 
 ```ts
 type UpsertRecord = {

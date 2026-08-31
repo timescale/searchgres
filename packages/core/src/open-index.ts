@@ -64,10 +64,18 @@ const REQUIRED_EXTENSIONS = [
  * a caller transaction. Obtained via {@link Index.with}.
  */
 export interface TransactionIndex {
+  /** Insert one record, replacing a conflict by default. */
   upsert(record: UpsertRecord, options?: UpsertOptions): Promise<UpsertResult>;
+  /** Insert records, replacing conflicts by default. */
   upsertMany(
     records: readonly UpsertRecord[],
     options?: UpsertOptions,
+  ): Promise<readonly UpsertResult[]>;
+  /** Insert one record and throw {@link ConflictError} if it already exists. */
+  insert(record: UpsertRecord): Promise<UpsertResult>;
+  /** Insert records and throw {@link ConflictError} if any already exist. */
+  insertMany(
+    records: readonly UpsertRecord[],
   ): Promise<readonly UpsertResult[]>;
   search(options?: SearchOptions): Promise<readonly SearchResult[]>;
   get(id: string): Promise<StoredRecord>;
@@ -136,7 +144,7 @@ export class Index implements TransactionIndex {
     this.truncate = options.truncate;
   }
 
-  /** Insert one record, or resolve a conflict according to `options`. */
+  /** Insert one record, replacing a conflict by default. */
   async upsert(
     record: UpsertRecord,
     options?: UpsertOptions,
@@ -154,6 +162,18 @@ export class Index implements TransactionIndex {
     options?: UpsertOptions,
   ): Promise<readonly UpsertResult[]> {
     return upsertMany(this, records, options);
+  }
+
+  /** Insert one record and throw {@link ConflictError} if it already exists. */
+  async insert(record: UpsertRecord): Promise<UpsertResult> {
+    return this.upsert(record, { onConflict: "error" });
+  }
+
+  /** Insert records and throw {@link ConflictError} if any already exist. */
+  async insertMany(
+    records: readonly UpsertRecord[],
+  ): Promise<readonly UpsertResult[]> {
+    return this.upsertMany(records, { onConflict: "error" });
   }
 
   /**

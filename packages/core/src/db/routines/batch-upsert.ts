@@ -22,7 +22,7 @@ export async function createBatchUpsertRoutine(
         , _temporals tstzrange[]
         , _names text[]
         , _embeddings public.${tx(vectorType)}[]
-        , _on_conflict text default 'error'
+        , _on_conflict text default 'replace'
         )
         returns table (ord bigint, id uuid, status text)
         language plpgsql volatile security invoker

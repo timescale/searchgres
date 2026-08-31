@@ -73,16 +73,21 @@ otherwise its explicit `id`. An anonymous record (no name, no id) always inserts
 `onConflict` chooses what happens when that key already exists:
 
 ```ts
-await index.upsert(record, { onConflict: "error" });   // default: throw
+await index.upsert(record);                              // default: replace
+await index.upsert(record, { onConflict: "error" });   // throw
 await index.upsert(record, { onConflict: "ignore" });  // keep existing, skip
 await index.upsert(record, { onConflict: "replace" }); // overwrite if changed
+
+await index.insert(record);      // equivalent to upsert(..., { onConflict: "error" })
+await index.insertMany(records); // same conflict behavior for a batch
 ```
 
-- **`error`** (default) throws [`ConflictError`](../reference/errors.md) and rolls
-  back the whole batch if any input conflicts.
+- **`replace`** (default) updates in place, but only when a field actually
+  differs; an identical replace reports `"skipped"`, so re-running an import is
+  a no-op.
+- **`error`** throws [`ConflictError`](../reference/errors.md) and rolls back the
+  whole batch if any input conflicts. `insert` and `insertMany` always use it.
 - **`ignore`** leaves the existing record and reports `"skipped"`.
-- **`replace`** updates in place, but only when a field actually differs; an
-  identical replace reports `"skipped"`, so re-running an import is a no-op.
 
 ### Idempotent document ingest
 

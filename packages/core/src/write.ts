@@ -37,10 +37,10 @@ const recordSchema = z
 
 const upsertOptionsSchema = z
   .object({
-    onConflict: z.enum(["error", "ignore", "replace"]).default("error"),
+    onConflict: z.enum(["error", "ignore", "replace"]).default("replace"),
   })
   .strict()
-  .default({ onConflict: "error" });
+  .default({ onConflict: "replace" });
 
 /** One record to insert or replace. */
 export type UpsertRecord = z.input<typeof recordSchema>;

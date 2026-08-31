@@ -123,7 +123,7 @@ test("upsert methods preserve input order, normalize temporal values, and queue 
   }
 });
 
-test("error conflicts roll back the full batch and ignore reports skipped inputs", async () => {
+test("insert conflicts roll back the full batch and ignore reports skipped inputs", async () => {
   const schema = randomTestSchema();
   try {
     await createIndex(sql, schema, { dimensions: 4 });
@@ -144,8 +144,13 @@ test("error conflicts roll back the full batch and ignore reports skipped inputs
     );
 
     await assert.rejects(
+      () => index.insert({ content: "conflict", tree: "docs", name: "same" }),
+      ConflictError,
+    );
+
+    await assert.rejects(
       () =>
-        index.upsertMany([
+        index.insertMany([
           { content: "conflict", tree: "docs", name: "same" },
           {
             id: "019ce89d-f8b4-7000-8000-000000000001",
@@ -183,7 +188,7 @@ test("error conflicts roll back the full batch and ignore reports skipped inputs
   }
 });
 
-test("replace updates changed fields, preserves current embeddings, and skips unchanged rows", async () => {
+test("upsert replaces by default, preserves current embeddings, and skips unchanged rows", async () => {
   const schema = randomTestSchema();
   try {
     await createIndex(sql, schema, { dimensions: 4 });
@@ -198,15 +203,12 @@ test("replace updates changed fields, preserves current embeddings, and skips un
     const record = sql`${sql(schema)}.record`;
     const queue = sql`${sql(schema)}.embedding_queue`;
 
-    const metadataReplacement = await index.upsert(
-      {
-        content: "first",
-        tree: "docs",
-        name: "entry",
-        meta: { revision: 2 },
-      },
-      { onConflict: "replace" },
-    );
+    const metadataReplacement = await index.upsert({
+      content: "first",
+      tree: "docs",
+      name: "entry",
+      meta: { revision: 2 },
+    });
     assert.equal(metadataReplacement.status, "updated");
     assert.equal(metadataReplacement.id, created.id);
 

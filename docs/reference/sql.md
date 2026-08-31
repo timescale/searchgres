@@ -40,7 +40,7 @@ nothing matches.
 ## Writing records
 
 `batch_upsert` takes parallel arrays (one element per record) plus a conflict
-mode, and returns one `(ord, id, status)` row per input in order.
+mode (defaulting to `replace`), and returns one `(ord, id, status)` row per input in order.
 
 ```sql
 select ord, id, status
