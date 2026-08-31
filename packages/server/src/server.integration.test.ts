@@ -1,39 +1,35 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
 import postgres, { type Sql } from "postgres";
 import { createIndex, dropIndex } from "searchgres";
 import { createSearchgresClient } from "../../client/src/index.ts";
-import { parseServerConfig } from "./config.ts";
-import { type RunningServer, startServer } from "./server.ts";
 
 const databaseUrl =
   process.env.TEST_DATABASE_URL ??
   "postgresql://postgres@127.0.0.1:5432/postgres";
 const schema = `sgtest_server_${crypto.randomUUID().replaceAll("-", "")}`;
 const databaseEnvironment = "SEARCHGRES_SERVER_TEST_DATABASE_URL";
-const originalDatabaseEnvironment = process.env[databaseEnvironment];
+const configPath = `/tmp/searchgres-server-${process.pid}.yaml`;
 
 let sql: Sql;
 let fakeEmbeddings: ReturnType<typeof Bun.serve>;
-let server: RunningServer;
+let server: Bun.Subprocess | undefined;
+let serverUrl: URL;
 
 afterAll(async () => {
-  await server?.stop();
+  server?.kill("SIGTERM");
+  await server?.exited;
   fakeEmbeddings?.stop(true);
+  await rm(configPath, { force: true });
   if (sql) {
     await dropIndex(sql, schema);
     await sql.end();
-  }
-  if (originalDatabaseEnvironment === undefined) {
-    delete process.env[databaseEnvironment];
-  } else {
-    process.env[databaseEnvironment] = originalDatabaseEnvironment;
   }
 });
 
 beforeAll(async () => {
   sql = postgres(databaseUrl, { onnotice: () => {} });
   await createIndex(sql, schema, { dimensions: 4 });
-  process.env[databaseEnvironment] = databaseUrl;
 
   fakeEmbeddings = Bun.serve({
     port: 0,
@@ -66,27 +62,41 @@ beforeAll(async () => {
     },
   });
 
-  server = await startServer(
-    parseServerConfig({
-      version: 1,
-      server: { listen: { host: "127.0.0.1", port: await unusedPort() } },
-      database: { urlEnv: databaseEnvironment },
-      index: {
-        schema,
-        embedding: {
-          provider: "openai-compatible",
-          model: "deterministic-test-model",
-          baseUrl: `${fakeEmbeddings.url.toString().replace(/\/$/, "")}/v1`,
-        },
-        truncate: { kind: "none" },
-        worker: { interval: "10ms", batchSize: 10 },
-      },
-    }),
+  const port = await unusedPort();
+  serverUrl = new URL(`http://127.0.0.1:${port}/`);
+  await Bun.write(
+    configPath,
+    `version: 1
+server:
+  listen:
+    host: 127.0.0.1
+    port: ${port}
+database:
+  urlEnv: ${databaseEnvironment}
+index:
+  schema: ${schema}
+  embedding:
+    provider: openai-compatible
+    model: deterministic-test-model
+    baseUrl: ${fakeEmbeddings.url.toString().replace(/\/$/, "")}/v1
+  truncate:
+    kind: none
+  worker:
+    interval: 10ms
+    batchSize: 10
+`,
   );
+  server = Bun.spawn({
+    cmd: ["./dist/sg", "server", "--config", configPath],
+    env: { ...process.env, [databaseEnvironment]: databaseUrl },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  await waitForReady(serverUrl, server);
 });
 
-test("client writes through the queue and performs semantic and hybrid search", async () => {
-  const client = createSearchgresClient({ url: new URL("rpc", server.url) });
+test("compiled sg writes through the queue and performs semantic and hybrid search", async () => {
+  const client = createSearchgresClient({ url: new URL("rpc", serverUrl) });
   const upsert = await client.upsertMany({
     records: [
       { content: "A cat naps in the sun", tree: "pets", name: "cat" },
@@ -132,6 +142,34 @@ async function unusedPort(): Promise<number> {
     throw new Error("Bun did not assign an ephemeral port");
   }
   return port;
+}
+
+async function waitForReady(url: URL, process: Bun.Subprocess): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (process.exitCode !== null) {
+      const stderr = await processStderr(process);
+      throw new Error(`Compiled sg exited before readiness: ${stderr}`);
+    }
+    try {
+      const response = await fetch(new URL("readyz", url));
+      if (response.status === 204) {
+        return;
+      }
+    } catch {
+      // The listener may not be bound yet.
+    }
+    await Bun.sleep(25);
+  }
+  const stderr = await processStderr(process);
+  throw new Error(`Timed out waiting for compiled sg readiness: ${stderr}`);
+}
+
+async function processStderr(process: Bun.Subprocess): Promise<string> {
+  const { stderr } = process;
+  return typeof stderr === "number" || stderr === undefined
+    ? ""
+    : new Response(stderr).text();
 }
 
 async function eventually<T>(
