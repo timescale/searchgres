@@ -1,14 +1,19 @@
-FROM oven/bun:1.4 AS build
+# Keep this tag in step with the version pinned in /bun.
+FROM oven/bun:1.4.0 AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/package.json
 COPY packages/protocol/package.json packages/protocol/package.json
 COPY packages/client/package.json packages/client/package.json
 COPY packages/server/package.json packages/server/package.json
 COPY packages/cli/package.json packages/cli/package.json
-RUN npm ci
+RUN bun install --frozen-lockfile
 COPY . .
-RUN npm run compile --workspace=@searchgres/cli
+# The image's bun is already the pinned version, so drive the package scripts
+# directly: the root `compile` script goes through ./bun, which would download
+# a redundant second copy into the build layer.
+RUN bun run --filter @searchgres/server bundle:tokenizer-worker \
+  && bun run --filter @searchgres/cli compile
 
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \

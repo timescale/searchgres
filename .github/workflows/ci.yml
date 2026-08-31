@@ -19,17 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run build
+      - run: ./bun install --frozen-lockfile
+      - run: ./bun run typecheck
+      - run: ./bun run lint
 
   test:
     name: Unit tests (node ${{ matrix.node }})
@@ -46,15 +38,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-      - run: npm ci
-      - run: npm run test:unit
+      - run: ./bun install --frozen-lockfile
+      # Same script as local runs, so CI can't diverge from what developers
+      # verify against. The libraries' suites run on the Node in the matrix.
+      - run: ./bun run test:unit
 
-  # pg_textsearch must be in shared_preload_libraries, so a stock Postgres
-  # service image cannot run this suite. Build and start our tested image here.
   test-db:
     name: Database integration tests
     runs-on: ubuntu-latest
@@ -66,31 +54,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-      - run: npm ci
-      - name: Build Postgres image
-        run: docker build -t searchgres-postgres -f docker/Dockerfile.postgres docker/
-      - name: Start Postgres
-        run: |
-          docker run --rm -d --name searchgres-postgres \
-            -e POSTGRES_HOST_AUTH_METHOD=trust \
-            -p 127.0.0.1:5432:5432 \
-            searchgres-postgres
-      - name: Wait for Postgres
-        run: |
-          for i in $(seq 1 30); do
-            pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0
-            sleep 1
-          done
-          docker logs searchgres-postgres
-          exit 1
-      - run: npm run test:db
-      - name: Stop Postgres
-        if: always()
-        run: docker stop searchgres-postgres
+      - run: ./bun install --frozen-lockfile
+      # with-postgres.ts owns the container lifecycle, shared verbatim with the
+      # local `check:full` run rather than duplicated as workflow shell.
+      - run: ./bun scripts/with-postgres.ts ./bun run test:db
 
   # The unit tests run from TypeScript source, so nothing above ever loads the
   # compiled output. This job packs the tarball, installs it into a scratch
@@ -107,25 +74,24 @@ jobs:
         runtime: [node, bun, deno]
     steps:
       - uses: actions/checkout@v5
-      # Node is needed to build and pack regardless of which runtime consumes
-      # the result.
+      # Node is needed for the tarball's prepack hook and, for the node matrix
+      # leg, to import the result.
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
       - uses: denoland/setup-deno@v2
         if: matrix.runtime == 'deno'
         with:
           deno-version: v2.x
-      - run: npm ci
-      - run: npm run build
+      - run: ./bun install --frozen-lockfile
+      - run: ./bun run build
 
+      # A real consumer installs with npm, so the scratch project does too —
+      # this leg deliberately exercises the npm install path the published
+      # package is consumed through, whatever runtime imports it afterwards.
       - name: Pack and install into a scratch project
         run: |
-          npm pack --workspace searchgres --pack-destination /tmp
+          ./bun pm pack --cwd packages/core --destination /tmp
           mkdir -p /tmp/consumer
           cd /tmp/consumer
           npm init -y > /dev/null

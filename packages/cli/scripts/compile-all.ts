@@ -1,3 +1,5 @@
+// Cross-compiles `sg` for every release target. The tokenizer worker bundle is
+// a prerequisite; the root `compile:all` script bundles it before calling here.
 const targets = [
   { target: "bun-linux-x64", output: "dist/sg-linux-amd64" },
   { target: "bun-linux-arm64", output: "dist/sg-linux-arm64" },
@@ -6,18 +8,6 @@ const targets = [
   { target: "bun-darwin-x64", output: "dist/sg-macos-amd64" },
   { target: "bun-darwin-arm64", output: "dist/sg-macos-arm64" },
 ] as const;
-
-const bundle = Bun.spawnSync({
-  cmd: [
-    "npm",
-    "run",
-    "bundle:tokenizer-worker",
-    "--workspace=@searchgres/server",
-  ],
-  stdout: "inherit",
-  stderr: "inherit",
-});
-if (bundle.exitCode !== 0) process.exit(bundle.exitCode);
 
 for (const { target, output } of targets) {
   console.log(`Compiling ${target} → ${output}`);

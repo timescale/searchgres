@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
-    "compile": "npm run bundle:tokenizer-worker --workspace=@searchgres/server && bun build ./src/bin.ts --compile --outfile dist/sg",
+    "compile": "bun build ./src/bin.ts --compile --outfile dist/sg",
     "compile:all": "bun scripts/compile-all.ts",
     "typecheck": "tsc -p tsconfig.json"
   },

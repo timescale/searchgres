@@ -2,15 +2,27 @@
 
 ## Requirements
 
-- Node 22.18+ for TypeScript tooling
-- Bun 1.4+
+- Node 22.18+ for the Node compatibility tests
 - Docker, for PostgreSQL integration tests and Compose development
 
-Install workspace dependencies:
+Bun is not a prerequisite. `./bun` is a wrapper that downloads the pinned Bun
+into the git-ignored `download/` directory on first use and execs it, so every
+developer and every CI job runs the same version. Use it for **all** repository
+tooling, including nested calls inside scripts:
 
 ```sh
-npm install
+./bun install
 ```
+
+To change the Bun version, edit `version=` in `./bun` and the `oven/bun` tag in
+`docker/Dockerfile.server`.
+
+Bun is the development toolchain only. `searchgres`, `@searchgres/protocol`, and
+`@searchgres/client` must run on Node, Bun, and Deno: Biome bans the `Bun`/`Deno`
+globals and Bun-only/Deno-only specifiers there, and CI installs the packed
+tarball into a scratch project and imports it by package name under all three
+runtimes. Only `@searchgres/server` and `@searchgres/cli` may use `Bun.*`, and
+they ship as the compiled `sg` binary rather than as importable source.
 
 ## Workspace layout
 
@@ -29,50 +41,61 @@ not use Bun APIs.
 ## Checks and tests
 
 ```sh
-npm run check       # typecheck, lint, unit tests
-npm run test:db     # build all packages, then database integration tests
+./bun run check        # typecheck, lint, unit tests — no Docker needed
+./bun run check:full   # everything CI runs, database included
 ```
 
-Run only the compiled-server database test suite:
+`check:full` is the pre-push gate. It runs the same scripts CI runs, and manages
+its own throwaway database via `scripts/with-postgres.ts` — the one place the
+container lifecycle is defined, shared with CI so the two cannot drift.
+
+Against a database you manage yourself:
 
 ```sh
-npm run test:db --workspace=@searchgres/server
+./bun run pg:up                            # build + start PostgreSQL 18
+./bun run test:db                          # build, compile sg, run all suites
+./bun run --filter searchgres test:db      # just the core suite
+./bun run --filter @searchgres/server test:db   # just the compiled-server suite
+./bun run pg:rm
 ```
 
-The database tests expect PostgreSQL at `TEST_DATABASE_URL`, defaulting to
-`postgresql://postgres@127.0.0.1:5432/postgres`.
+The suites expect PostgreSQL at `TEST_DATABASE_URL`, defaulting to
+`postgresql://postgres@127.0.0.1:5432/postgres`. The image includes
+PostgreSQL 18, pgvector, pg_textsearch, and ltree.
 
-Start the development PostgreSQL image:
+### How the scripts are organised
 
-```sh
-npm run pg:build
-npm run pg:up
-# ... run tests ...
-npm run pg:rm
-```
-
-The image includes PostgreSQL 18, pgvector, pg_textsearch, and ltree.
+Package scripts are single commands that run in their own package and never call
+another package. All cross-package sequencing lives in the root `package.json`
+as explicit `&&` chains. That ordering is load-bearing: the libraries are
+consumed downstream through their built `dist/` and exports map, so they must be
+built before the server and CLI are typechecked — which is why the chains are
+spelled out rather than using `--filter '*'`. `--filter '*'` respects dependency
+*order* but does not stop dependents when a dependency's script fails, turning
+one real error into a cascade of misleading ones.
 
 ## Building `sg`
 
 Build for the current host:
 
 ```sh
-npm run compile --workspace=@searchgres/cli
+./bun run compile
 ./packages/cli/dist/sg --help
 ```
 
 Build all release targets:
 
 ```sh
-npm run compile:all --workspace=@searchgres/cli
+./bun run compile:all
 ```
 
 This creates Linux amd64/arm64, Windows amd64/arm64, and macOS amd64/arm64
 binaries under `packages/cli/dist/`.
 
-`packages/server` retains a `compile` compatibility script for its black-box
-tests; the actual binary entrypoint belongs to `packages/cli`.
+Both scripts bundle the tokenizer worker first, because the compiled binary
+embeds it. There is exactly one `sg` in the repository, at
+`packages/cli/dist/sg`; the server's black-box tests resolve that path directly
+rather than keeping a copy.
 
 ## Local setup
 

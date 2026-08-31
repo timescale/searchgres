@@ -19,13 +19,11 @@
   },
   "scripts": {
     "bundle:tokenizer-worker": "bun scripts/bundle-tokenizer-worker.ts",
-    "build": "npm run bundle:tokenizer-worker && tsc -p tsconfig.build.json && cp src/tokenizer.worker.generated.cjs dist/tokenizer.worker.generated.cjs",
-    "compile": "npm run compile --workspace=@searchgres/cli && mkdir -p dist && cp ../cli/dist/sg dist/sg",
-    "compile:all": "bun scripts/compile-all.ts",
+    "build": "bun run bundle:tokenizer-worker && tsc -p tsconfig.build.json && cp src/tokenizer.worker.generated.cjs dist/tokenizer.worker.generated.cjs",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo src/tokenizer.worker.generated.cjs",
-    "typecheck": "npm run bundle:tokenizer-worker && tsc -p tsconfig.json",
-    "test:unit": "npm run bundle:tokenizer-worker && find src -name '*.test.ts' ! -name '*.integration.test.ts' -print0 | xargs -0 bun test",
-    "test:db": "npm run compile && bun test ./src/*.integration.test.ts"
+    "typecheck": "bun run bundle:tokenizer-worker && tsc -p tsconfig.json",
+    "test:unit": "bun run bundle:tokenizer-worker && find src -name '*.test.ts' ! -name '*.integration.test.ts' -print0 | xargs -0 bun test",
+    "test:db": "bun test ./src/*.integration.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.52",

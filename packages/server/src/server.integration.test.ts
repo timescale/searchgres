@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import postgres, { type Sql } from "postgres";
 import { createIndex, dropIndex } from "searchgres";
 import { createSearchgresClient } from "../../client/src/index.ts";
@@ -13,6 +14,10 @@ const configPath = `/tmp/searchgres-server-${process.pid}.yaml`;
 
 let sql: Sql;
 let fakeEmbeddings: ReturnType<typeof Bun.serve>;
+// The canonical binary, built by `@searchgres/cli`'s compile script. Resolved
+// from this file rather than the cwd so there is exactly one `sg` in the repo.
+const sg = fileURLToPath(new URL("../../cli/dist/sg", import.meta.url));
+
 let server: Bun.Subprocess | undefined;
 let serverUrl: URL;
 
@@ -87,7 +92,7 @@ index:
 `,
   );
   server = Bun.spawn({
-    cmd: ["./dist/sg", "server", "--config", configPath],
+    cmd: [sg, "server", "--config", configPath],
     env: { ...process.env, [databaseEnvironment]: databaseUrl },
     stdout: "pipe",
     stderr: "pipe",
@@ -241,7 +246,7 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
 
 async function runSg(args: readonly string[]): Promise<string> {
   const process = Bun.spawn({
-    cmd: ["./dist/sg", ...args],
+    cmd: [sg, ...args],
     stdout: "pipe",
     stderr: "pipe",
   });

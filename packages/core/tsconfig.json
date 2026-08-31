@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Editor + `npm run typecheck`: checks everything including tests, emits
+    // Editor + `bun run typecheck`: checks everything including tests, emits
     // nothing. The build uses tsconfig.build.json, which excludes tests.
     "noEmit": true,
     "types": ["node"]
