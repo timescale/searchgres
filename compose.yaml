@@ -1,0 +1,32 @@
+services:
+  db:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.postgres
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - searchgres-db:/var/lib/postgresql/data
+
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ./.env
+        required: false
+    volumes:
+      - ./searchgres.yaml:/config/searchgres.yaml:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  searchgres-db:

@@ -272,6 +272,7 @@ export const serverInfoResultSchema = z.strictObject({
     fulltext: z.literal(true),
     userSuppliedVectors: z.literal(false),
     workerManagedByServer: z.literal(true),
+    readOnly: z.boolean(),
   }),
 });
 

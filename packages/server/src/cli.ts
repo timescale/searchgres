@@ -1,5 +1,6 @@
-import { mkdir, rename } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, readFile, rename } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import * as clack from "@clack/prompts";
 import { createClient, createFetchTransport } from "@searchgres/client";
 import { JSON5, YAML } from "bun";
 import postgres from "postgres";
@@ -8,7 +9,7 @@ import { parseServerConfig } from "./config.ts";
 import { startServer } from "./server.ts";
 
 const usage = `Usage:
-  sg server --config <config.yaml|config.json5>
+  sg server --config <config.yaml|config.json5> [--env-file <path>|--no-env-file]
   sg destroy --config <config.yaml|config.json5> --yes
   sg init --config <path> --database-url-env <name> --schema <schema>
           --embedding-model <model> --dimensions <n> [options]
@@ -56,10 +57,24 @@ export async function runCommand(argv: readonly string[]): Promise<void> {
 async function runServer(args: readonly string[]): Promise<void> {
   const flags = parseFlags(args);
   const configPath = requiredFlag(flags, "config");
-  rejectUnknownFlags(flags, new Set(["config"]));
+  rejectUnknownFlags(
+    flags,
+    new Set(["config", "env-file", "no-env-file", "read-only"]),
+  );
+  if (flags.has("env-file") && flags.has("no-env-file")) {
+    throw new Error("--env-file and --no-env-file cannot be used together");
+  }
+  if (!flags.has("no-env-file")) {
+    await loadDotenv(
+      optionalFlag(flags, "env-file") ??
+        join(dirname(resolve(configPath)), ".env"),
+    );
+  }
   const { loadServerConfig } = await import("./config.ts");
   const config = await loadServerConfig(configPath);
-  const server = await startServer(config);
+  const server = await startServer(config, {
+    readOnly: flags.has("read-only"),
+  });
   console.log(`searchgres server listening on ${server.url}`);
 
   const stop = async () => {
@@ -143,6 +158,7 @@ async function runRemote(
   if (!server) throw new Error("--server or SEARCHGRES_URL is required");
   const outputFormat = optionalFlag(flags, "output-format") ?? "json";
   const input = await readStructuredInput(
+    command,
     optionalFlag(flags, "input"),
     optionalFlag(flags, "input-format"),
   );
@@ -214,6 +230,7 @@ function paramsFromFlags(
 }
 
 async function readStructuredInput(
+  command: string,
   input: string | undefined,
   format: string | undefined,
 ): Promise<unknown | undefined> {
@@ -234,14 +251,42 @@ async function readStructuredInput(
   if (kind === "json") return JSON.parse(source);
   if (kind === "json5") return JSON5.parse(source);
   if (kind === "yaml") return YAML.parse(source);
-  throw new Error("NDJSON input is not yet supported");
+  if (kind === "ndjson") {
+    if (command !== "upsert-many" && command !== "insert-many") {
+      throw new Error(
+        "NDJSON input is supported only by upsert-many and insert-many",
+      );
+    }
+    return {
+      records: source
+        .split(/\r?\n/)
+        .filter((line) => line.trim() !== "")
+        .map((line) => JSON.parse(line)),
+    };
+  }
+  throw new Error("--input-format must be json, ndjson, json5, or yaml");
 }
 function writeStructuredOutput(value: unknown, format: string): void {
   if (format === "json") return void console.log(JSON.stringify(value));
   if (format === "json5")
     return void console.log(JSON5.stringify(value, null, 2));
   if (format === "yaml") return void console.log(YAML.stringify(value));
-  if (format === "ndjson") return void console.log(JSON.stringify(value));
+  if (format === "ndjson") {
+    const collection =
+      typeof value === "object" &&
+      value !== null &&
+      "results" in value &&
+      Array.isArray(value.results)
+        ? value.results
+        : typeof value === "object" &&
+            value !== null &&
+            "entries" in value &&
+            Array.isArray(value.entries)
+          ? value.entries
+          : [value];
+    for (const entry of collection) console.log(JSON.stringify(entry));
+    return;
+  }
   throw new Error("--output-format must be json, ndjson, json5, or yaml");
 }
 
@@ -270,6 +315,10 @@ async function runDestroy(args: readonly string[]): Promise<void> {
 }
 
 async function runInit(args: readonly string[]): Promise<void> {
+  if (args.length === 0 && process.stdin.isTTY) {
+    await runInitWizard();
+    return;
+  }
   const flags = parseFlags(args);
   rejectUnknownFlags(
     flags,
@@ -349,6 +398,11 @@ async function runInit(args: readonly string[]): Promise<void> {
   try {
     await Bun.write(temporaryPath, rendered);
     await rename(temporaryPath, absolutePath);
+    await writeDotenvExample(
+      absolutePath,
+      databaseUrlEnv,
+      optionalFlag(flags, "api-key-env"),
+    );
   } catch (error) {
     throw new Error(
       `Index ${JSON.stringify(schema)} was created but config writing failed. Write this config manually:\n${rendered}`,
@@ -358,6 +412,63 @@ async function runInit(args: readonly string[]): Promise<void> {
   console.log(
     `Created index ${JSON.stringify(schema)} and config ${configPath}`,
   );
+}
+
+async function runInitWizard(): Promise<void> {
+  clack.intro("Initialize Searchgres");
+  const ask = async (message: string, initialValue?: string) => {
+    const answer = await clack.text({
+      message,
+      ...(initialValue === undefined ? {} : { initialValue }),
+      validate: (value) => (value.trim() === "" ? "Required" : undefined),
+    });
+    if (clack.isCancel(answer)) {
+      clack.cancel("Initialization cancelled");
+      return undefined;
+    }
+    return answer;
+  };
+  const config = await ask("Config path", "searchgres.yaml");
+  const databaseUrl = await ask(
+    "Postgres database URL",
+    "postgres://postgres@127.0.0.1:5432/postgres",
+  );
+  const schema = await ask("Index schema", "searchgres");
+  const model = await ask("Embedding model");
+  const dimensions = await ask("Embedding dimensions");
+  if (!config || !databaseUrl || !schema || !model || !dimensions) return;
+  const apiKey = await clack.password({
+    message: "Embedding API key (leave blank for local providers)",
+  });
+  if (clack.isCancel(apiKey)) {
+    clack.cancel("Initialization cancelled");
+    return;
+  }
+  const databaseEnv = "SEARCHGRES_DATABASE_URL";
+  const apiKeyEnv = "SEARCHGRES_EMBEDDING_API_KEY";
+  process.env[databaseEnv] = databaseUrl;
+  if (apiKey) process.env[apiKeyEnv] = apiKey;
+  await runInit([
+    "--config",
+    config,
+    "--database-url-env",
+    databaseEnv,
+    "--schema",
+    schema,
+    "--embedding-model",
+    model,
+    "--dimensions",
+    dimensions,
+    ...(apiKey ? ["--api-key-env", apiKeyEnv] : []),
+  ]);
+  const envPath = join(dirname(resolve(config)), ".env");
+  if (!(await Bun.file(envPath).exists())) {
+    await Bun.write(
+      envPath,
+      `${databaseEnv}=${databaseUrl}\n${apiKey ? `${apiKeyEnv}=${apiKey}\n` : ""}`,
+    );
+    clack.outro(`Wrote ${envPath}`);
+  }
 }
 
 function buildInitialConfig(input: {
@@ -422,6 +533,52 @@ function renderConfig(path: string, config: unknown): string {
     return `${YAML.stringify(config)}\n`;
   }
   throw new Error("Config path must end in .yaml, .yml, or .json5");
+}
+
+async function writeDotenvExample(
+  configPath: string,
+  databaseUrlEnv: string,
+  apiKeyEnv: string | undefined,
+): Promise<void> {
+  const directory = dirname(configPath);
+  const example = join(directory, ".env.example");
+  if (!(await Bun.file(example).exists())) {
+    await Bun.write(
+      example,
+      `${databaseUrlEnv}=\n${apiKeyEnv ? `${apiKeyEnv}=\n` : ""}`,
+    );
+  }
+  const gitignore = join(directory, ".gitignore");
+  const current = (await Bun.file(gitignore).exists())
+    ? await readFile(gitignore, "utf8")
+    : "";
+  if (!current.split(/\r?\n/).includes(".env")) {
+    await Bun.write(
+      gitignore,
+      `${current}${current !== "" && !current.endsWith("\n") ? "\n" : ""}.env\n`,
+    );
+  }
+}
+
+async function loadDotenv(path: string): Promise<void> {
+  if (!(await Bun.file(path).exists())) return;
+  const source = await readFile(path, "utf8");
+  for (const [lineNumber, rawLine] of source.split(/\r?\n/).entries()) {
+    const line = rawLine.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+    if (!match)
+      throw new Error(`${path}:${lineNumber + 1}: invalid .env assignment`);
+    const name = match[1]!;
+    let value = match[2]!;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[name] === undefined) process.env[name] = value;
+  }
 }
 
 function parseFlags(args: readonly string[]): Map<string, string | true> {

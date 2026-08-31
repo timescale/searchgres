@@ -39,8 +39,26 @@ export interface RunningServer {
   stop(): Promise<void>;
 }
 
+export interface StartServerOptions {
+  readonly readOnly?: boolean;
+}
+
+const MUTATING_METHODS = new Set<RpcMethod>([
+  "searchgres.v1.record.upsert",
+  "searchgres.v1.record.upsertMany",
+  "searchgres.v1.record.insert",
+  "searchgres.v1.record.insertMany",
+  "searchgres.v1.record.patch",
+  "searchgres.v1.record.delete",
+  "searchgres.v1.record.deleteByName",
+  "searchgres.v1.tree.move",
+  "searchgres.v1.tree.copy",
+  "searchgres.v1.tree.delete",
+]);
+
 export async function startServer(
   config: ServerConfig,
+  options: StartServerOptions = {},
 ): Promise<RunningServer> {
   const databaseUrl = readRequiredEnvironment(config.database.urlEnv);
   const apiSql = createPool(databaseUrl, config, "api");
@@ -58,16 +76,18 @@ export async function startServer(
       embedding,
       truncate,
     });
-    const workerIndex = await openIndex(workerSql, config.index.schema, {
-      embedding,
-      truncate,
-    });
-    worker = workerIndex.startEmbeddingWorker({
-      intervalMs: config.index.worker.interval,
-      batchSize: config.index.worker.batchSize,
-    });
+    if (!options.readOnly) {
+      const workerIndex = await openIndex(workerSql, config.index.schema, {
+        embedding,
+        truncate,
+      });
+      worker = workerIndex.startEmbeddingWorker({
+        intervalMs: config.index.worker.interval,
+        batchSize: config.index.worker.batchSize,
+      });
+    }
 
-    const handler = createRequestHandler(apiIndex);
+    const handler = createRequestHandler(apiIndex, options.readOnly ?? false);
     const server = Bun.serve({
       hostname: config.server.listen.host,
       port: config.server.listen.port,
@@ -156,6 +176,7 @@ function createTruncator(config: ServerConfig): {
 
 function createRequestHandler(
   index: Index,
+  readOnly: boolean,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
@@ -181,11 +202,15 @@ function createRequestHandler(
     } catch {
       return new Response("Invalid JSON", { status: 400 });
     }
-    return rpcResponse(await dispatch(index, body));
+    return rpcResponse(await dispatch(index, body, readOnly));
   };
 }
 
-async function dispatch(index: Index, body: unknown): Promise<object> {
+async function dispatch(
+  index: Index,
+  body: unknown,
+  readOnly: boolean,
+): Promise<object> {
   const envelope = rpcRequestSchema.safeParse(body);
   if (!envelope.success) {
     return rpcError(null, -32600, "Invalid Request", {
@@ -197,6 +222,13 @@ async function dispatch(index: Index, body: unknown): Promise<object> {
     return rpcError(id, -32601, "Method not found");
   }
 
+  if (readOnly && MUTATING_METHODS.has(method)) {
+    return rpcError(id, SEARCHGRES_FAILURE_CODE, "Server is read-only", {
+      searchgresCode: "READ_ONLY",
+      type: "ReadOnlyError",
+    });
+  }
+
   const definition = methods[method];
   const parsed = definition.params.safeParse(params);
   if (!parsed.success) {
@@ -206,7 +238,7 @@ async function dispatch(index: Index, body: unknown): Promise<object> {
   }
 
   try {
-    const result = await invoke(index, method, parsed.data);
+    const result = await invoke(index, method, parsed.data, readOnly);
     const validated = definition.result.safeParse(result);
     if (!validated.success) {
       throw new Error(`Invalid handler result for ${method}`, {
@@ -232,6 +264,7 @@ async function invoke(
   index: Index,
   method: RpcMethod,
   params: unknown,
+  readOnly: boolean,
 ): Promise<unknown> {
   switch (method) {
     case "rpc.discover":
@@ -245,6 +278,7 @@ async function invoke(
           fulltext: true,
           userSuppliedVectors: false,
           workerManagedByServer: true,
+          readOnly,
         },
       };
     case "searchgres.v1.record.upsert": {

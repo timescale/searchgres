@@ -1,0 +1,17 @@
+FROM oven/bun:1.4 AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/package.json
+COPY packages/protocol/package.json packages/protocol/package.json
+COPY packages/client/package.json packages/client/package.json
+COPY packages/server/package.json packages/server/package.json
+RUN npm ci
+COPY . .
+RUN npm run compile --workspace=@searchgres/server
+
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app/packages/server/dist/sg /usr/local/bin/sg
+ENTRYPOINT ["sg"]
+CMD ["server", "--config", "/config/searchgres.yaml"]
