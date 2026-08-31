@@ -1,0 +1,156 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import postgres, { type Sql } from "postgres";
+import { createIndex, dropIndex } from "searchgres";
+import { createSearchgresClient } from "../../client/src/index.ts";
+import { parseServerConfig } from "./config.ts";
+import { type RunningServer, startServer } from "./server.ts";
+
+const databaseUrl =
+  process.env.TEST_DATABASE_URL ??
+  "postgresql://postgres@127.0.0.1:5432/postgres";
+const schema = `sgtest_server_${crypto.randomUUID().replaceAll("-", "")}`;
+const databaseEnvironment = "SEARCHGRES_SERVER_TEST_DATABASE_URL";
+const originalDatabaseEnvironment = process.env[databaseEnvironment];
+
+let sql: Sql;
+let fakeEmbeddings: ReturnType<typeof Bun.serve>;
+let server: RunningServer;
+
+afterAll(async () => {
+  await server?.stop();
+  fakeEmbeddings?.stop(true);
+  if (sql) {
+    await dropIndex(sql, schema);
+    await sql.end();
+  }
+  if (originalDatabaseEnvironment === undefined) {
+    delete process.env[databaseEnvironment];
+  } else {
+    process.env[databaseEnvironment] = originalDatabaseEnvironment;
+  }
+});
+
+beforeAll(async () => {
+  sql = postgres(databaseUrl, { onnotice: () => {} });
+  await createIndex(sql, schema, { dimensions: 4 });
+  process.env[databaseEnvironment] = databaseUrl;
+
+  fakeEmbeddings = Bun.serve({
+    port: 0,
+    fetch: async (request) => {
+      if (
+        request.method !== "POST" ||
+        new URL(request.url).pathname !== "/v1/embeddings"
+      ) {
+        return new Response("Not found", { status: 404 });
+      }
+      const body = (await request.json()) as {
+        readonly input?: string | readonly string[];
+      };
+      const inputs =
+        typeof body.input === "string"
+          ? [body.input]
+          : Array.isArray(body.input)
+            ? body.input
+            : [];
+      return Response.json({
+        object: "list",
+        data: inputs.map((input, index) => ({
+          object: "embedding",
+          index,
+          embedding: embeddingFor(input),
+        })),
+        model: "deterministic-test-model",
+        usage: { prompt_tokens: inputs.length, total_tokens: inputs.length },
+      });
+    },
+  });
+
+  server = await startServer(
+    parseServerConfig({
+      version: 1,
+      server: { listen: { host: "127.0.0.1", port: await unusedPort() } },
+      database: { urlEnv: databaseEnvironment },
+      index: {
+        schema,
+        embedding: {
+          provider: "openai-compatible",
+          model: "deterministic-test-model",
+          baseUrl: `${fakeEmbeddings.url.toString().replace(/\/$/, "")}/v1`,
+        },
+        truncate: { kind: "none" },
+        worker: { interval: "10ms", batchSize: 10 },
+      },
+    }),
+  );
+});
+
+test("client writes through the queue and performs semantic and hybrid search", async () => {
+  const client = createSearchgresClient({ url: new URL("rpc", server.url) });
+  const upsert = await client.upsertMany({
+    records: [
+      { content: "A cat naps in the sun", tree: "pets", name: "cat" },
+      { content: "A dog chases a ball", tree: "pets", name: "dog" },
+    ],
+  });
+  expect(upsert.results).toHaveLength(2);
+
+  const semantic = await eventually(async () => {
+    const result = await client.search({ semantic: "cat", limit: 10 });
+    return result.results[0]?.content === "A cat naps in the sun" &&
+      result.results[0].hasEmbedding
+      ? result
+      : undefined;
+  });
+  expect(semantic.results.map((result) => result.name)).toContain("cat");
+
+  const hybrid = await client.search({
+    semantic: "cat",
+    fulltext: "cat",
+    limit: 10,
+  });
+  expect(hybrid.results[0]?.name).toBe("cat");
+  expect(hybrid.results[0]?.score).toBeGreaterThan(0);
+});
+
+function embeddingFor(input: string): number[] {
+  const text = input.toLowerCase();
+  if (text.includes("cat")) {
+    return [1, 0, 0, 0];
+  }
+  if (text.includes("dog")) {
+    return [0, 1, 0, 0];
+  }
+  return [0, 0, 1, 0];
+}
+
+async function unusedPort(): Promise<number> {
+  const reservation = Bun.serve({ port: 0, fetch: () => new Response() });
+  const { port } = reservation;
+  reservation.stop(true);
+  if (port === undefined) {
+    throw new Error("Bun did not assign an ephemeral port");
+  }
+  return port;
+}
+
+async function eventually<T>(
+  operation: () => Promise<T | undefined>,
+): Promise<T> {
+  const deadline = Date.now() + 10_000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      const result = await operation();
+      if (result !== undefined) {
+        return result;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await Bun.sleep(25);
+  }
+  throw new Error("Timed out waiting for the embedding worker", {
+    cause: lastError,
+  });
+}

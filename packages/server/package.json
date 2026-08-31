@@ -17,7 +17,8 @@
     "compile": "npm run bundle:tokenizer-worker && bun build ./src/bin.ts --compile --outfile dist/sg",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo src/tokenizer.worker.generated.cjs",
     "typecheck": "npm run bundle:tokenizer-worker && tsc -p tsconfig.json",
-    "test:unit": "npm run bundle:tokenizer-worker && bun test ./src"
+    "test:unit": "npm run bundle:tokenizer-worker && find src -name '*.test.ts' ! -name '*.integration.test.ts' -print0 | xargs -0 bun test",
+    "test:db": "npm run bundle:tokenizer-worker && bun test ./src/*.integration.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.52",

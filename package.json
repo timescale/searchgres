@@ -17,7 +17,7 @@
     "lint": "biome check",
     "format": "biome check --write",
     "test:unit": "npm run build --workspace=@searchgres/protocol && npm run test:unit --workspaces --if-present",
-    "test:db": "npm run test:db --workspaces --if-present",
+    "test:db": "npm run build && npm run test:db --workspaces --if-present",
     "check": "npm run typecheck && npm run lint && npm run test:unit",
     "pg:build": "docker build -t searchgres-postgres -f docker/Dockerfile.postgres docker/",
     "pg:up": "docker run -d --name searchgres-postgres -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:5432:5432 searchgres-postgres",
