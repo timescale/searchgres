@@ -465,12 +465,16 @@ async function runInitWizard(): Promise<void> {
   const config = await ask("Config path", "searchgres.yaml");
   const databaseUrl = await ask(
     "Postgres database URL",
-    "postgres://postgres@127.0.0.1:5432/postgres",
+    process.env.SEARCHGRES_DATABASE_URL ??
+      "postgres://postgres@127.0.0.1:5432/postgres",
   );
+  const host = await ask("Server listen host", "127.0.0.1");
+  const port = await ask("Server listen port", "3000");
   const schema = await ask("Index schema", "searchgres");
   const model = await ask("Embedding model");
   const dimensions = await ask("Embedding dimensions");
-  if (!config || !databaseUrl || !schema || !model || !dimensions) return;
+  if (!config || !databaseUrl || !host || !port || !schema || !model || !dimensions)
+    return;
   const apiKey = await clack.password({
     message: "Embedding API key (leave blank for local providers)",
   });
@@ -487,6 +491,11 @@ async function runInitWizard(): Promise<void> {
     config,
     "--database-url-env",
     databaseEnv,
+    "--host",
+    host,
+    "--port",
+    port,
+    ...(isLoopbackHost(host) ? [] : ["--allow-public-listen"]),
     "--schema",
     schema,
     "--embedding-model",

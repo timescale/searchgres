@@ -14,6 +14,7 @@ services:
       - searchgres-db:/var/lib/postgresql/data
 
   server:
+    profiles: ["server"]
     build:
       context: .
       dockerfile: docker/Dockerfile.server
@@ -27,6 +28,24 @@ services:
       - ./searchgres.yaml:/config/searchgres.yaml:ro
     ports:
       - "127.0.0.1:3000:3000"
+
+  cli:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SEARCHGRES_DATABASE_URL: postgresql://postgres@db:5432/postgres
+    env_file:
+      - path: ./.env
+        required: false
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    entrypoint: ["sg"]
 
 volumes:
   searchgres-db:
