@@ -5,16 +5,23 @@
   "description": "Bun JSON-RPC server for one searchgres index.",
   "license": "Apache-2.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "engines": {
     "bun": ">=1.4.0"
   },
-  "bin": {
-    "sg": "./dist/bin.js"
-  },
   "scripts": {
     "bundle:tokenizer-worker": "bun scripts/bundle-tokenizer-worker.ts",
-    "build": "npm run bundle:tokenizer-worker && tsc -p tsconfig.build.json",
-    "compile": "npm run bundle:tokenizer-worker && bun build ./src/bin.ts --compile --outfile dist/sg",
+    "build": "npm run bundle:tokenizer-worker && tsc -p tsconfig.build.json && cp src/tokenizer.worker.generated.cjs dist/tokenizer.worker.generated.cjs",
+    "compile": "npm run compile --workspace=@searchgres/cli && mkdir -p dist && cp ../cli/dist/sg dist/sg",
+    "compile:all": "bun scripts/compile-all.ts",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo src/tokenizer.worker.generated.cjs",
     "typecheck": "npm run bundle:tokenizer-worker && tsc -p tsconfig.json",
     "test:unit": "npm run bundle:tokenizer-worker && find src -name '*.test.ts' ! -name '*.integration.test.ts' -print0 | xargs -0 bun test",
@@ -22,9 +29,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.52",
-    "@clack/prompts": "^0.11.0",
     "@huggingface/tokenizers": "^0.1.3",
-    "@searchgres/client": "file:../client",
     "@searchgres/protocol": "file:../protocol",
     "gpt-tokenizer": "^3.4.0",
     "postgres": "^3.4.9",

@@ -2,11 +2,14 @@ import { mkdir, readFile, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import * as clack from "@clack/prompts";
 import { createClient, createFetchTransport } from "@searchgres/client";
+import {
+  loadServerConfig,
+  parseServerConfig,
+  startServer,
+} from "@searchgres/server";
 import { JSON5, YAML } from "bun";
 import postgres from "postgres";
 import { createIndex, dropIndex } from "searchgres";
-import { parseServerConfig } from "./config.ts";
-import { startServer } from "./server.ts";
 
 const usage = `Usage:
   sg server --config <config.yaml|config.json5> [--env-file <path>|--no-env-file]
@@ -70,7 +73,6 @@ async function runServer(args: readonly string[]): Promise<void> {
         join(dirname(resolve(configPath)), ".env"),
     );
   }
-  const { loadServerConfig } = await import("./config.ts");
   const config = await loadServerConfig(configPath);
   const server = await startServer(config, {
     readOnly: flags.has("read-only"),
@@ -330,7 +332,6 @@ async function runDestroy(args: readonly string[]): Promise<void> {
     throw new Error("sg destroy is destructive; pass --yes to confirm");
   }
   const configPath = requiredFlag(flags, "config");
-  const { loadServerConfig } = await import("./config.ts");
   const config = await loadServerConfig(configPath);
   const databaseUrl = process.env[config.database.urlEnv];
   if (!databaseUrl) {
