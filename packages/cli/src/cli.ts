@@ -28,37 +28,35 @@ Init options:
   --dry-run
 `;
 
-export async function runCommand(argv: readonly string[]): Promise<void> {
-  const [command, ...args] = argv;
+export async function runCommand(
+  command: string,
+  flags: Map<string, string | true>,
+  args: readonly string[] = [],
+): Promise<void> {
   if (command === "server") {
-    await runServer(args);
+    await runServer(flags);
     return;
   }
   if (command === "init") {
-    await runInit(args);
+    await runInit(flags);
     return;
   }
   if (command === "destroy") {
-    await runDestroy(args);
+    await runDestroy(flags);
     return;
   }
   if (command === "tree") {
-    await runTree(args);
+    await runTree(flags, args);
     return;
   }
   if (command && remoteMethod(command)) {
-    await runRemote(command, args);
-    return;
-  }
-  if (command === "--help" || command === "-h" || command === undefined) {
-    console.log(usage);
+    await runRemote(command, flags);
     return;
   }
   throw new Error(usage);
 }
 
-async function runServer(args: readonly string[]): Promise<void> {
-  const flags = parseFlags(args);
+async function runServer(flags: Map<string, string | true>): Promise<void> {
   const configPath = requiredFlag(flags, "config");
   rejectUnknownFlags(
     flags,
@@ -87,9 +85,11 @@ async function runServer(args: readonly string[]): Promise<void> {
   process.once("SIGTERM", stop);
 }
 
-async function runTree(args: readonly string[]): Promise<void> {
-  const root = args[0]?.startsWith("--") ? "" : (args[0] ?? "");
-  const flags = parseFlags(root ? args.slice(1) : args);
+async function runTree(
+  flags: Map<string, string | true>,
+  args: readonly string[],
+): Promise<void> {
+  const root = args[0] ?? "";
   rejectUnknownFlags(flags, new Set(["server", "levels", "output-format"]));
   const levels = optionalFlag(flags, "levels");
   const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
@@ -153,9 +153,8 @@ function remoteMethod(command: string): string | undefined {
 
 async function runRemote(
   command: string,
-  args: readonly string[],
+  flags: Map<string, string | true>,
 ): Promise<void> {
-  const flags = parseFlags(args);
   rejectUnknownFlags(flags, allowedRemoteFlags(command));
   const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
   if (!server) throw new Error("--server or SEARCHGRES_URL is required");
@@ -325,8 +324,7 @@ function writeStructuredOutput(value: unknown, format: string): void {
   throw new Error("--output-format must be json, ndjson, json5, or yaml");
 }
 
-async function runDestroy(args: readonly string[]): Promise<void> {
-  const flags = parseFlags(args);
+async function runDestroy(flags: Map<string, string | true>): Promise<void> {
   rejectUnknownFlags(flags, new Set(["config", "yes"]));
   if (!flags.has("yes")) {
     throw new Error("sg destroy is destructive; pass --yes to confirm");
@@ -348,12 +346,11 @@ async function runDestroy(args: readonly string[]): Promise<void> {
   console.log(`Destroyed index ${JSON.stringify(config.index.schema)}`);
 }
 
-async function runInit(args: readonly string[]): Promise<void> {
-  if (args.length === 0 && process.stdin.isTTY) {
+async function runInit(flags: Map<string, string | true>): Promise<void> {
+  if (flags.size === 0 && process.stdin.isTTY) {
     await runInitWizard();
     return;
   }
-  const flags = parseFlags(args);
   rejectUnknownFlags(
     flags,
     new Set([
@@ -473,7 +470,15 @@ async function runInitWizard(): Promise<void> {
   const schema = await ask("Index schema", "searchgres");
   const model = await ask("Embedding model");
   const dimensions = await ask("Embedding dimensions");
-  if (!config || !databaseUrl || !host || !port || !schema || !model || !dimensions)
+  if (
+    !config ||
+    !databaseUrl ||
+    !host ||
+    !port ||
+    !schema ||
+    !model ||
+    !dimensions
+  )
     return;
   const apiKey = await clack.password({
     message: "Embedding API key (leave blank for local providers)",
@@ -486,24 +491,19 @@ async function runInitWizard(): Promise<void> {
   const apiKeyEnv = "SEARCHGRES_EMBEDDING_API_KEY";
   process.env[databaseEnv] = databaseUrl;
   if (apiKey) process.env[apiKeyEnv] = apiKey;
-  await runInit([
-    "--config",
-    config,
-    "--database-url-env",
-    databaseEnv,
-    "--host",
-    host,
-    "--port",
-    port,
-    ...(isLoopbackHost(host) ? [] : ["--allow-public-listen"]),
-    "--schema",
-    schema,
-    "--embedding-model",
-    model,
-    "--dimensions",
-    dimensions,
-    ...(apiKey ? ["--api-key-env", apiKeyEnv] : []),
-  ]);
+  await runInit(
+    flagsFromOptions({
+      config,
+      databaseUrlEnv: databaseEnv,
+      host,
+      port,
+      allowPublicListen: !isLoopbackHost(host),
+      schema,
+      embeddingModel: model,
+      dimensions,
+      ...(apiKey ? { apiKeyEnv } : {}),
+    }),
+  );
   const envPath = join(dirname(resolve(config)), ".env");
   if (!(await Bun.file(envPath).exists())) {
     await Bun.write(
@@ -624,18 +624,14 @@ async function loadDotenv(path: string): Promise<void> {
   }
 }
 
-function parseFlags(args: readonly string[]): Map<string, string | true> {
+export function flagsFromOptions(
+  options: Record<string, unknown>,
+): Map<string, string | true> {
   const flags = new Map<string, string | true>();
-  for (let index = 0; index < args.length; index += 1) {
-    const token = args[index];
-    if (!token?.startsWith("--"))
-      throw new Error(`Unexpected argument: ${token}`);
-    const name = token.slice(2);
-    const next = args[index + 1];
-    const value = next && !next.startsWith("--") ? next : true;
-    if (flags.has(name)) throw new Error(`Repeated flag: --${name}`);
-    flags.set(name, value);
-    if (value !== true) index += 1;
+  for (const [name, value] of Object.entries(options)) {
+    if (value === undefined || value === false) continue;
+    const flag = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    flags.set(flag, value === true ? true : String(value));
   }
   return flags;
 }

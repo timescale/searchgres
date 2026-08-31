@@ -1,3 +1,3 @@
-import { runCommand } from "./cli.ts";
+import { runProgram } from "./program.ts";
 
-await runCommand(process.argv.slice(2));
+await runProgram(process.argv.slice(2));
