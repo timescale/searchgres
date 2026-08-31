@@ -194,24 +194,73 @@ export const openRpcDocumentSchema = z.looseObject({
 });
 
 function method<P extends z.ZodType, R extends z.ZodType>(
+  summary: string,
   params: P,
   result: R,
 ) {
-  return { params, result };
+  return { summary, params, result };
 }
 
 export const methods = {
-  "rpc.discover": method(z.undefined(), openRpcDocumentSchema),
-  "searchgres.v1.server.info": method(z.undefined(), serverInfoResultSchema),
+  "rpc.discover": method(
+    "Return the generated OpenRPC API description.",
+    z.undefined(),
+    openRpcDocumentSchema,
+  ),
+  "searchgres.v1.server.info": method(
+    "Return server API compatibility and capabilities without secrets.",
+    z.undefined(),
+    serverInfoResultSchema,
+  ),
   "searchgres.v1.record.upsertMany": method(
+    "Insert or replace up to 1,000 records. Embeddings are server-managed.",
     upsertManyParamsSchema,
     upsertManyResultSchema,
   ),
   "searchgres.v1.search": method(
+    "Run a filter-only, full-text, semantic-text, or hybrid search.",
     searchParamsSchema,
     searchResultEnvelopeSchema,
   ),
 } as const;
+
+/** Generate the OpenRPC document from the runtime method registry. */
+export function createOpenRpcDocument() {
+  return {
+    openrpc: "1.3.2",
+    info: {
+      title: "searchgres RPC API",
+      version: API_VERSION,
+      license: { name: "Apache-2.0" },
+    },
+    methods: Object.entries(methods).map(([name, definition]) => ({
+      name,
+      summary: definition.summary,
+      ...(definition.params instanceof z.ZodUndefined
+        ? {}
+        : {
+            params: [
+              {
+                name: "params",
+                required: true,
+                schema: jsonSchema(definition.params),
+              },
+            ],
+          }),
+      result: {
+        name: "result",
+        schema: jsonSchema(definition.result),
+      },
+    })),
+  };
+}
+
+function jsonSchema(schema: z.ZodType): object {
+  const { $schema: _schema, ...jsonSchema } = z.toJSONSchema(schema, {
+    unrepresentable: "any",
+  });
+  return jsonSchema;
+}
 
 export type RpcMethod = keyof typeof methods;
 export type RpcParams<M extends RpcMethod> = z.input<

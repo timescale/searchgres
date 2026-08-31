@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import {
   API_VERSION,
+  createOpenRpcDocument,
   methods,
   type RpcMethod,
   rpcRequestSchema,
@@ -152,14 +153,6 @@ function createTruncator(config: ServerConfig): {
   }
 }
 
-function openRpcDocument() {
-  return {
-    openrpc: "1.3.2",
-    info: { title: "searchgres RPC API", version: API_VERSION },
-    methods: Object.keys(methods).map((name) => ({ name })),
-  };
-}
-
 function createRequestHandler(
   index: Index,
 ): (request: Request) => Promise<Response> {
@@ -170,6 +163,9 @@ function createRequestHandler(
     }
     if (request.method === "GET" && url.pathname === "/readyz") {
       return new Response(null, { status: 204 });
+    }
+    if (request.method === "GET" && url.pathname === "/openrpc.json") {
+      return Response.json(createOpenRpcDocument());
     }
     if (request.method !== "POST" || url.pathname !== "/rpc") {
       return new Response("Not found", { status: 404 });
@@ -238,7 +234,7 @@ async function invoke(
 ): Promise<unknown> {
   switch (method) {
     case "rpc.discover":
-      return openRpcDocument();
+      return createOpenRpcDocument();
     case "searchgres.v1.server.info":
       return {
         apiVersion: API_VERSION,

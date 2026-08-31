@@ -97,6 +97,19 @@ index:
 
 test("compiled sg writes through the queue and performs semantic and hybrid search", async () => {
   const client = createSearchgresClient({ url: new URL("rpc", serverUrl) });
+  const discovered = await client.discover();
+  const discoveredMethods = discovered.methods as readonly {
+    readonly name: string;
+  }[];
+  expect(discoveredMethods.map((method) => method.name)).toContain(
+    "searchgres.v1.search",
+  );
+  const openRpcResponse = await fetch(new URL("openrpc.json", serverUrl));
+  expect(openRpcResponse.status).toBe(200);
+  expect(
+    ((await openRpcResponse.json()) as { readonly openrpc: string }).openrpc,
+  ).toBe("1.3.2");
+
   const upsert = await client.upsertMany({
     records: [
       { content: "A cat naps in the sun", tree: "pets", name: "cat" },

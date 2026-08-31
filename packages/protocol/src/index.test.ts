@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 import {
+  createOpenRpcDocument,
   methods,
   searchParamsSchema,
   upsertManyParamsSchema,
@@ -31,13 +32,27 @@ test("search wire schema retains core hybrid and paging constraints", () => {
   );
 });
 
-test("method registry exposes only the vertical slice", () => {
-  assert.deepEqual(Object.keys(methods), [
-    "rpc.discover",
-    "searchgres.v1.server.info",
-    "searchgres.v1.record.upsertMany",
-    "searchgres.v1.search",
-  ]);
+test("generated OpenRPC document describes the vertical slice", () => {
+  const document = createOpenRpcDocument();
+  assert.equal(document.openrpc, "1.3.2");
+  assert.deepEqual(
+    document.methods.map((method) => method.name),
+    [
+      "rpc.discover",
+      "searchgres.v1.server.info",
+      "searchgres.v1.record.upsertMany",
+      "searchgres.v1.search",
+    ],
+  );
+  const search = document.methods.find(
+    (method) => method.name === "searchgres.v1.search",
+  );
+  assert.equal(
+    (search?.params?.[0]?.schema as { readonly type?: unknown } | undefined)
+      ?.type,
+    "object",
+  );
+  assert.equal(search?.result.name, "result");
   assert.equal(
     methods["searchgres.v1.search"].params instanceof z.ZodType,
     true,
