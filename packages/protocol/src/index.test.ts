@@ -61,6 +61,11 @@ test("generated OpenRPC document describes the vertical slice", () => {
       "searchgres.v1.record.patch",
       "searchgres.v1.record.delete",
       "searchgres.v1.record.deleteByName",
+      "searchgres.v1.tree.move",
+      "searchgres.v1.tree.copy",
+      "searchgres.v1.tree.delete",
+      "searchgres.v1.tree.count",
+      "searchgres.v1.tree.list",
       "searchgres.v1.search",
     ],
   );

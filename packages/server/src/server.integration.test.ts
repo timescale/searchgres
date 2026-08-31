@@ -168,6 +168,37 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   ).toHaveLength(2);
   await client.delete({ id: bird.result.id });
   await client.deleteByName({ tree: "pets", name: "fish" });
+
+  expect(
+    (
+      await client.moveTree({
+        source: "pets",
+        destination: "animals",
+        options: { dryRun: true },
+      })
+    ).count,
+  ).toBe(4);
+  expect(
+    (await client.moveTree({ source: "pets", destination: "animals" })).count,
+  ).toBe(4);
+  expect(
+    await client.countTree({ selector: { tree: "animals" }, limit: 3 }),
+  ).toEqual({
+    count: 3,
+    capped: true,
+  });
+  expect(
+    (await client.listTree({ lquery: "animals.*" })).entries.find(
+      (entry) => entry.tree === "animals",
+    )?.count,
+  ).toBe(4);
+  expect(
+    (await client.copyTree({ source: "animals", destination: "zoo" })).count,
+  ).toBe(4);
+  expect(
+    (await client.deleteTree({ tree: "zoo", options: { dryRun: true } })).count,
+  ).toBe(4);
+  expect((await client.deleteTree({ tree: "zoo" })).count).toBe(4);
 });
 
 function embeddingFor(input: string): number[] {

@@ -306,12 +306,49 @@ async function invoke(
       await index.deleteByName(input.tree, input.name);
       return {};
     }
+    case "searchgres.v1.tree.move": {
+      const input = methods[method].params.parse(params);
+      return index.moveTree(
+        input.source,
+        input.destination,
+        treeMutationOptions(input.options),
+      );
+    }
+    case "searchgres.v1.tree.copy": {
+      const input = methods[method].params.parse(params);
+      return index.copyTree(
+        input.source,
+        input.destination,
+        treeMutationOptions(input.options),
+      );
+    }
+    case "searchgres.v1.tree.delete": {
+      const input = methods[method].params.parse(params);
+      return index.deleteTree(input.tree, treeMutationOptions(input.options));
+    }
+    case "searchgres.v1.tree.count": {
+      const input = methods[method].params.parse(params);
+      return index.countTree(
+        input.selector,
+        input.limit === undefined ? undefined : { limit: input.limit },
+      );
+    }
+    case "searchgres.v1.tree.list": {
+      const input = methods[method].params.parse(params);
+      return { entries: await index.listTree(input.lquery) };
+    }
     case "searchgres.v1.search": {
       const input = methods[method].params.parse(params);
       const results = await index.search(input as SearchOptions);
       return { results: results.map(mapSearchResult) };
     }
   }
+}
+
+function treeMutationOptions(
+  options: { readonly dryRun?: boolean | undefined } | undefined,
+) {
+  return options?.dryRun === undefined ? undefined : { dryRun: options.dryRun };
 }
 
 function isRpcMethod(value: string): value is RpcMethod {

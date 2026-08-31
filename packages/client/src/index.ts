@@ -1,10 +1,15 @@
 import {
+  type CopyTreeParams,
+  type CountTreeParams,
   type DeleteByNameParams,
   type DeleteParams,
+  type DeleteTreeParams,
   type GetByNameParams,
   type GetParams,
   type InsertManyParams,
   type InsertParams,
+  type ListTreeParams,
+  type MoveTreeParams,
   methods,
   type PatchParams,
   type RpcError,
@@ -143,6 +148,26 @@ export interface SearchgresClient {
     params: DeleteByNameParams,
     options?: { readonly signal?: AbortSignal },
   ): Promise<RpcResult<"searchgres.v1.record.deleteByName">>;
+  moveTree(
+    params: MoveTreeParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.tree.move">>;
+  copyTree(
+    params: CopyTreeParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.tree.copy">>;
+  deleteTree(
+    params: DeleteTreeParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.tree.delete">>;
+  countTree(
+    params: CountTreeParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.tree.count">>;
+  listTree(
+    params: ListTreeParams,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<RpcResult<"searchgres.v1.tree.list">>;
   search(
     params: SearchParams,
     options?: { readonly signal?: AbortSignal },
@@ -230,6 +255,16 @@ export function createClient(
       call("searchgres.v1.record.delete", params, callOptions),
     deleteByName: (params, callOptions) =>
       call("searchgres.v1.record.deleteByName", params, callOptions),
+    moveTree: (params, callOptions) =>
+      call("searchgres.v1.tree.move", params, callOptions),
+    copyTree: (params, callOptions) =>
+      call("searchgres.v1.tree.copy", params, callOptions),
+    deleteTree: (params, callOptions) =>
+      call("searchgres.v1.tree.delete", params, callOptions),
+    countTree: (params, callOptions) =>
+      call("searchgres.v1.tree.count", params, callOptions),
+    listTree: (params, callOptions) =>
+      call("searchgres.v1.tree.list", params, callOptions),
     search: (params, callOptions) =>
       call("searchgres.v1.search", params, callOptions),
   };

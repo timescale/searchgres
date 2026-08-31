@@ -155,6 +155,47 @@ export const deleteParamsSchema = z.strictObject({ id: uuidSchema });
 export const deleteByNameParamsSchema = getByNameParamsSchema;
 export const emptyResultSchema = z.strictObject({});
 
+const treeMutationOptionsSchema = z.strictObject({
+  dryRun: z.boolean().optional(),
+});
+const treeMutationResultSchema = z.strictObject({
+  count: z.number().int().nonnegative(),
+});
+export const moveTreeParamsSchema = z.strictObject({
+  source: treePathSchema,
+  destination: treePathSchema,
+  options: treeMutationOptionsSchema.optional(),
+});
+export const copyTreeParamsSchema = moveTreeParamsSchema;
+export const deleteTreeParamsSchema = z.strictObject({
+  tree: treePathSchema,
+  options: treeMutationOptionsSchema.optional(),
+});
+const treeCountSelectorSchema = z.union([
+  z.strictObject({ tree: treePathSchema }),
+  z.strictObject({ lquery: nonEmptyStringSchema }),
+  z.strictObject({ ltxtquery: nonEmptyStringSchema }),
+]);
+export const countTreeParamsSchema = z.strictObject({
+  selector: treeCountSelectorSchema,
+  limit: z.number().int().min(1).optional(),
+});
+export const treeCountResultSchema = z.strictObject({
+  count: z.number().int().nonnegative(),
+  capped: z.boolean(),
+});
+export const listTreeParamsSchema = z.strictObject({
+  lquery: nonEmptyStringSchema,
+});
+export const listTreeResultSchema = z.strictObject({
+  entries: z.array(
+    z.strictObject({
+      tree: z.string(),
+      count: z.number().int().nonnegative(),
+    }),
+  ),
+});
+
 export const searchParamsSchema = z
   .strictObject({
     semantic: nonEmptyStringSchema.optional(),
@@ -299,6 +340,31 @@ export const methods = {
     deleteByNameParamsSchema,
     emptyResultSchema,
   ),
+  "searchgres.v1.tree.move": method(
+    "Move an inclusive tree subtree to a destination path.",
+    moveTreeParamsSchema,
+    treeMutationResultSchema,
+  ),
+  "searchgres.v1.tree.copy": method(
+    "Copy an inclusive tree subtree to a destination path with fresh record ids.",
+    copyTreeParamsSchema,
+    treeMutationResultSchema,
+  ),
+  "searchgres.v1.tree.delete": method(
+    "Delete an inclusive tree subtree.",
+    deleteTreeParamsSchema,
+    treeMutationResultSchema,
+  ),
+  "searchgres.v1.tree.count": method(
+    "Count records selected by one explicit tree filter kind.",
+    countTreeParamsSchema,
+    treeCountResultSchema,
+  ),
+  "searchgres.v1.tree.list": method(
+    "List tree nodes matching an lquery with descendant counts.",
+    listTreeParamsSchema,
+    listTreeResultSchema,
+  ),
   "searchgres.v1.search": method(
     "Run a filter-only, full-text, semantic-text, or hybrid search.",
     searchParamsSchema,
@@ -407,4 +473,9 @@ export type GetByNameParams = z.input<typeof getByNameParamsSchema>;
 export type PatchParams = z.input<typeof patchParamsSchema>;
 export type DeleteParams = z.input<typeof deleteParamsSchema>;
 export type DeleteByNameParams = z.input<typeof deleteByNameParamsSchema>;
+export type MoveTreeParams = z.input<typeof moveTreeParamsSchema>;
+export type CopyTreeParams = z.input<typeof copyTreeParamsSchema>;
+export type DeleteTreeParams = z.input<typeof deleteTreeParamsSchema>;
+export type CountTreeParams = z.input<typeof countTreeParamsSchema>;
+export type ListTreeParams = z.input<typeof listTreeParamsSchema>;
 export type RpcError = z.output<typeof rpcErrorSchema>;
