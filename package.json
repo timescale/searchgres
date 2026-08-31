@@ -13,10 +13,10 @@
   "scripts": {
     "build": "npm run build --workspace=searchgres && npm run build --workspace=@searchgres/protocol && npm run build --workspace=@searchgres/client && npm run build --workspace=@searchgres/server && npm run build --workspace=@searchgres/cli",
     "clean": "npm run clean --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspace=searchgres && npm run build --workspace=@searchgres/protocol && npm run typecheck --workspace=@searchgres/protocol && npm run build --workspace=@searchgres/client && npm run typecheck --workspace=@searchgres/client && npm run typecheck --workspace=@searchgres/server && npm run build --workspace=@searchgres/server && npm run typecheck --workspace=@searchgres/cli",
+    "typecheck": "npm run typecheck --workspace=searchgres && npm run build --workspace=searchgres && npm run build --workspace=@searchgres/protocol && npm run typecheck --workspace=@searchgres/protocol && npm run build --workspace=@searchgres/client && npm run typecheck --workspace=@searchgres/client && npm run typecheck --workspace=@searchgres/server && npm run build --workspace=@searchgres/server && npm run typecheck --workspace=@searchgres/cli",
     "lint": "biome check",
     "format": "biome check --write",
-    "test:unit": "npm run build --workspace=@searchgres/protocol && npm run test:unit --workspaces --if-present",
+    "test:unit": "npm run build --workspace=searchgres && npm run build --workspace=@searchgres/protocol && npm run test:unit --workspaces --if-present",
     "test:db": "npm run build && npm run test:db --workspaces --if-present",
     "check": "npm run typecheck && npm run lint && npm run test:unit",
     "pg:build": "docker build -t searchgres-postgres -f docker/Dockerfile.postgres docker/",
