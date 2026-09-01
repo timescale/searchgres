@@ -17,7 +17,7 @@ import postgres from "postgres";
 import { createIndex, dropIndex } from "searchgres";
 import { loadServerConfig, parseServerConfig } from "./config.ts";
 import { renderConfig } from "./config-file.ts";
-import { loadDotenv, writeDotenvExample } from "./dotenv.ts";
+import { dotenvLine, loadDotenv, writeDotenvExample } from "./dotenv.ts";
 import {
   type Flags,
   flagsFromOptions,
@@ -270,10 +270,19 @@ async function runInitWizard(): Promise<void> {
   );
   const envPath = join(dirname(resolve(config)), ".env");
   if (!(await Bun.file(envPath).exists())) {
-    await Bun.write(
-      envPath,
-      `${databaseEnv}=${databaseUrl}\n${apiKey ? `${apiKeyEnv}=${apiKey}\n` : ""}`,
-    );
+    // Build the whole file before writing any of it: a rejected value must not
+    // leave a half-written .env behind. dotenvLine explains what to do instead.
+    let contents: string;
+    try {
+      contents =
+        dotenvLine(databaseEnv, databaseUrl) +
+        (apiKey ? dotenvLine(apiKeyEnv, apiKey) : "");
+    } catch (error) {
+      clack.log.warn(error instanceof Error ? error.message : String(error));
+      clack.outro(`Skipped ${envPath}; set the variables in your environment`);
+      return;
+    }
+    await Bun.write(envPath, contents);
     clack.outro(`Wrote ${envPath}`);
   }
 }

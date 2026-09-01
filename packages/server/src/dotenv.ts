@@ -3,8 +3,15 @@ import { dirname, join } from "node:path";
 
 /**
  * Load `path` into `process.env` without overwriting anything already set, so
- * an explicit environment variable always beats a file. Kept dependency-free:
- * both binaries use it, and `sg` pays for everything this module imports.
+ * an explicit environment variable always beats a file.
+ *
+ * Hand-rolled rather than taking a dependency, because no library covers both
+ * halves of what we need and the dialects disagree on the interesting cases.
+ * `dotenv` has no writer, and it reads `#` as starting a comment — which would
+ * silently truncate a database password containing one. Docker Compose's
+ * `env_file`, our other consumer, instead takes every character literally and
+ * does *not* strip quotes. {@link writeDotenvValue} is the reconciliation:
+ * emit only values all three readers agree on.
  */
 export async function loadDotenv(path: string): Promise<void> {
   if (!(await Bun.file(path).exists())) return;
@@ -29,6 +36,39 @@ export async function loadDotenv(path: string): Promise<void> {
   }
 }
 
+/**
+ * Characters that make a `.env` value ambiguous across the readers that will see
+ * it, with the reason each is rejected. Quoting cannot rescue them: Docker
+ * Compose does not strip quotes, so `K="v"` would deliver a value with literal
+ * quotes to a deployed server.
+ */
+function unrepresentable(value: string): string | undefined {
+  if (/[\r\n]/.test(value))
+    return "contains a line break, which cannot be written to a .env file";
+  if (value.includes("#"))
+    return 'contains "#", which dotenv-style readers treat as starting a comment';
+  if (value !== value.trim())
+    return "has leading or trailing whitespace, which some readers strip";
+  return undefined;
+}
+
+/**
+ * Render one `NAME=value` line, refusing values that would not survive the
+ * round trip. Rejecting is deliberate: writing an ambiguous line would produce a
+ * file that this binary reads correctly and other tooling silently misreads,
+ * turning a bad password into a confusing connection error much later.
+ */
+export function dotenvLine(name: string, value: string): string {
+  const problem = unrepresentable(value);
+  if (problem !== undefined) {
+    throw new Error(
+      `Cannot write ${name} to a .env file: the value ${problem}. ` +
+        `Set ${name} in the environment instead, and leave it blank in the file.`,
+    );
+  }
+  return `${name}=${value}\n`;
+}
+
 /** Write a `.env.example` beside a config, and git-ignore the real `.env`. */
 export async function writeDotenvExample(
   configPath: string,
@@ -38,9 +78,11 @@ export async function writeDotenvExample(
   const directory = dirname(configPath);
   const example = join(directory, ".env.example");
   if (!(await Bun.file(example).exists())) {
+    // Empty values, so this always round-trips; the names are the documentation.
     await Bun.write(
       example,
-      `${databaseUrlEnv}=\n${apiKeyEnv ? `${apiKeyEnv}=\n` : ""}`,
+      dotenvLine(databaseUrlEnv, "") +
+        (apiKeyEnv ? dotenvLine(apiKeyEnv, "") : ""),
     );
   }
   const gitignore = join(directory, ".gitignore");
