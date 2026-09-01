@@ -15,11 +15,20 @@ describe("server config", () => {
   test("applies one-index pool, timeout, and worker defaults", () => {
     const config = parseServerConfig(minimalConfig);
     expect(config.server.listen.host).toBe("127.0.0.1");
+    expect(config.server.maxRequestBodyBytes).toBe(1024 * 1024);
     expect(config.database.api.pool.max).toBe(20);
     expect(config.database.worker.pool.max).toBe(2);
     expect(config.database.api.session.statementTimeout).toBe(30_000);
     expect(config.database.worker.session.statementTimeout).toBe(25_000);
     expect(config.index.worker.interval).toBe(1_000);
+  });
+
+  test("accepts an explicit request body limit", () => {
+    const config = parseServerConfig({
+      ...minimalConfig,
+      server: { listen: {}, maxRequestBodyBytes: 2_000_000 },
+    });
+    expect(config.server.maxRequestBodyBytes).toBe(2_000_000);
   });
 
   test("accepts curated exact tokenization with an inline escape hatch", () => {

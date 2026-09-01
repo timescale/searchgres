@@ -18,7 +18,7 @@
     "typecheck": "./bun run --filter searchgres build && ./bun run --filter @searchgres/protocol build && ./bun run --filter @searchgres/client build && ./bun run --filter searchgres typecheck && ./bun run --filter @searchgres/protocol typecheck && ./bun run --filter @searchgres/client typecheck && ./bun run --filter @searchgres/server typecheck && ./bun run --filter @searchgres/cli typecheck",
     "lint": "./bun x biome check",
     "format": "./bun x biome check --write",
-    "test:unit": "./bun run --filter searchgres build && ./bun run --filter @searchgres/protocol build && ./bun run --filter @searchgres/client build && ./bun run --filter searchgres test:unit && ./bun run --filter @searchgres/protocol test:unit && ./bun run --filter @searchgres/client test:unit && ./bun run --filter @searchgres/server test:unit",
+    "test:unit": "./bun run --filter searchgres build && ./bun run --filter @searchgres/protocol build && ./bun run --filter @searchgres/client build && ./bun run --filter searchgres test:unit && ./bun run --filter @searchgres/protocol test:unit && ./bun run --filter @searchgres/client test:unit && ./bun run --filter @searchgres/server test:unit && ./bun run --filter @searchgres/cli test:unit",
     "test:db": "./bun run build && ./bun run compile && ./bun run --filter searchgres test:db && ./bun run --filter @searchgres/server test:db",
     "check": "./bun run typecheck && ./bun run lint && ./bun run test:unit",
     "check:full": "./bun run check && ./bun scripts/with-postgres.ts ./bun run test:db",

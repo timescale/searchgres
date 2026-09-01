@@ -109,9 +109,16 @@ test("ranking arms and filters combine, and knobs are typed", () => {
     semanticWeight: 0.7,
     fulltextWeight: 0.3,
   });
-  expect(search(["tree", "docs"], ["order", "asc"])).toEqual({
+  expect(
+    search(
+      ["tree", "docs"],
+      ["order", "asc"],
+      ["after", "01900000-0000-7000-8000-000000000000"],
+    ),
+  ).toEqual({
     filter: { tree: "docs" },
     order: "asc",
+    after: "01900000-0000-7000-8000-000000000000",
   });
 });
 
@@ -160,7 +167,7 @@ test("invalid flag values are rejected before a request is made", () => {
     expect(() => search(...pairs), JSON.stringify(pairs)).toThrow(pattern);
   }
   // No ranking arm and no filter is not a search.
-  expect(() => search()).toThrow(/requires --input, a ranking flag/);
+  expect(() => search()).toThrow(/requires a ranking flag/);
 });
 
 test("flag names derive from leaf keys", () => {

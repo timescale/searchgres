@@ -32,7 +32,7 @@ they ship as compiled binaries rather than as importable source.
 | `packages/protocol` | Runtime-neutral Zod RPC contract/OpenRPC source. |
 | `packages/client` | Runtime-agnostic fetch JSON-RPC client. |
 | `packages/server` | Bun server component and the `sg-server` binary: config, RPC service, providers, tokenizer pool, worker lifecycle, provisioning. |
-| `packages/cli` | Bun-only `sg` binary: the unprivileged client, plus flag/format helpers shared with `sg-server`. |
+| `packages/cli` | Bun-only `sg` binary: the unprivileged client, including import/export and its own flag/format helpers. It shares no code with `sg-server`. |
 
 Dependency direction is intentionally one-way: CLI may use server/client/core;
 server uses core/protocol; client uses protocol. Core, protocol, and client must

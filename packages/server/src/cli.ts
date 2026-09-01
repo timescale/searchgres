@@ -309,7 +309,10 @@ function buildInitialConfig(input: {
     : { kind: "none" };
   const config = {
     version: 1,
-    server: { listen: { host: input.host, port: input.port } },
+    server: {
+      listen: { host: input.host, port: input.port },
+      maxRequestBodyBytes: 1024 * 1024,
+    },
     database: { urlEnv: input.databaseUrlEnv },
     index: {
       schema: input.schema,

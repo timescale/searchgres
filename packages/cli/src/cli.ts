@@ -1,13 +1,12 @@
-// `sg`: the unprivileged client. Talks to a searchgres server over JSON-RPC and
-// nothing else.
-//
-// Provisioning and serving live in the separate `sg-server` binary
-// (packages/server/src/cli.ts). The split is not cosmetic: `bun build --compile`
-// initializes a binary's entire module graph at startup, executed or not, so
-// anything reachable from here — postgres, the core library, the embedding
-// provider, the prompt library — is paid by every `sg` invocation. Keeping them
-// unreachable is what makes this binary fast.
-import { createClient, createFetchTransport } from "@searchgres/client";
+// `sg`: the unprivileged client. It talks only to a searchgres server over
+// JSON-RPC. Provisioning, database access, and provider credentials remain in
+// the independent `sg-server` binary.
+import {
+  createClient,
+  createFetchTransport,
+  type SearchgresClient,
+} from "@searchgres/client";
+import { exportRecords, importRecords } from "./bulk.ts";
 import {
   camelCase,
   enumeration,
@@ -18,11 +17,16 @@ import {
   optionalFlag,
   parseJsonObject,
   positiveInteger,
-  rejectUnknownFlags,
   requiredFlag,
   unitInterval,
 } from "./flags.ts";
-import { readStructuredInput, writeStructuredOutput } from "./format.ts";
+import {
+  hasExplicitOutputFormat,
+  outputFormat,
+  readStructuredFile,
+  readStructuredInput,
+  writeStructuredOutput,
+} from "./format.ts";
 
 export { flagsFromOptions };
 
@@ -38,46 +42,352 @@ export async function runCommand(
   flags: Flags,
   args: readonly string[] = [],
 ): Promise<void> {
-  // A clear pointer beats "unknown command" for anyone with the old habits.
   if (command === "server" || command === "init" || command === "destroy") {
     throw new Error(
       `\`sg ${command}\` lives in the sg-server binary: run \`sg-server ${command}\``,
     );
   }
-  if (command === "tree") {
-    await runTree(flags, args);
-    return;
+  assertOutputFormatApplies(command, flags);
+  const client = remoteClient(flags);
+  switch (command) {
+    case "info":
+      return output(await client.info(), flags);
+    case "create":
+      return runCreate(client, flags);
+    case "get":
+      return runGet(client, flags, args);
+    case "update":
+      return runUpdate(client, flags, args);
+    case "delete":
+      return runDelete(client, flags, args);
+    case "search":
+      return output(
+        await client.search(paramsFromFlags("search", flags) as never),
+        flags,
+      );
+    case "import":
+      return runImport(client, flags, args);
+    case "export":
+      return runExport(client, flags, args);
+    case "tree":
+      return runTree(client, flags, args);
+    case "count":
+      return output(
+        await client.countTree(paramsFromFlags("count", flags) as never),
+        flags,
+      );
+    case "list":
+      return output(
+        await client.listTree({ lquery: requiredFlag(flags, "lquery") }),
+        flags,
+      );
+    case "move":
+    case "copy":
+      return runMoveOrCopy(client, command, flags, args);
+    default:
+      throw new Error(usage);
   }
-  if (command && remoteMethod(command)) {
-    await runRemote(command, flags);
-    return;
-  }
-  throw new Error(usage);
 }
 
-async function runTree(
-  flags: Map<string, string | true>,
-  args: readonly string[],
-): Promise<void> {
-  const root = args[0] ?? "";
-  rejectUnknownFlags(flags, new Set(["server", "levels", "output-format"]));
-  const levels = optionalFlag(flags, "levels");
+function assertOutputFormatApplies(command: string, flags: Flags): void {
+  if (!flags.has("ndjson")) return;
+  if (!["search", "list", "tree"].includes(command)) {
+    throw new Error("--ndjson applies only to search, list, and tree");
+  }
+}
+
+function remoteClient(flags: Flags): SearchgresClient {
   const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
   if (!server) throw new Error("--server or SEARCHGRES_URL is required");
-  const client = createClient({
+  return createClient({
     transport: createFetchTransport({
       url: `${server.replace(/\/$/, "")}/rpc`,
     }),
   });
+}
+
+async function runCreate(
+  client: SearchgresClient,
+  flags: Flags,
+): Promise<void> {
+  const file = optionalFlag(flags, "file");
+  const format = optionalFlag(flags, "format");
+  if (format !== undefined && !["json", "json5", "yaml"].includes(format)) {
+    throw new Error("create --format must be json, json5, or yaml");
+  }
+  if (file !== undefined) {
+    const conflicting = [
+      "content",
+      "tree",
+      "name",
+      "meta",
+      "temporal",
+      "id",
+      "replace",
+      "ignore",
+    ].find((name) => flags.has(name));
+    if (conflicting !== undefined) {
+      throw new Error(`--file cannot be combined with --${conflicting}`);
+    }
+    const record = await readStructuredFile(file, format);
+    return outputCreated(
+      client,
+      await client.insert({ record: record as never }),
+      flags,
+    );
+  }
+  if (format !== undefined) throw new Error("--format requires --file");
+
+  const content = optionalFlag(flags, "content");
+  if (content === undefined) throw new Error("--content is required");
+  const record = {
+    content,
+    ...(optionalFlag(flags, "tree") === undefined
+      ? {}
+      : { tree: optionalFlag(flags, "tree") }),
+    ...(optionalFlag(flags, "name") === undefined
+      ? {}
+      : { name: optionalFlag(flags, "name") }),
+    ...(optionalFlag(flags, "meta") === undefined
+      ? {}
+      : { meta: parseJsonObject(requiredFlag(flags, "meta"), "meta") }),
+    ...(optionalFlag(flags, "temporal") === undefined
+      ? {}
+      : {
+          temporal: parseTemporal(requiredFlag(flags, "temporal"), "temporal"),
+        }),
+    ...(optionalFlag(flags, "id") === undefined
+      ? {}
+      : { id: optionalFlag(flags, "id") }),
+  };
+  if (flags.has("replace") || flags.has("ignore")) {
+    return outputCreated(
+      client,
+      await client.upsert({
+        record,
+        onConflict: flags.has("ignore") ? "ignore" : "replace",
+      } as never),
+      flags,
+    );
+  }
+  return outputCreated(client, await client.insert({ record } as never), flags);
+}
+
+async function runGet(
+  client: SearchgresClient,
+  flags: Flags,
+  args: readonly string[],
+): Promise<void> {
+  if (args.length === 1)
+    return output(await client.get({ id: args[0] as string }), flags);
+  if (args.length === 2) {
+    return output(
+      await client.getByName({
+        tree: args[0] as string,
+        name: args[1] as string,
+      }),
+      flags,
+    );
+  }
+  throw new Error("get requires <id> or <tree> <name>");
+}
+
+async function runUpdate(
+  client: SearchgresClient,
+  flags: Flags,
+  args: readonly string[],
+): Promise<void> {
+  const id = args[0];
+  if (id === undefined || args.length !== 1)
+    throw new Error("update requires <id>");
+  const inputFormat = optionalFlag(flags, "input-format");
+  if (
+    inputFormat !== undefined &&
+    !["json", "json5", "yaml"].includes(inputFormat)
+  ) {
+    throw new Error("--input-format must be json, json5, or yaml");
+  }
+  const inputFlag = optionalFlag(flags, "input");
+  if (inputFormat !== undefined && inputFlag === undefined) {
+    throw new Error("--input-format requires --input");
+  }
+  const input = await readStructuredInput(inputFlag, inputFormat);
+  const fieldNames = ["content", "tree", "name", "meta", "temporal"];
+  if (input !== undefined) {
+    const conflicting = fieldNames.find((name) => flags.has(name));
+    if (conflicting !== undefined) {
+      throw new Error(`--input cannot be combined with --${conflicting}`);
+    }
+  }
+  const patch =
+    input ??
+    Object.fromEntries(
+      fieldNames
+        .filter((name) => flags.has(name))
+        .map((name) => {
+          const value = optionalFlag(flags, name);
+          if (value === undefined)
+            throw new Error(`--${name} requires a value`);
+          if (name === "meta") return [name, parseJsonObject(value, name)];
+          if (name === "temporal") {
+            return [name, value === "" ? null : parseTemporal(value, name)];
+          }
+          if (name === "name") return [name, value === "" ? null : value];
+          return [name, value];
+        }),
+    );
+  return output(
+    await client.patch({
+      id,
+      priorVersionHash: requiredFlag(flags, "version-hash"),
+      patch: patch as never,
+    }),
+    flags,
+  );
+}
+
+async function runDelete(
+  client: SearchgresClient,
+  flags: Flags,
+  args: readonly string[],
+): Promise<void> {
+  const tree = optionalFlag(flags, "tree");
+  if (tree !== undefined) {
+    if (args.length > 0)
+      throw new Error("--tree cannot be combined with record addressing");
+    if (!flags.has("dry-run") && !flags.has("yes")) {
+      throw new Error("deleting a tree requires --yes (or use --dry-run)");
+    }
+    return output(
+      await client.deleteTree({
+        tree,
+        ...(flags.has("dry-run") ? { options: { dryRun: true } } : {}),
+      }),
+      flags,
+    );
+  }
+  if (flags.has("dry-run") || flags.has("yes")) {
+    throw new Error("--dry-run and --yes apply only to --tree deletion");
+  }
+  if (args.length === 1)
+    return output(await client.delete({ id: args[0] as string }), flags);
+  if (args.length === 2) {
+    return output(
+      await client.deleteByName({
+        tree: args[0] as string,
+        name: args[1] as string,
+      }),
+      flags,
+    );
+  }
+  throw new Error("delete requires <id>, <tree> <name>, or --tree <path>");
+}
+
+async function runImport(
+  client: SearchgresClient,
+  flags: Flags,
+  files: readonly string[],
+): Promise<void> {
+  const summary = await importRecords(client, {
+    files,
+    format: optionalFlag(flags, "format"),
+    recursive: flags.has("recursive"),
+    defaultTree: optionalFlag(flags, "tree"),
+    mode: flags.has("replace")
+      ? "replace"
+      : flags.has("ignore")
+        ? "ignore"
+        : "error",
+    dryRun: flags.has("dry-run"),
+    failFast: flags.has("fail-fast"),
+    verbose: flags.has("verbose"),
+  });
+  output(summary, flags);
+}
+
+async function runExport(
+  client: SearchgresClient,
+  flags: Flags,
+  args: readonly string[],
+): Promise<void> {
+  if (hasExplicitOutputFormat(flags)) {
+    throw new Error(
+      "export uses --format, not the global display-format flags",
+    );
+  }
+  const format = optionalFlag(flags, "format") ?? "ndjson";
+  if (!["ndjson", "json", "yaml", "md"].includes(format)) {
+    throw new Error("--format must be ndjson, json, yaml, or md");
+  }
+  const rawLimit = optionalFlag(flags, "limit");
+  const summary = await exportRecords(client, {
+    file: args[0],
+    format: format as "ndjson" | "json" | "yaml" | "md",
+    limit: rawLimit === undefined ? 0 : nonnegativeInteger(rawLimit, "limit"),
+    search: exportSearchParams(flags) as never,
+  });
+  console.error(
+    `exported ${summary.exported} record(s); ${summary.withoutEmbedding} without an embedding`,
+  );
+}
+
+function exportSearchParams(flags: Flags): Record<string, unknown> {
+  const withoutLimit = new Map(flags);
+  withoutLimit.delete("limit");
+  return searchParamsFromFlags(withoutLimit, false);
+}
+
+async function outputCreated(
+  client: SearchgresClient,
+  write: { readonly result: { readonly id: string; readonly status: string } },
+  flags: Flags,
+): Promise<void> {
+  const fetched = await client.get({ id: write.result.id });
+  output({ result: write.result, record: fetched.record }, flags);
+}
+
+async function runTree(
+  client: SearchgresClient,
+  flags: Flags,
+  args: readonly string[],
+): Promise<void> {
+  const root = args[0] ?? "";
+  const levels = optionalFlag(flags, "levels");
   const result = await client.treeView({
     ...(root ? { tree: root } : {}),
     ...(levels === undefined
       ? {}
       : { levels: nonnegativeInteger(levels, "levels") }),
   });
-  const output = optionalFlag(flags, "output-format");
-  if (output) return writeStructuredOutput(result, output);
+  if (hasExplicitOutputFormat(flags)) return output(result, flags);
   renderTree(result.entries, root);
+}
+
+async function runMoveOrCopy(
+  client: SearchgresClient,
+  command: "move" | "copy",
+  flags: Flags,
+  args: readonly string[],
+): Promise<void> {
+  const [source, destination] = args;
+  if (source === undefined || destination === undefined || args.length !== 2) {
+    throw new Error(`${command} requires <source> <destination>`);
+  }
+  const params = {
+    source,
+    destination,
+    ...(flags.has("dry-run") ? { options: { dryRun: true } } : {}),
+  };
+  output(
+    command === "move"
+      ? await client.moveTree(params)
+      : await client.copyTree(params),
+    flags,
+  );
+}
+
+function output(value: unknown, flags: Flags): void {
+  writeStructuredOutput(value, outputFormat(flags));
 }
 
 function renderTree(
@@ -100,153 +410,68 @@ function renderTree(
   }
 }
 
-function remoteMethod(command: string): string | undefined {
-  return {
-    info: "searchgres.v1.server.info",
-    upsert: "searchgres.v1.record.upsert",
-    "upsert-many": "searchgres.v1.record.upsertMany",
-    insert: "searchgres.v1.record.insert",
-    "insert-many": "searchgres.v1.record.insertMany",
-    get: "searchgres.v1.record.get",
-    "get-by-name": "searchgres.v1.record.getByName",
-    patch: "searchgres.v1.record.patch",
-    delete: "searchgres.v1.record.delete",
-    "delete-by-name": "searchgres.v1.record.deleteByName",
-    move: "searchgres.v1.tree.move",
-    copy: "searchgres.v1.tree.copy",
-    deltree: "searchgres.v1.tree.delete",
-    count: "searchgres.v1.tree.count",
-    list: "searchgres.v1.tree.list",
-    search: "searchgres.v1.search",
-  }[command];
-}
-
-async function runRemote(
-  command: string,
-  flags: Map<string, string | true>,
-): Promise<void> {
-  rejectUnknownFlags(flags, allowedRemoteFlags(command));
-  const server = optionalFlag(flags, "server") ?? process.env.SEARCHGRES_URL;
-  if (!server) throw new Error("--server or SEARCHGRES_URL is required");
-  const outputFormat = optionalFlag(flags, "output-format") ?? "json";
-  const input = await readStructuredInput(
-    optionalFlag(flags, "input"),
-    optionalFlag(flags, "input-format"),
-    command === "upsert-many" || command === "insert-many",
-  );
-  if (input !== undefined) {
-    const fieldFlags = [...flags.keys()].filter(
-      (name) =>
-        !["server", "output-format", "input", "input-format"].includes(name),
-    );
-    if (fieldFlags.length > 0) {
-      throw new Error(`--input cannot be combined with --${fieldFlags[0]}`);
-    }
-  }
-  const params = input ?? paramsFromFlags(command, flags);
-  const client = createClient({
-    transport: createFetchTransport({
-      url: `${server.replace(/\/$/, "")}/rpc`,
-    }),
-  });
-  const result = await client.call(
-    remoteMethod(command) as never,
-    params as never,
-  );
-  writeStructuredOutput(result, outputFormat);
-}
-
-function allowedRemoteFlags(command: string): ReadonlySet<string> {
-  const shared = ["server", "output-format", "input", "input-format"];
-  const commandFlags: Record<string, readonly string[]> = {
-    info: [],
-    upsert: [],
-    "upsert-many": [],
-    insert: [],
-    "insert-many": [],
-    patch: [],
-    get: ["id"],
-    delete: ["id"],
-    "get-by-name": ["tree", "name"],
-    "delete-by-name": ["tree", "name"],
-    move: ["source", "destination", "dry-run"],
-    copy: ["source", "destination", "dry-run"],
-    deltree: ["tree", "dry-run"],
-    count: ["tree", "lquery", "ltxtquery", "limit"],
-    list: ["lquery"],
-    search: [
-      "semantic",
-      "fulltext",
-      ...filterFlagNames,
-      "limit",
-      "candidate-limit",
-      "semantic-threshold",
-      "semantic-weight",
-      "fulltext-weight",
-      "order",
-    ],
-  };
-  return new Set([...shared, ...(commandFlags[command] ?? [])]);
-}
-
-/**
- * Map a command's flags to its RPC params. Exported for testing: this is pure
- * input-to-output, so the per-flag matrix belongs in a unit test rather than in
- * the compiled-binary suite, where each case would cost a process spawn.
- */
-export function paramsFromFlags(
-  command: string,
-  flags: Map<string, string | true>,
-): unknown {
-  const value = (name: string) => requiredFlag(flags, name);
-  const dry = flags.has("dry-run") ? { options: { dryRun: true } } : {};
-  if (command === "info") return undefined;
-  if (command === "get" || command === "delete") return { id: value("id") };
-  if (command === "get-by-name" || command === "delete-by-name")
-    return { tree: value("tree"), name: value("name") };
-  if (command === "move" || command === "copy")
-    return {
-      source: value("source"),
-      destination: value("destination"),
-      ...dry,
-    };
-  if (command === "deltree") return { tree: value("tree"), ...dry };
-  if (command === "list") return { lquery: value("lquery") };
+/** Map search/count flags to RPC params; exported for fast unit tests. */
+export function paramsFromFlags(command: string, flags: Flags): unknown {
   if (command === "count") {
     const names = ["tree", "lquery", "ltxtquery"].filter((name) =>
-      optionalFlag(flags, name),
+      flags.has(name),
     );
     const [name] = names;
-    if (names.length !== 1 || name === undefined)
+    if (names.length !== 1 || name === undefined) {
       throw new Error(
         "count requires exactly one of --tree, --lquery, or --ltxtquery",
       );
+    }
+    const selector = optionalFlag(flags, name);
+    if (selector === undefined) throw new Error(`--${name} requires a value`);
     return {
-      selector: { [name]: value(name) },
-      ...(optionalFlag(flags, "limit")
-        ? { limit: positiveInteger(value("limit"), "limit") }
-        : {}),
+      selector: { [name]: selector },
+      ...(optionalFlag(flags, "limit") === undefined
+        ? {}
+        : { limit: positiveInteger(requiredFlag(flags, "limit"), "limit") }),
     };
   }
-  if (command === "search") {
-    const semantic = optionalFlag(flags, "semantic");
-    const fulltext = optionalFlag(flags, "fulltext");
-    const leaves = filterLeavesFromFlags(flags);
-    if (!semantic && !fulltext && leaves.length === 0)
-      throw new Error(
-        "search requires --input, a ranking flag (--semantic, --fulltext), or a filter flag",
-      );
-    return {
-      ...(semantic ? { semantic } : {}),
-      ...(fulltext ? { fulltext } : {}),
-      ...(leaves.length > 0 ? { filter: conjoin(leaves) } : {}),
-      ...numericSearchOptions(flags),
-      ...(optionalFlag(flags, "order")
-        ? { order: enumeration(value("order"), "order", ["asc", "desc"]) }
-        : {}),
-    };
+  if (command === "search") return searchParamsFromFlags(flags, true);
+  throw new Error(`cannot derive ${command} params from flags`);
+}
+
+function searchParamsFromFlags(
+  flags: Flags,
+  requireCriterion: boolean,
+): Record<string, unknown> {
+  const semantic = optionalFlag(flags, "semantic");
+  const fulltext = optionalFlag(flags, "fulltext");
+  const leaves = filterLeavesFromFlags(flags);
+  if (
+    requireCriterion &&
+    semantic === undefined &&
+    fulltext === undefined &&
+    leaves.length === 0
+  ) {
+    throw new Error(
+      "search requires a ranking flag (--semantic, --fulltext) or a filter flag",
+    );
   }
-  throw new Error(`${command} requires --input`);
+  return {
+    ...(semantic === undefined ? {} : { semantic }),
+    ...(fulltext === undefined ? {} : { fulltext }),
+    ...(leaves.length === 0 ? {} : { filter: conjoin(leaves) }),
+    ...numericSearchOptions(flags),
+    ...(optionalFlag(flags, "order") === undefined
+      ? {}
+      : {
+          order: enumeration(requiredFlag(flags, "order"), "order", [
+            "asc",
+            "desc",
+          ]),
+        }),
+    ...(optionalFlag(flags, "after") === undefined
+      ? {}
+      : { after: optionalFlag(flags, "after") }),
+    ...(optionalFlag(flags, "before") === undefined
+      ? {}
+      : { before: optionalFlag(flags, "before") }),
+  };
 }
 
 const filterLeafFlags = [
@@ -272,31 +497,22 @@ const filterLeafFlags = [
   parse: (raw: string) => unknown;
 }[];
 
-/** `temporalWithin` -> `temporal-within`. */
 export const flagNameFor = kebabCase;
-
-/** Every filter leaf flag name, for option registration and flag validation. */
 export const filterFlagNames: readonly string[] = filterLeafFlags.map((leaf) =>
   flagNameFor(leaf.key),
 );
 
-/** Collect the filter leaves the caller supplied, in declaration order. */
 function filterLeavesFromFlags(
-  flags: Map<string, string | true>,
+  flags: Flags,
 ): readonly Record<string, unknown>[] {
   const leaves: Record<string, unknown>[] = [];
   for (const { key, parse } of filterLeafFlags) {
     const raw = optionalFlag(flags, flagNameFor(key));
-    if (raw === undefined) continue;
-    leaves.push({ [key]: parse(raw) });
+    if (raw !== undefined) leaves.push({ [key]: parse(raw) });
   }
   return leaves;
 }
 
-/**
- * AND the supplied leaves. A single leaf is passed through bare because the
- * filter schema requires `and` to hold at least two members.
- */
 function conjoin(
   leaves: readonly Record<string, unknown>[],
 ): Record<string, unknown> {
@@ -305,7 +521,7 @@ function conjoin(
   return leaves.length === 1 ? first : { and: [...leaves] };
 }
 
-function parseRange(raw: string, name: string): readonly string[] {
+function parseRange(raw: string, name: string): readonly [string, string] {
   const separator = raw.indexOf(",");
   if (separator === -1)
     throw new Error(`--${name} must be a "start,end" range`);
@@ -316,10 +532,14 @@ function parseRange(raw: string, name: string): readonly string[] {
   return [start, end];
 }
 
-/** The numeric ranking/paging knobs shared by ranked and filter-only search. */
-function numericSearchOptions(
-  flags: Map<string, string | true>,
-): Record<string, number> {
+function parseTemporal(
+  raw: string,
+  name: string,
+): readonly [string] | readonly [string, string] {
+  return raw.includes(",") ? parseRange(raw, name) : [raw];
+}
+
+function numericSearchOptions(flags: Flags): Record<string, number> {
   const options: Record<string, number> = {};
   for (const name of ["limit", "candidate-limit"]) {
     const raw = optionalFlag(flags, name);
@@ -336,5 +556,3 @@ function numericSearchOptions(
   }
   return options;
 }
-
-/** `candidate-limit` -> `candidateLimit`. */

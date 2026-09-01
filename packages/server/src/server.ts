@@ -87,7 +87,11 @@ export async function startServer(
       });
     }
 
-    const handler = createRequestHandler(apiIndex, options.readOnly ?? false);
+    const handler = createRequestHandler(
+      apiIndex,
+      options.readOnly ?? false,
+      config.server.maxRequestBodyBytes,
+    );
     const server = Bun.serve({
       hostname: config.server.listen.host,
       port: config.server.listen.port,
@@ -177,6 +181,7 @@ function createTruncator(config: ServerConfig): {
 function createRequestHandler(
   index: Index,
   readOnly: boolean,
+  maxRequestBodyBytes: number,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
@@ -196,13 +201,25 @@ function createRequestHandler(
       return new Response("Expected application/json", { status: 415 });
     }
 
+    const declaredLength = Number(request.headers.get("content-length"));
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > maxRequestBodyBytes
+    ) {
+      return requestTooLarge(maxRequestBodyBytes);
+    }
+
     let body: unknown;
     try {
-      body = await request.json();
+      const bytes = await readRequestBody(request, maxRequestBodyBytes);
+      if (bytes === undefined) return requestTooLarge(maxRequestBodyBytes);
+      body = JSON.parse(new TextDecoder().decode(bytes));
     } catch {
       return new Response("Invalid JSON", { status: 400 });
     }
-    return rpcResponse(await dispatch(index, body, readOnly));
+    return rpcResponse(
+      await dispatch(index, body, readOnly, maxRequestBodyBytes),
+    );
   };
 }
 
@@ -210,6 +227,7 @@ async function dispatch(
   index: Index,
   body: unknown,
   readOnly: boolean,
+  maxRequestBodyBytes: number,
 ): Promise<object> {
   const envelope = rpcRequestSchema.safeParse(body);
   if (!envelope.success) {
@@ -238,7 +256,13 @@ async function dispatch(
   }
 
   try {
-    const result = await invoke(index, method, parsed.data, readOnly);
+    const result = await invoke(
+      index,
+      method,
+      parsed.data,
+      readOnly,
+      maxRequestBodyBytes,
+    );
     const validated = definition.result.safeParse(result);
     if (!validated.success) {
       throw new Error(`Invalid handler result for ${method}`, {
@@ -265,6 +289,7 @@ async function invoke(
   method: RpcMethod,
   params: unknown,
   readOnly: boolean,
+  maxRequestBodyBytes: number,
 ): Promise<unknown> {
   switch (method) {
     case "rpc.discover":
@@ -273,6 +298,7 @@ async function invoke(
       return {
         apiVersion: API_VERSION,
         serverVersion: SERVER_VERSION,
+        maxRequestBodyBytes,
         capabilities: {
           semanticText: true,
           fulltext: true,
@@ -443,6 +469,51 @@ function issues(error: z.ZodError) {
       typeof part === "symbol" ? part.toString() : part,
     ),
   }));
+}
+
+async function readRequestBody(
+  request: Request,
+  maxRequestBodyBytes: number,
+): Promise<Uint8Array | undefined> {
+  if (request.body === null) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > maxRequestBodyBytes) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function requestTooLarge(maxRequestBodyBytes: number): Response {
+  return Response.json(
+    {
+      jsonrpc: "2.0",
+      id: null,
+      error: {
+        code: -32000,
+        message: `Request body exceeds ${maxRequestBodyBytes} bytes`,
+      },
+    },
+    { status: 413 },
+  );
 }
 
 function rpcResponse(body: object): Response {

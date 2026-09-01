@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@searchgres/client": "workspace:*",
+    "@searchgres/protocol": "workspace:*",
     "commander": "^14.0.0"
   }
 }

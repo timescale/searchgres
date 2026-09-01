@@ -83,6 +83,11 @@ export const serverConfigSchema = z.strictObject({
         port: z.number().int().min(1).max(65535).prefault(3000),
       })
       .prefault({}),
+    maxRequestBodyBytes: z
+      .number()
+      .int()
+      .min(1)
+      .prefault(1024 * 1024),
   }),
   database: z.strictObject({
     urlEnv: z.string().min(1),

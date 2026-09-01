@@ -105,39 +105,119 @@ index:
 
 async function assertCliCommands(): Promise<void> {
   const server = serverUrl.toString().replace(/\/$/, "");
-  expect(JSON.parse(await runSg(["info", "--server", server]))).toMatchObject({
+  expect(
+    JSON.parse(await runSg(["--json", "info", "--server", server])),
+  ).toMatchObject({
     apiVersion: "v1",
+    maxRequestBodyBytes: 1024 * 1024,
     capabilities: { readOnly: false },
   });
   const created = JSON.parse(
     await runSg([
-      "upsert",
+      "--json",
+      "create",
       "--server",
       server,
-      "--input",
-      '{"record":{"content":"A CLI cat","tree":"cli","name":"cat"}}',
+      "--content",
+      "A CLI cat",
+      "--tree",
+      "cli",
+      "--name",
+      "cat",
     ]),
-  ) as { readonly result: { readonly id: string } };
+  ) as {
+    readonly result: { readonly id: string };
+    readonly record: { readonly versionHash: string };
+  };
   expect(created.result.id).toBeString();
   expect(
     JSON.parse(
-      await runSg(["get", "--server", server, "--id", created.result.id]),
+      await runSg(["--json", "get", created.result.id, "--server", server]),
     ),
-  ).toMatchObject({
-    record: { name: "cat" },
-  });
-  expect(await runSg(["tree", "cli", "--server", server])).toContain("cli (1)");
+  ).toMatchObject({ record: { name: "cat" } });
   expect(
+    JSON.parse(
+      await runSg([
+        "--json",
+        "update",
+        created.result.id,
+        "--server",
+        server,
+        "--version-hash",
+        created.record.versionHash,
+        "--meta",
+        '{"source":"cli"}',
+      ]),
+    ),
+  ).toMatchObject({ record: { meta: { source: "cli" } } });
+  expect(await runSg(["tree", "cli", "--server", server])).toContain("cli (1)");
+
+  const importPath = `/tmp/searchgres-import-${process.pid}.ndjson`;
+  const createPath = `/tmp/searchgres-create-${process.pid}.yaml`;
+  const exportPath = `/tmp/searchgres-export-${process.pid}.json`;
+  try {
+    await Promise.all([
+      Bun.write(
+        importPath,
+        '{"content":"one","tree":"cli.bulk","name":"one","temporal":["2024-01-01T00:00:00Z"]}\n{"content":"two","tree":"cli.bulk","name":"two"}\n',
+      ),
+      Bun.write(
+        createPath,
+        "content: from a structured file\ntree: cli.files\nname: yaml\n",
+      ),
+    ]);
+    expect(
+      await runSg(["create", "--file", createPath, "--server", server]),
+    ).toContain("status: inserted");
+    expect(await runSg(["import", importPath, "--server", server])).toContain(
+      "inserted: 2",
+    );
     await runSg([
-      "upsert-many",
+      "export",
+      exportPath,
       "--server",
       server,
-      "--input",
-      '{"records":[{"content":"one"},{"content":"two"}]}',
-      "--output-format",
-      "ndjson",
-    ]),
-  ).toContain("inserted");
+      "--format",
+      "json",
+      "--tree",
+      "cli.bulk",
+    ]);
+    const exported = JSON.parse(await Bun.file(exportPath).text()) as readonly {
+      readonly content: string;
+      readonly temporal?: readonly string[];
+    }[];
+    expect(exported.map((record) => record.content)).toEqual(["one", "two"]);
+    expect(exported[0]?.temporal).toEqual(["2024-01-01T00:00:00.000Z"]);
+    expect(
+      await runSg([
+        "delete",
+        "--tree",
+        "cli.bulk",
+        "--dry-run",
+        "--server",
+        server,
+      ]),
+    ).toContain("count: 2");
+    await expect(
+      runSg(["delete", "--tree", "cli.bulk", "--server", server]),
+    ).rejects.toThrow(/requires --yes/);
+    expect(
+      await runSg([
+        "delete",
+        "--tree",
+        "cli.bulk",
+        "--yes",
+        "--server",
+        server,
+      ]),
+    ).toContain("count: 2");
+  } finally {
+    await Promise.all([
+      rm(importPath, { force: true }),
+      rm(createPath, { force: true }),
+      rm(exportPath, { force: true }),
+    ]);
+  }
   await assertSearchFilterFlags(server);
 }
 
@@ -154,34 +234,29 @@ async function assertCliCommands(): Promise<void> {
  * all eleven leaves.
  */
 async function assertSearchFilterFlags(server: string): Promise<void> {
-  await runSg([
-    "upsert-many",
-    "--server",
-    server,
-    "--input",
-    JSON.stringify({
-      records: [
-        {
-          content: "Filter probe alpha",
-          tree: "filters.alpha",
-          name: "alpha",
-          meta: { colour: "red", size: 10 },
-          temporal: ["2024-03-01T00:00:00Z", "2024-03-02T00:00:00Z"],
-        },
-        {
-          content: "Filter probe beta",
-          tree: "filters.beta",
-          name: "beta",
-          meta: { colour: "blue", size: 99 },
-          temporal: ["2024-06-01T00:00:00Z", "2024-06-02T00:00:00Z"],
-        },
-      ],
-    }),
-  ]);
+  const client = createSearchgresClient({ url: `${server}/rpc` });
+  await client.insertMany({
+    records: [
+      {
+        content: "Filter probe alpha",
+        tree: "filters.alpha",
+        name: "alpha",
+        meta: { colour: "red", size: 10 },
+        temporal: ["2024-03-01T00:00:00Z", "2024-03-02T00:00:00Z"],
+      },
+      {
+        content: "Filter probe beta",
+        tree: "filters.beta",
+        name: "beta",
+        meta: { colour: "blue", size: 99 },
+        temporal: ["2024-06-01T00:00:00Z", "2024-06-02T00:00:00Z"],
+      },
+    ],
+  });
 
   const names = async (args: readonly string[]): Promise<readonly string[]> => {
     const output = JSON.parse(
-      await runSg(["search", "--server", server, ...args]),
+      await runSg(["--json", "search", "--server", server, ...args]),
     ) as { readonly results: readonly { readonly name: string | null }[] };
     return output.results.map((result) => result.name ?? "").toSorted();
   };
@@ -226,6 +301,16 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
 
 test("compiled sg writes through the queue and performs semantic and hybrid search", async () => {
   const client = createSearchgresClient({ url: new URL("rpc", serverUrl) });
+  expect((await client.info()).maxRequestBodyBytes).toBe(1024 * 1024);
+  const oversized = await fetch(new URL("rpc", serverUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content: "x".repeat(1024 * 1024) }),
+  });
+  expect(oversized.status).toBe(413);
+  expect(await oversized.json()).toMatchObject({
+    error: { message: "Request body exceeds 1048576 bytes" },
+  });
   const discovered = await client.discover();
   const discoveredMethods = discovered.methods as readonly {
     readonly name: string;

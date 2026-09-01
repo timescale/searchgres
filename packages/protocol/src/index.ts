@@ -267,6 +267,7 @@ export const searchResultEnvelopeSchema = z.strictObject({
 export const serverInfoResultSchema = z.strictObject({
   apiVersion: z.literal(API_VERSION),
   serverVersion: z.string(),
+  maxRequestBodyBytes: z.number().int().min(1),
   capabilities: z.strictObject({
     semanticText: z.literal(true),
     fulltext: z.literal(true),
