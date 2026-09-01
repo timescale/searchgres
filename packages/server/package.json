@@ -27,7 +27,7 @@
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo src/tokenizer.worker.generated.cjs",
     "typecheck": "../../bun run bundle:tokenizer-worker && tsc -p tsconfig.json",
     "test:unit": "../../bun run bundle:tokenizer-worker && find src -name '*.test.ts' ! -name '*.integration.test.ts' -print0 | xargs -0 ../../bun test",
-    "test:db": "../../bun test ./src/*.integration.test.ts"
+    "test:db": "test -x ../cli/dist/sg || { echo \"packages/cli/dist/sg is missing; run ./bun run compile\" >&2; exit 1; }; ../../bun test ./src/*.integration.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.52",

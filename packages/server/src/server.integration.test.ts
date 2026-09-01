@@ -139,10 +139,16 @@ async function assertCliCommands(): Promise<void> {
 }
 
 /**
- * Every filter-leaf flag `sg search` exposes, against records planted for the
- * purpose. Each assertion pins the leaf's *discriminating* power — it must
- * match the intended record and exclude the others — so a flag wired to the
- * wrong filter key fails here rather than silently returning everything.
+ * The parts of `sg search` that only a real process against a real server can
+ * prove: that a flag-built filter reaches PostgreSQL and selects the right
+ * rows, that the server's own rules still apply, and that a rejection is a
+ * readable message with a non-zero exit.
+ *
+ * The exhaustive per-leaf flag-to-params matrix lives in
+ * packages/cli/src/cli.test.ts, which is pure and needs neither a spawn nor a
+ * database. Cases here are chosen for what they exercise beyond that mapping —
+ * one representative of each leaf *type* (ltree, JSONB, temporal, regex), not
+ * all eleven leaves.
  */
 async function assertSearchFilterFlags(server: string): Promise<void> {
   await runSg([
@@ -174,93 +180,35 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
     const output = JSON.parse(
       await runSg(["search", "--server", server, ...args]),
     ) as { readonly results: readonly { readonly name: string | null }[] };
-    return output.results.map((result) => result.name ?? "");
+    return output.results.map((result) => result.name ?? "").toSorted();
   };
 
-  // Each leaf must match its intended record and exclude the other, so a flag
-  // wired to the wrong filter key fails here rather than quietly matching
-  // everything. Run the cases concurrently: they are read-only and independent,
-  // and spawning the binary dominates this suite's runtime.
-  const cases: readonly (readonly [readonly string[], readonly string[]])[] = [
-    // Tree containment, lquery patterns, ltxtquery word matching.
-    [["--tree", "filters.alpha"], ["alpha"]],
-    [
-      ["--tree", "filters"],
-      ["alpha", "beta"],
-    ],
-    [["--lquery", "filters.beta"], ["beta"]],
-    [["--ltxtquery", "alpha"], ["alpha"]],
-    // Metadata by equality and by JSONPath predicate.
-    [["--meta", '{"colour":"red"}'], ["alpha"]],
-    [["--meta-predicate", "$.size > 50"], ["beta"]],
-    // `within`/`overlaps` take a start,end window; the point leaves take one
-    // instant.
-    [
-      ["--temporal-within", "2024-02-01T00:00:00Z,2024-04-01T00:00:00Z"],
-      ["alpha"],
-    ],
-    [
-      ["--temporal-overlaps", "2024-05-15T00:00:00Z,2024-06-15T00:00:00Z"],
-      ["beta"],
-    ],
-    [["--temporal-before", "2024-04-01T00:00:00Z"], ["alpha"]],
-    [["--temporal-after", "2024-04-01T00:00:00Z"], ["beta"]],
-    [["--temporal-contains", "2024-03-01T12:00:00Z"], ["alpha"]],
-    // Several leaves AND together; a contradictory pair matches nothing.
-    [["--tree", "filters", "--meta", '{"colour":"blue"}'], ["beta"]],
-    [["--tree", "filters.alpha", "--meta-predicate", "$.size > 50"], []],
-    // regexp is not indexable, so it may not stand alone — but it composes.
-    [["--tree", "filters", "--regexp", "probe be+ta"], ["beta"]],
-    // Filters compose with a ranking arm.
-    [["--fulltext", "beta", "--tree", "filters"], ["beta"]],
-    // Ordering and paging apply to a filter-only listing.
-    [["--tree", "filters", "--order", "asc", "--limit", "1"], ["alpha"]],
-  ];
-  const matched = await Promise.all(cases.map(([args]) => names(args)));
-  for (const [index, [args, expected]] of cases.entries()) {
-    expect(matched[index]?.toSorted(), `sg search ${args.join(" ")}`).toEqual([
-      ...expected,
-    ]);
-  }
+  // One per leaf type, each discriminating between the two records: an ltree
+  // containment, a JSONB path predicate, a temporal window, and a regex that
+  // must be composed with an indexable leaf. Together these prove the flags
+  // survive JSON-RPC, Zod, and the SQL routine — which the unit test cannot.
+  const [tree, predicate, temporal, regexp, conjunction] = await Promise.all([
+    names(["--tree", "filters.alpha"]),
+    names(["--meta-predicate", "$.size > 50"]),
+    names(["--temporal-within", "2024-02-01T00:00:00Z,2024-04-01T00:00:00Z"]),
+    names(["--tree", "filters", "--regexp", "probe be+ta"]),
+    names(["--tree", "filters", "--meta", '{"colour":"blue"}']),
+  ]);
+  expect(tree).toEqual(["alpha"]);
+  expect(predicate).toEqual(["beta"]);
+  expect(temporal).toEqual(["alpha"]);
+  expect(regexp).toEqual(["beta"]);
+  // Several flags ANDed: both leaves must apply, not just the last one.
+  expect(conjunction).toEqual(["beta"]);
 
+  // Server-side rules the CLI does not (and should not) duplicate.
   await expect(
     runSg(["search", "--server", server, "--regexp", "probe"]),
   ).rejects.toThrow(/indexable filter/);
 
-  // Malformed flag values are rejected with an actionable message rather than
-  // reaching the server.
-  await expect(
-    runSg(["search", "--server", server, "--meta", "not-json"]),
-  ).rejects.toThrow(/--meta must be valid JSON/);
-  // Independent of each other and of any server state, so spawn them together:
-  // binary startup dominates this suite's runtime.
-  // The knobs that are not search criteria on their own are paired with a
-  // filter; otherwise the "no criteria" guard fires before the value is parsed.
-  const invalid: readonly (readonly [readonly string[], RegExp])[] = [
-    [["--meta", '["array"]'], /--meta must be a JSON object/],
-    [["--temporal-within", "only-one"], /"start,end" range/],
-    [
-      ["--tree", "filters", "--order", "sideways"],
-      /--order must be one of asc, desc/,
-    ],
-    [["--semantic", "probe", "--semantic-threshold", "7"], /between 0 and 1/],
-    [[], /requires --input, a ranking flag/],
-  ];
-  const failures = await Promise.all(
-    invalid.map(([args]) =>
-      runSg(["search", "--server", server, ...args]).then(
-        () => "",
-        (error: unknown) => String(error),
-      ),
-    ),
-  );
-  for (const [index, [args, pattern]] of invalid.entries()) {
-    expect(failures[index], `sg search ${args.join(" ")}`).toMatch(pattern);
-  }
-
-  // A user error is one line on stderr, not a stack trace through the compiled
-  // bundle. Assert on the whole output so a regression that reintroduces the
-  // trace fails here.
+  // A rejected invocation exits non-zero with a single readable line — not a
+  // stack trace pointing into the compiled bundle. Only the real binary can
+  // show this.
   const rejection = await runSg([
     "search",
     "--server",
@@ -268,6 +216,7 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
     "--meta",
     "not-json",
   ]).catch((error: unknown) => String(error));
+  expect(rejection).toMatch(/--meta must be valid JSON/);
   expect(rejection).not.toContain("at <anonymous>");
   expect(rejection).not.toContain("$bunfs");
 }

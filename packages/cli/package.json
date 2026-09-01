@@ -14,6 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "test:unit": "find src -name '*.test.ts' -print0 | xargs -0 ../../bun test",
     "compile": "../../bun build ./src/bin.ts --compile --outfile dist/sg",
     "compile:all": "../../bun scripts/compile-all.ts",
     "typecheck": "tsc -p tsconfig.json"

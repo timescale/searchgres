@@ -223,7 +223,12 @@ function allowedRemoteFlags(command: string): ReadonlySet<string> {
   return new Set([...shared, ...(commandFlags[command] ?? [])]);
 }
 
-function paramsFromFlags(
+/**
+ * Map a command's flags to its RPC params. Exported for testing: this is pure
+ * input-to-output, so the per-flag matrix belongs in a unit test rather than in
+ * the compiled-binary suite, where each case would cost a process spawn.
+ */
+export function paramsFromFlags(
   command: string,
   flags: Map<string, string | true>,
 ): unknown {
