@@ -114,6 +114,8 @@ jobs:
                   console.log("ok", m.LIBRARY_VERSION);'
           case "${{ matrix.runtime }}" in
             node) node --input-type=module -e "$script" ;;
-            bun)  bun -e "$script" ;;
+            # The pinned wrapper, by absolute path: the scratch project is
+            # outside the repository, and bun is not otherwise on PATH here.
+            bun)  "$GITHUB_WORKSPACE/bun" -e "$script" ;;
             deno) deno eval --no-lock "$script" ;;
           esac
