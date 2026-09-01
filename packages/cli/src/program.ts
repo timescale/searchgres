@@ -12,27 +12,11 @@ function camelCaseFlag(flag: string): string {
 export async function runProgram(argv: readonly string[]): Promise<void> {
   const program = new Command()
     .name("sg")
-    .description("Searchgres server, provisioning, and remote client CLI")
+    .description(
+      "Searchgres client: records, trees, and search. Provisioning and serving live in sg-server.",
+    )
     .showSuggestionAfterError();
 
-  register(
-    program,
-    "server",
-    "start the one-index Searchgres server",
-    "--config <path> [--read-only]",
-  );
-  register(
-    program,
-    "init",
-    "create an index and write server configuration",
-    "[options]",
-  );
-  register(
-    program,
-    "destroy",
-    "destroy the configured index",
-    "--config <path> --yes",
-  );
   register(program, "info", "show server capabilities", "[--server <url>]");
   register(program, "upsert", "upsert one record", "--input <value>");
   register(program, "upsert-many", "upsert records", "--input <value>");
@@ -91,6 +75,16 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
     "[options]",
   );
 
+  // Point the moved commands at the other binary before Commander rejects them
+  // as unknown; "unknown command 'server'" would leave the user guessing.
+  const moved = new Set(["server", "serve", "init", "destroy"]);
+  const [first] = argv;
+  if (first !== undefined && moved.has(first)) {
+    throw new Error(
+      `\`sg ${first}\` lives in the sg-server binary: run \`sg-server ${first === "server" ? "serve" : first}\``,
+    );
+  }
+
   await program.parseAsync(["node", "sg", ...argv]);
 }
 
@@ -146,30 +140,7 @@ function register(
     )
     .option("--semantic-weight <n>", "semantic RRF weight in [0,1]")
     .option("--fulltext-weight <n>", "full-text RRF weight in [0,1]")
-    .option("--order <direction>", "filter-only search: asc or desc")
-    .option("--config <path>", "server configuration path")
-    .option("--env-file <path>", "dotenv file")
-    .option("--no-env-file", "do not load a dotenv file")
-    .option(
-      "--read-only",
-      "disable mutating RPC methods and the embedding worker",
-    )
-    .option("--yes", "confirm destructive action")
-    .option("--database-url-env <name>", "database URL environment variable")
-    .option("--schema <name>", "index schema")
-    .option("--embedding-model <model>", "embedding model")
-    .option("--dimensions <n>", "embedding dimensions")
-    .option("--host <host>", "listen host")
-    .option("--port <port>", "listen port")
-    .option(
-      "--allow-public-listen",
-      "acknowledge unauthenticated public listen",
-    )
-    .option("--vector-type <type>", "vector or halfvec")
-    .option("--api-key-env <name>", "embedding API-key environment variable")
-    .option("--base-url <url>", "OpenAI-compatible provider URL")
-    .option("--tokenizer <preset>", "tokenizer preset")
-    .option("--max-tokens <n>", "raw content token budget");
+    .option("--order <direction>", "filter-only search: asc or desc");
 
   if (name === "tree") command.argument("[tree]", "root tree path");
   hideIrrelevantOptions(command, name);
@@ -182,24 +153,6 @@ function register(
 function hideIrrelevantOptions(command: Command, name: string): void {
   const shared = new Set(["server", "input", "inputFormat", "outputFormat"]);
   const specific: Record<string, readonly string[]> = {
-    server: ["config", "envFile", "noEnvFile", "readOnly"],
-    init: [
-      "config",
-      "databaseUrlEnv",
-      "schema",
-      "embeddingModel",
-      "dimensions",
-      "host",
-      "port",
-      "allowPublicListen",
-      "vectorType",
-      "apiKeyEnv",
-      "baseUrl",
-      "tokenizer",
-      "maxTokens",
-      "dryRun",
-    ],
-    destroy: ["config", "yes"],
     info: [],
     get: ["id"],
     delete: ["id"],

@@ -16,6 +16,9 @@ let sql: Sql;
 let fakeEmbeddings: ReturnType<typeof Bun.serve>;
 // The canonical binary, built by `@searchgres/cli`'s compile script. Resolved
 // from this file rather than the cwd so there is exactly one `sg` in the repo.
+// Both binaries, resolved from this file rather than the cwd. `sg-server` runs
+// the server; `sg` is the client the assertions drive.
+const sgServer = fileURLToPath(new URL("../dist/sg-server", import.meta.url));
 const sg = fileURLToPath(new URL("../../cli/dist/sg", import.meta.url));
 
 let server: Bun.Subprocess | undefined;
@@ -92,7 +95,7 @@ index:
 `,
   );
   server = Bun.spawn({
-    cmd: [sg, "server", "--config", configPath],
+    cmd: [sgServer, "serve", "--config", configPath],
     env: { ...process.env, [databaseEnvironment]: databaseUrl },
     stdout: "pipe",
     stderr: "pipe",

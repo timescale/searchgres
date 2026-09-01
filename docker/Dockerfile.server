@@ -19,6 +19,9 @@ RUN printf '#!/bin/sh\nexec bun "$@"\n' > ./bun \
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+# Both binaries: sg-server provisions and serves, sg is the client. They are
+# separate artifacts so that `sg` carries no database driver or provider code.
 COPY --from=build /app/packages/cli/dist/sg /usr/local/bin/sg
-ENTRYPOINT ["sg"]
-CMD ["server", "--config", "/config/searchgres.yaml"]
+COPY --from=build /app/packages/server/dist/sg-server /usr/local/bin/sg-server
+ENTRYPOINT ["sg-server"]
+CMD ["serve", "--config", "/config/searchgres.yaml"]

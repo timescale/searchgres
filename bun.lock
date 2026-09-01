@@ -18,11 +18,8 @@
         "sg": "./dist/sg",
       },
       "dependencies": {
-        "@clack/prompts": "^0.11.0",
         "@searchgres/client": "workspace:*",
-        "@searchgres/server": "workspace:*",
         "commander": "^14.0.0",
-        "searchgres": "workspace:*",
       },
     },
     "packages/client": {
@@ -57,10 +54,16 @@
     "packages/server": {
       "name": "@searchgres/server",
       "version": "0.0.0",
+      "bin": {
+        "sg-server": "./dist/sg-server",
+      },
       "dependencies": {
         "@ai-sdk/openai": "^4.0.52",
+        "@clack/prompts": "^0.11.0",
         "@huggingface/tokenizers": "^0.1.3",
+        "@searchgres/cli": "workspace:*",
         "@searchgres/protocol": "workspace:*",
+        "commander": "^14.0.0",
         "gpt-tokenizer": "^3.4.0",
         "postgres": "^3.4.9",
         "searchgres": "workspace:*",

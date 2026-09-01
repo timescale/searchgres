@@ -22,7 +22,7 @@ Bun is the development toolchain only. `searchgres`, `@searchgres/protocol`, and
 globals and Bun-only/Deno-only specifiers there, and CI installs the packed
 tarball into a scratch project and imports it by package name under all three
 runtimes. Only `@searchgres/server` and `@searchgres/cli` may use `Bun.*`, and
-they ship as the compiled `sg` binary rather than as importable source.
+they ship as compiled binaries rather than as importable source.
 
 ## Workspace layout
 
@@ -31,8 +31,8 @@ they ship as the compiled `sg` binary rather than as importable source.
 | `packages/core` | Runtime-agnostic Postgres search library; published as `searchgres`. |
 | `packages/protocol` | Runtime-neutral Zod RPC contract/OpenRPC source. |
 | `packages/client` | Runtime-agnostic fetch JSON-RPC client. |
-| `packages/server` | Bun server component: config, RPC service, providers, tokenizer pool, worker lifecycle. |
-| `packages/cli` | Bun-only command router and compiled `sg` binary. |
+| `packages/server` | Bun server component and the `sg-server` binary: config, RPC service, providers, tokenizer pool, worker lifecycle, provisioning. |
+| `packages/cli` | Bun-only `sg` binary: the unprivileged client, plus flag/format helpers shared with `sg-server`. |
 
 Dependency direction is intentionally one-way: CLI may use server/client/core;
 server uses core/protocol; client uses protocol. Core, protocol, and client must
@@ -53,7 +53,7 @@ Against a database you manage yourself:
 
 ```sh
 ./bun run pg:up                            # build + start PostgreSQL 18
-./bun run test:db                          # build, compile sg, run all suites
+./bun run test:db                          # build, compile both binaries, run all suites
 ./bun run --filter searchgres test:db      # just the core suite
 ./bun run --filter @searchgres/server test:db   # just the compiled-server suite
 ./bun run pg:rm
@@ -74,28 +74,43 @@ spelled out rather than using `--filter '*'`. `--filter '*'` respects dependency
 *order* but does not stop dependents when a dependency's script fails, turning
 one real error into a cascade of misleading ones.
 
-## Building `sg`
+## Building the binaries
 
-Build for the current host:
+There are two, and the split is load-bearing:
+
+| Binary | Package | Commands | Needs |
+| --- | --- | --- | --- |
+| `sg` | `packages/cli` | records, trees, search | `fetch` only |
+| `sg-server` | `packages/server` | `init`, `serve`, `destroy` | PostgreSQL, core, provider credentials |
+
+`bun build --compile` initializes a binary's entire module graph at startup
+whether a command uses it or not — a lazy `import()` does **not** defer it. A
+single binary therefore made every `sg search` pay for postgres, the embedding
+provider, and the prompt library: 68ms versus 20ms for the client alone. Keeping
+that code unreachable from `sg`'s entry point is the only mechanism that works,
+so **do not import `searchgres`, `postgres`, `@searchgres/server`, or
+`@clack/prompts` from `packages/cli/src`.** Shared plumbing lives in
+`packages/cli/src/{flags,format,dotenv}.ts`, which must stay dependency-free for
+the same reason.
+
+Build both for the current host:
 
 ```sh
 ./bun run compile
 ./packages/cli/dist/sg --help
+./packages/server/dist/sg-server --help
 ```
 
-Build all release targets:
+Build every release target (Linux/Windows/macOS, amd64 and arm64):
 
 ```sh
 ./bun run compile:all
 ```
 
-This creates Linux amd64/arm64, Windows amd64/arm64, and macOS amd64/arm64
-binaries under `packages/cli/dist/`.
-
-Both scripts bundle the tokenizer worker first, because the compiled binary
-embeds it. There is exactly one `sg` in the repository, at
-`packages/cli/dist/sg`; the server's black-box tests resolve that path directly
-rather than keeping a copy.
+Both bundle the tokenizer worker first, because `sg-server` embeds it. Each
+binary exists once, at `packages/cli/dist/sg` and
+`packages/server/dist/sg-server`; the black-box tests resolve those paths
+directly rather than keeping copies.
 
 ## Local setup
 
@@ -103,14 +118,14 @@ Interactive bootstrap creates an index, server config, `.env.example`, and (if
 credentials are entered) a local `.env`:
 
 ```sh
-./packages/cli/dist/sg init
+./packages/server/dist/sg-server init
 ```
 
 Or supply explicit noninteractive arguments:
 
 ```sh
 SEARCHGRES_DATABASE_URL='postgresql://postgres@127.0.0.1:5432/postgres' \
-./packages/cli/dist/sg init \
+./packages/server/dist/sg-server init \
   --config searchgres.yaml \
   --database-url-env SEARCHGRES_DATABASE_URL \
   --schema docs \
@@ -121,7 +136,7 @@ SEARCHGRES_DATABASE_URL='postgresql://postgres@127.0.0.1:5432/postgres' \
 Start the server:
 
 ```sh
-./packages/cli/dist/sg server --config searchgres.yaml
+./packages/server/dist/sg-server serve --config searchgres.yaml
 ```
 
 The server loads a `.env` next to its config by default without overwriting

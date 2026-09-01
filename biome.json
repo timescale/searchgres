@@ -86,6 +86,26 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/cli/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "searchgres": "sg must stay thin: bun --compile initializes the whole module graph at startup, so importing the core library here costs every sg invocation. Database and provisioning work belongs in sg-server (packages/server/src/cli.ts).",
+                  "postgres": "sg must stay thin: it talks to the server over fetch, never to PostgreSQL directly. Database work belongs in sg-server.",
+                  "@searchgres/server": "sg must stay thin: importing the server pulls the embedding provider and tokenizer pool into startup. This belongs in sg-server.",
+                  "@clack/prompts": "sg must stay thin: the prompt library is only needed by sg-server's interactive init."
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

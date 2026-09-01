@@ -12,8 +12,8 @@
   },
   "scripts": {
     "build": "./bun run --filter searchgres build && ./bun run --filter @searchgres/protocol build && ./bun run --filter @searchgres/client build && ./bun run --filter @searchgres/server build && ./bun run --filter @searchgres/cli build",
-    "compile": "./bun run --filter @searchgres/server bundle:tokenizer-worker && ./bun run --filter @searchgres/cli compile",
-    "compile:all": "./bun run --filter @searchgres/server bundle:tokenizer-worker && ./bun run --filter @searchgres/cli compile:all",
+    "compile": "./bun run --filter @searchgres/server bundle:tokenizer-worker && ./bun run --filter @searchgres/cli compile && ./bun run --filter @searchgres/server compile",
+    "compile:all": "./bun run --filter @searchgres/server bundle:tokenizer-worker && ./bun run --filter @searchgres/cli compile:all && ./bun run --filter @searchgres/server compile:all",
     "clean": "./bun run --filter '*' clean",
     "typecheck": "./bun run --filter searchgres build && ./bun run --filter @searchgres/protocol build && ./bun run --filter @searchgres/client build && ./bun run --filter searchgres typecheck && ./bun run --filter @searchgres/protocol typecheck && ./bun run --filter @searchgres/client typecheck && ./bun run --filter @searchgres/server build && ./bun run --filter @searchgres/server typecheck && ./bun run --filter @searchgres/cli typecheck",
     "lint": "./bun x biome check",

@@ -29,6 +29,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
 
+  # Provisioning runs sg-server (it needs the database and the core library);
+  # the client image also carries `sg` for ad-hoc record and search commands.
   cli:
     profiles: ["tools"]
     build:
@@ -45,7 +47,7 @@ services:
     volumes:
       - .:/workspace
     working_dir: /workspace
-    entrypoint: ["sg"]
+    entrypoint: ["sg-server"]
 
 volumes:
   searchgres-db:
