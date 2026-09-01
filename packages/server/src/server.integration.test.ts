@@ -177,106 +177,86 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
     return output.results.map((result) => result.name ?? "");
   };
 
-  // Tree containment, lquery patterns, and ltxtquery word matching.
-  expect(await names(["--tree", "filters.alpha"])).toEqual(["alpha"]);
-  expect((await names(["--tree", "filters"])).toSorted()).toEqual([
-    "alpha",
-    "beta",
-  ]);
-  expect(await names(["--lquery", "filters.beta"])).toEqual(["beta"]);
-  expect(await names(["--ltxtquery", "alpha"])).toEqual(["alpha"]);
+  // Each leaf must match its intended record and exclude the other, so a flag
+  // wired to the wrong filter key fails here rather than quietly matching
+  // everything. Run the cases concurrently: they are read-only and independent,
+  // and spawning the binary dominates this suite's runtime.
+  const cases: readonly (readonly [readonly string[], readonly string[]])[] = [
+    // Tree containment, lquery patterns, ltxtquery word matching.
+    [["--tree", "filters.alpha"], ["alpha"]],
+    [
+      ["--tree", "filters"],
+      ["alpha", "beta"],
+    ],
+    [["--lquery", "filters.beta"], ["beta"]],
+    [["--ltxtquery", "alpha"], ["alpha"]],
+    // Metadata by equality and by JSONPath predicate.
+    [["--meta", '{"colour":"red"}'], ["alpha"]],
+    [["--meta-predicate", "$.size > 50"], ["beta"]],
+    // `within`/`overlaps` take a start,end window; the point leaves take one
+    // instant.
+    [
+      ["--temporal-within", "2024-02-01T00:00:00Z,2024-04-01T00:00:00Z"],
+      ["alpha"],
+    ],
+    [
+      ["--temporal-overlaps", "2024-05-15T00:00:00Z,2024-06-15T00:00:00Z"],
+      ["beta"],
+    ],
+    [["--temporal-before", "2024-04-01T00:00:00Z"], ["alpha"]],
+    [["--temporal-after", "2024-04-01T00:00:00Z"], ["beta"]],
+    [["--temporal-contains", "2024-03-01T12:00:00Z"], ["alpha"]],
+    // Several leaves AND together; a contradictory pair matches nothing.
+    [["--tree", "filters", "--meta", '{"colour":"blue"}'], ["beta"]],
+    [["--tree", "filters.alpha", "--meta-predicate", "$.size > 50"], []],
+    // regexp is not indexable, so it may not stand alone — but it composes.
+    [["--tree", "filters", "--regexp", "probe be+ta"], ["beta"]],
+    // Filters compose with a ranking arm.
+    [["--fulltext", "beta", "--tree", "filters"], ["beta"]],
+    // Ordering and paging apply to a filter-only listing.
+    [["--tree", "filters", "--order", "asc", "--limit", "1"], ["alpha"]],
+  ];
+  const matched = await Promise.all(cases.map(([args]) => names(args)));
+  for (const [index, [args, expected]] of cases.entries()) {
+    expect(matched[index]?.toSorted(), `sg search ${args.join(" ")}`).toEqual([
+      ...expected,
+    ]);
+  }
 
-  // Metadata by equality and by JSONPath predicate.
-  expect(await names(["--meta", '{"colour":"red"}'])).toEqual(["alpha"]);
-  expect(await names(["--meta-predicate", "$.size > 50"])).toEqual(["beta"]);
-
-  // Temporal leaves. `within`/`overlaps` take a start,end window; the three
-  // point leaves take a single instant.
-  expect(
-    await names([
-      "--temporal-within",
-      "2024-02-01T00:00:00Z,2024-04-01T00:00:00Z",
-    ]),
-  ).toEqual(["alpha"]);
-  expect(
-    await names([
-      "--temporal-overlaps",
-      "2024-05-15T00:00:00Z,2024-06-15T00:00:00Z",
-    ]),
-  ).toEqual(["beta"]);
-  expect(await names(["--temporal-before", "2024-04-01T00:00:00Z"])).toEqual([
-    "alpha",
-  ]);
-  expect(await names(["--temporal-after", "2024-04-01T00:00:00Z"])).toEqual([
-    "beta",
-  ]);
-  expect(await names(["--temporal-contains", "2024-03-01T12:00:00Z"])).toEqual([
-    "alpha",
-  ]);
-
-  // Several leaves AND together, and a contradictory pair matches nothing.
-  expect(
-    await names(["--tree", "filters", "--meta", '{"colour":"blue"}']),
-  ).toEqual(["beta"]);
-  expect(
-    await names(["--tree", "filters.alpha", "--meta-predicate", "$.size > 50"]),
-  ).toEqual([]);
-
-  // regexp is not indexable, so it may not stand alone — but composes.
-  expect(await names(["--tree", "filters", "--regexp", "probe be+ta"])).toEqual(
-    ["beta"],
-  );
   await expect(
     runSg(["search", "--server", server, "--regexp", "probe"]),
   ).rejects.toThrow(/indexable filter/);
-
-  // Filters compose with a ranking arm, and ordering/paging knobs apply to a
-  // filter-only listing.
-  expect(await names(["--fulltext", "beta", "--tree", "filters"])).toEqual([
-    "beta",
-  ]);
-  expect(
-    await names(["--tree", "filters", "--order", "asc", "--limit", "1"]),
-  ).toHaveLength(1);
 
   // Malformed flag values are rejected with an actionable message rather than
   // reaching the server.
   await expect(
     runSg(["search", "--server", server, "--meta", "not-json"]),
   ).rejects.toThrow(/--meta must be valid JSON/);
-  await expect(
-    runSg(["search", "--server", server, "--meta", '["array"]']),
-  ).rejects.toThrow(/--meta must be a JSON object/);
-  await expect(
-    runSg(["search", "--server", server, "--temporal-within", "only-one"]),
-  ).rejects.toThrow(/"start,end" range/);
-  // These knobs are not search criteria on their own, so pair each with a
+  // Independent of each other and of any server state, so spawn them together:
+  // binary startup dominates this suite's runtime.
+  // The knobs that are not search criteria on their own are paired with a
   // filter; otherwise the "no criteria" guard fires before the value is parsed.
-  await expect(
-    runSg([
-      "search",
-      "--server",
-      server,
-      "--tree",
-      "filters",
-      "--order",
-      "sideways",
-    ]),
-  ).rejects.toThrow(/--order must be one of asc, desc/);
-  await expect(
-    runSg([
-      "search",
-      "--server",
-      server,
-      "--semantic",
-      "probe",
-      "--semantic-threshold",
-      "7",
-    ]),
-  ).rejects.toThrow(/between 0 and 1/);
-  await expect(runSg(["search", "--server", server])).rejects.toThrow(
-    /requires --input, a ranking flag/,
+  const invalid: readonly (readonly [readonly string[], RegExp])[] = [
+    [["--meta", '["array"]'], /--meta must be a JSON object/],
+    [["--temporal-within", "only-one"], /"start,end" range/],
+    [
+      ["--tree", "filters", "--order", "sideways"],
+      /--order must be one of asc, desc/,
+    ],
+    [["--semantic", "probe", "--semantic-threshold", "7"], /between 0 and 1/],
+    [[], /requires --input, a ranking flag/],
+  ];
+  const failures = await Promise.all(
+    invalid.map(([args]) =>
+      runSg(["search", "--server", server, ...args]).then(
+        () => "",
+        (error: unknown) => String(error),
+      ),
+    ),
   );
+  for (const [index, [args, pattern]] of invalid.entries()) {
+    expect(failures[index], `sg search ${args.join(" ")}`).toMatch(pattern);
+  }
 
   // A user error is one line on stderr, not a stack trace through the compiled
   // bundle. Assert on the whole output so a regression that reintroduces the
@@ -397,7 +377,10 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   ).toBe(4);
   expect((await client.deleteTree({ tree: "zoo" })).count).toBe(4);
   await assertCliCommands();
-});
+  // Well beyond Bun's 5s default: this test spawns the compiled binary a few
+  // dozen times, and process startup dominates. A CI runner is slower than a
+  // developer machine, so the default budget is not a useful signal here.
+}, 120_000);
 
 async function runSg(args: readonly string[]): Promise<string> {
   const process = Bun.spawn({
