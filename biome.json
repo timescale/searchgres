@@ -95,12 +95,44 @@
             "noRestrictedImports": {
               "level": "error",
               "options": {
-                "paths": {
-                  "searchgres": "sg must stay thin: bun --compile initializes the whole module graph at startup, so importing the core library here costs every sg invocation. Database and provisioning work belongs in sg-server (packages/server/src/cli.ts).",
-                  "postgres": "sg must stay thin: it talks to the server over fetch, never to PostgreSQL directly. Database work belongs in sg-server.",
-                  "@searchgres/server": "sg must stay thin: importing the server pulls the embedding provider and tokenizer pool into startup. This belongs in sg-server.",
-                  "@clack/prompts": "sg must stay thin: the prompt library is only needed by sg-server's interactive init."
-                }
+                "patterns": [
+                  {
+                    "group": ["searchgres", "searchgres/**"],
+                    "message": "sg must stay thin: bun --compile initializes the whole module graph at startup, so importing the core library here costs every sg invocation. Database and provisioning work belongs in sg-server (packages/server/src/cli.ts)."
+                  },
+                  {
+                    "group": ["postgres", "postgres/**"],
+                    "message": "sg must stay thin: it talks to the server over fetch, never to PostgreSQL directly. Database work belongs in sg-server."
+                  },
+                  {
+                    "group": ["@searchgres/server", "@searchgres/server/**"],
+                    "message": "sg must stay thin: importing the server pulls the embedding provider and tokenizer pool into startup. This belongs in sg-server."
+                  },
+                  {
+                    "group": ["@clack/prompts", "@clack/prompts/**"],
+                    "message": "sg must stay thin: the prompt library is only needed by sg-server's interactive init."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/server/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@searchgres/cli", "@searchgres/cli/**"],
+                    "message": "sg-server shares no code with sg. It owns a config file, a .env, and database/provider credentials; sg knows only a server URL. Duplicate the helper here rather than coupling the privileged binary to the unprivileged one."
+                  }
+                ]
               }
             }
           }

@@ -61,7 +61,6 @@
         "@ai-sdk/openai": "^4.0.52",
         "@clack/prompts": "^0.11.0",
         "@huggingface/tokenizers": "^0.1.3",
-        "@searchgres/cli": "workspace:*",
         "@searchgres/protocol": "workspace:*",
         "commander": "^14.0.0",
         "gpt-tokenizer": "^3.4.0",

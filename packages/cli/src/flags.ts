@@ -1,11 +1,14 @@
-// Flag plumbing shared by both binaries.
+// Flag plumbing for `sg`.
 //
-// `sg` and `sg-server` are separate compiled entry points (see this package's
-// README): `bun build --compile` initializes a binary's whole module graph at
-// startup, so anything reachable from an entry point costs startup time whether
-// it runs or not. Keeping this module free of postgres, `searchgres`, the server,
-// and the prompt library is therefore what lets `sg` stay thin — an import added
-// here is paid by every `sg` invocation.
+// This module must stay dependency-free. `bun build --compile` initializes a
+// binary's entire module graph at startup, executed or not, so anything
+// reachable from `sg`'s entry point is paid by every invocation. A Biome rule
+// (see biome.json) enforces the important half of that: no postgres, core
+// library, server, or prompt library anywhere under packages/cli/src.
+//
+// `sg-server` deliberately does not import this. The two binaries share no code:
+// a handful of one-line validators is not worth a dependency edge between the
+// unprivileged client and the privileged provisioning tool.
 
 /** A parsed command line: kebab-case flag name to value, or `true` if boolean. */
 export type Flags = Map<string, string | true>;
@@ -15,8 +18,7 @@ export function flagsFromOptions(options: Record<string, unknown>): Flags {
   const flags: Flags = new Map();
   for (const [name, value] of Object.entries(options)) {
     if (value === undefined || value === false) continue;
-    const flag = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-    flags.set(flag, value === true ? true : String(value));
+    flags.set(kebabCase(name), value === true ? true : String(value));
   }
   return flags;
 }
@@ -95,8 +97,4 @@ export function parseJsonObject(raw: string, name: string): unknown {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
     throw new Error(`--${name} must be a JSON object`);
   return parsed;
-}
-
-export function isLoopbackHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }

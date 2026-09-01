@@ -1,6 +1,6 @@
-import { flagsFromOptions } from "@searchgres/cli/flags";
 import { Command } from "commander";
 import { runServerCommand } from "./cli.ts";
+import { flagsFromOptions } from "./flags.ts";
 
 /**
  * Commander owns command discovery, help, and parse errors for `sg-server`.

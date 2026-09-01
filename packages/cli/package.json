@@ -22,19 +22,5 @@
   "dependencies": {
     "@searchgres/client": "workspace:*",
     "commander": "^14.0.0"
-  },
-  "exports": {
-    "./flags": {
-      "types": "./dist/flags.d.ts",
-      "import": "./dist/flags.js"
-    },
-    "./dotenv": {
-      "types": "./dist/dotenv.d.ts",
-      "import": "./dist/dotenv.js"
-    },
-    "./format": {
-      "types": "./dist/format.d.ts",
-      "import": "./dist/format.js"
-    }
   }
 }

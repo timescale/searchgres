@@ -73,12 +73,3 @@ export function writeStructuredOutput(value: unknown, format: string): void {
   }
   throw new Error("--output-format must be json, ndjson, json5, or yaml");
 }
-
-/** Serialize a generated config in the encoding its filename implies. */
-export function renderConfig(path: string, config: unknown): string {
-  const name = path.toLowerCase();
-  if (name.endsWith(".json5")) return `${JSON5.stringify(config, null, 2)}\n`;
-  if (name.endsWith(".yaml") || name.endsWith(".yml"))
-    return `${YAML.stringify(config)}\n`;
-  throw new Error("Config path must end in .yaml, .yml, or .json5");
-}

@@ -5,12 +5,19 @@
 // It is separate from `sg` because `bun build --compile` initializes a binary's
 // whole module graph at startup whether or not a command uses it: a single
 // binary would make every `sg search` pay for postgres, the embedding provider,
-// and the interactive prompt library. Flag plumbing and structured I/O are
-// shared with `sg` through @searchgres/cli.
+// and the interactive prompt library.
+//
+// The two binaries share no code, deliberately. `sg-server` owns a config file,
+// a `.env`, database credentials, and provider credentials; `sg` knows only a
+// server URL. Everything this binary needs lives in this package.
 import { mkdir, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import * as clack from "@clack/prompts";
-import { loadDotenv, writeDotenvExample } from "@searchgres/cli/dotenv";
+import postgres from "postgres";
+import { createIndex, dropIndex } from "searchgres";
+import { loadServerConfig, parseServerConfig } from "./config.ts";
+import { renderConfig } from "./config-file.ts";
+import { loadDotenv, writeDotenvExample } from "./dotenv.ts";
 import {
   type Flags,
   flagsFromOptions,
@@ -19,11 +26,7 @@ import {
   positiveInteger,
   rejectUnknownFlags,
   requiredFlag,
-} from "@searchgres/cli/flags";
-import { renderConfig } from "@searchgres/cli/format";
-import postgres from "postgres";
-import { createIndex, dropIndex } from "searchgres";
-import { loadServerConfig, parseServerConfig } from "./config.ts";
+} from "./flags.ts";
 import { startServer } from "./server.ts";
 
 const usage = `Usage:
@@ -88,7 +91,7 @@ async function runServe(flags: Map<string, string | true>): Promise<void> {
 async function runDestroy(flags: Map<string, string | true>): Promise<void> {
   rejectUnknownFlags(flags, new Set(["config", "yes"]));
   if (!flags.has("yes")) {
-    throw new Error("sg destroy is destructive; pass --yes to confirm");
+    throw new Error("sg-server destroy is destructive; pass --yes to confirm");
   }
   const configPath = requiredFlag(flags, "config");
   const config = await loadServerConfig(configPath);

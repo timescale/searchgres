@@ -89,9 +89,15 @@ single binary therefore made every `sg search` pay for postgres, the embedding
 provider, and the prompt library: 68ms versus 20ms for the client alone. Keeping
 that code unreachable from `sg`'s entry point is the only mechanism that works,
 so **do not import `searchgres`, `postgres`, `@searchgres/server`, or
-`@clack/prompts` from `packages/cli/src`.** Shared plumbing lives in
-`packages/cli/src/{flags,format,dotenv}.ts`, which must stay dependency-free for
-the same reason.
+`@clack/prompts` from `packages/cli/src`.**
+
+**The two binaries share no code, in either direction.** `sg-server` owns a
+config file, a `.env`, and database and provider credentials; `sg` knows only a
+server URL (`--server` or `SEARCHGRES_URL`). Each package therefore keeps its own
+flag helpers — a few one-line validators duplicated is cheaper than a dependency
+edge between the privileged and unprivileged tools. Biome enforces both
+directions, with patterns rather than exact paths so a subpath import cannot slip
+through.
 
 Build both for the current host:
 
