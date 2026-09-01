@@ -18,12 +18,13 @@ To change the Bun version, edit `version=` in `./bun` and the `oven/bun` tag in
 `docker/Dockerfile.server`.
 
 Bun is the development toolchain only. `searchgres`, `@searchgres/protocol`,
-`@searchgres/filter`, and `@searchgres/client` must run on Node, Bun, and Deno:
+`@searchgres/filter`, `@searchgres/presentation`, and `@searchgres/client` must
+run on Node, Bun, and Deno:
 Biome bans the `Bun`/`Deno`
 globals and Bun-only/Deno-only specifiers there, and CI installs the packed
 tarball into a scratch project and imports it by package name under all three
-runtimes. Only `@searchgres/server` and `@searchgres/cli` may use `Bun.*`, and
-they ship as compiled binaries rather than as importable source.
+runtimes. Only `@searchgres/server`, `@searchgres/cli`, and `@searchgres/mcp` may use
+`Bun.*`, and they ship as compiled binaries rather than as importable source.
 
 ## Workspace layout
 
@@ -32,13 +33,17 @@ they ship as compiled binaries rather than as importable source.
 | `packages/core` | Runtime-agnostic Postgres search library; published as `searchgres`. |
 | `packages/protocol` | Runtime-neutral Zod RPC contract/OpenRPC source. |
 | `packages/filter` | Private runtime-neutral parser for the `sg` filter-expression DSL. |
+| `packages/presentation` | Private runtime-neutral record selector/projector shared by CLI and MCP. |
 | `packages/client` | Runtime-agnostic fetch JSON-RPC client. |
 | `packages/server` | Bun server component and the `sg-server` binary: config, RPC service, providers, tokenizer pool, worker lifecycle, provisioning. |
 | `packages/cli` | Bun-only `sg` binary: the unprivileged client, including import/export and its own flag/format helpers. It shares no code with `sg-server`. |
+| `packages/mcp` | Bun-only `sg-mcp` stdio server: twelve agent tools over the remote client. |
 
-Dependency direction is intentionally one-way: CLI uses client/filter/protocol;
-filter and client use protocol; server uses core/protocol. The CLI never imports
-server or core. Core, protocol, filter, and client must not use Bun APIs.
+Dependency direction is intentionally one-way: CLI uses
+client/filter/presentation/protocol; MCP uses client/presentation/protocol;
+presentation, filter, and client use protocol; server uses core/protocol. CLI
+and MCP never import server or core. Core, protocol, filter, presentation, and
+client must not use Bun APIs.
 
 ## Checks and tests
 
@@ -56,7 +61,7 @@ Against a database you manage yourself:
 
 ```sh
 ./bun run pg:up                            # build + start PostgreSQL 18
-./bun run test:db                          # build, compile both binaries, run all suites
+./bun run test:db                          # build, compile all three binaries, run all suites
 ./bun run --filter searchgres test:db      # just the core suite
 ./bun run --filter @searchgres/server test:db   # just the compiled-server suite
 ./bun run pg:rm
@@ -95,12 +100,13 @@ one real error into a cascade of misleading ones.
 
 ## Building the binaries
 
-There are two, and the split is load-bearing:
+There are three, and the split is load-bearing:
 
 | Binary | Package | Commands | Needs |
 | --- | --- | --- | --- |
 | `sg` | `packages/cli` | records, trees, search | `fetch` only |
 | `sg-server` | `packages/server` | `init`, `serve`, `destroy` | PostgreSQL, core, provider credentials |
+| `sg-mcp` | `packages/mcp` | twelve MCP tools over stdio | `fetch`, MCP SDK |
 
 `bun build --compile` initializes a binary's entire module graph at startup
 whether a command uses it or not — a lazy `import()` does **not** defer it. A
@@ -110,20 +116,20 @@ that code unreachable from `sg`'s entry point is the only mechanism that works,
 so **do not import `searchgres`, `postgres`, `@searchgres/server`, or
 `@clack/prompts` from `packages/cli/src`.**
 
-**The two binaries share no code, in either direction.** `sg-server` owns a
+**The client binaries never import the server or each other.** `sg-server` owns a
 config file, a `.env`, and database and provider credentials; `sg` knows only a
-server URL (`--server` or `SEARCHGRES_URL`). Each package therefore keeps its own
-flag helpers — a few one-line validators duplicated is cheaper than a dependency
-edge between the privileged and unprivileged tools. Biome enforces both
-directions, with patterns rather than exact paths so a subpath import cannot slip
-through.
+server URL (`--server` or `SEARCHGRES_URL`). Each binary package therefore keeps its own shell-facing helpers. Reusable
+runtime-neutral semantics belong in focused packages: selection and projection
+live only in `@searchgres/presentation`. Biome prevents MCP from importing CLI,
+server, core, or postgres and prevents CLI/server coupling.
 
-Build both for the current host:
+Build all three for the current host:
 
 ```sh
 ./bun run compile
 ./packages/cli/dist/sg --help
 ./packages/server/dist/sg-server --help
+./packages/mcp/dist/sg-mcp --help
 ```
 
 Build every release target (Linux/Windows/macOS, amd64 and arm64):
@@ -132,10 +138,10 @@ Build every release target (Linux/Windows/macOS, amd64 and arm64):
 ./bun run compile:all
 ```
 
-Both bundle the tokenizer worker first, because `sg-server` embeds it. Each
-binary exists once, at `packages/cli/dist/sg` and
-`packages/server/dist/sg-server`; the black-box tests resolve those paths
-directly rather than keeping copies.
+The root build bundles the tokenizer worker first because `sg-server` embeds it.
+Canonical binaries live at `packages/cli/dist/sg`,
+`packages/server/dist/sg-server`, and `packages/mcp/dist/sg-mcp`; black-box tests
+resolve those paths directly rather than keeping copies.
 
 ## Local setup
 

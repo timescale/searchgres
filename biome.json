@@ -43,7 +43,11 @@
   },
   "overrides": [
     {
-      "includes": ["packages/core/**", "packages/filter/**"],
+      "includes": [
+        "packages/core/**",
+        "packages/filter/**",
+        "packages/presentation/**"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -116,6 +120,35 @@
                   {
                     "group": ["@clack/prompts", "@clack/prompts/**"],
                     "message": "sg must stay thin: the prompt library is only needed by sg-server's interactive init."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/mcp/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "searchgres",
+                      "searchgres/**",
+                      "postgres",
+                      "postgres/**",
+                      "@searchgres/server",
+                      "@searchgres/server/**",
+                      "@searchgres/cli",
+                      "@searchgres/cli/**"
+                    ],
+                    "message": "sg-mcp is an unprivileged remote client; use @searchgres/client and runtime-neutral shared packages only."
                   }
                 ]
               }

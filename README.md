@@ -4,9 +4,9 @@ Postgres-native search for TypeScript. Semantic (vector), keyword (BM25), and
 hybrid retrieval — with composable hierarchy, metadata, temporal, and regex
 filters — over a PostgreSQL database you own and run.
 
-> **Status: pre-release, under active development.** The core library is
-> implemented; the server, client, CLI, and MCP surfaces come next. Expect
-> breaking changes until `1.0`.
+> **Status: pre-release, under active development.** The core library, API
+> server, client, CLI, and stdio MCP server are implemented. Expect breaking
+> changes until `1.0`.
 
 ## Why searchgres
 
@@ -33,7 +33,7 @@ search, and rank fusion — all executed in Postgres, filtered by the same query
 - **PostgreSQL 18** with three extensions in the `public` schema:
   [`pgvector`](https://github.com/pgvector/pgvector),
   [`pg_textsearch`](https://github.com/timescale/pg_textsearch), and `ltree`.
-- **Node ≥ 22**, **Bun ≥ 1.2**, or **Deno ≥ 2.0**.
+- **Node ≥ 22**, **Bun ≥ 1.4**, or **Deno ≥ 2.0**.
 
 A Dockerfile that builds PostgreSQL 18 with all three extensions is included for
 local development. See [Install searchgres](docs/installation.md).
@@ -84,6 +84,19 @@ await sql.end();
 
 Full walkthrough: **[Get started](docs/getting-started.md)**.
 
+## Product surfaces
+
+Compiled binaries layer remote workflows over the same core:
+
+- `sg-server` provisions and serves one configured index.
+- `sg` provides records, trees, import/export, and search over HTTP.
+- `sg-mcp` exposes twelve MCP tools over stdio. It talks only to `sg-server`,
+  registers all tools by default, and accepts `--read-only` to omit mutations.
+
+The MCP binary requires only `--server <url>` or `SEARCHGRES_URL`; it does not
+read server config, dotenv, database credentials, or local import/export files.
+See the [MCP server guide](docs/mcp/index.md).
+
 ## Documentation
 
 - [Get started](docs/getting-started.md)
@@ -94,6 +107,7 @@ Full walkthrough: **[Get started](docs/getting-started.md)**.
 - [Search and filter](docs/guides/search.md)
 - [Manage records and trees](docs/guides/records-and-trees.md)
 - [Run in production](docs/guides/production.md)
+- [Use the MCP server](docs/mcp/index.md)
 - [API reference](docs/reference/api.md) ·
   [Errors](docs/reference/errors.md) ·
   [Direct SQL](docs/reference/sql.md)

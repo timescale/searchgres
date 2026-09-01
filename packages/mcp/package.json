@@ -1,29 +1,30 @@
 {
-  "name": "@searchgres/cli",
+  "name": "@searchgres/mcp",
   "version": "0.0.0",
   "private": true,
-  "description": "Bun command router and compiled sg binary.",
+  "description": "Compiled stdio MCP server for Searchgres.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
     "bun": ">=1.4.0"
   },
   "bin": {
-    "sg": "./dist/sg"
+    "sg-mcp": "./dist/sg-mcp"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json",
     "test:unit": "find src -name '*.test.ts' -print0 | xargs -0 ../../bun test",
-    "compile": "../../bun build ./src/bin.ts --compile --outfile dist/sg",
-    "compile:all": "../../bun ../../scripts/compile-targets.ts sg ./src/bin.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "compile": "../../bun build ./src/bin.ts --compile --outfile dist/sg-mcp",
+    "compile:all": "../../bun ../../scripts/compile-targets.ts sg-mcp ./src/bin.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@searchgres/client": "workspace:*",
-    "@searchgres/filter": "workspace:*",
     "@searchgres/presentation": "workspace:*",
     "@searchgres/protocol": "workspace:*",
-    "commander": "^14.0.0"
+    "commander": "^14.0.0",
+    "zod": "^4.4.3"
   }
 }

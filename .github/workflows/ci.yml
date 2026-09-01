@@ -87,11 +87,14 @@ jobs:
       - run: ./bun install --frozen-lockfile
       - run: ./bun run build
 
-      - name: Import private filter build
+      - name: Import private runtime-neutral builds
         run: |
-          script='const m = await import("./packages/filter/dist/index.js");
-                  const filter = m.parseFilter("(tree docs)");
-                  if (filter.tree !== "docs") throw new Error("filter parser smoke failed");'
+          script='const f = await import("./packages/filter/dist/index.js");
+                  const p = await import("./packages/presentation/dist/index.js");
+                  const filter = f.parseFilter("(tree docs)");
+                  const selection = p.parseSelection(["id"], { kind: "search-result" });
+                  if (filter.tree !== "docs" || !selection.fields.has("id"))
+                    throw new Error("private package smoke failed");'
           case "${{ matrix.runtime }}" in
             node) node --input-type=module -e "$script" ;;
             bun)  ./bun -e "$script" ;;

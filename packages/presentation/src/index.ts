@@ -1,4 +1,4 @@
-import type { SearchResult } from "@searchgres/protocol";
+import type { SearchResult, StoredRecord } from "@searchgres/protocol";
 
 const bareSelectFields = [
   "id",
@@ -36,9 +36,16 @@ export interface ProjectedSearchEnvelope {
   readonly results: readonly ProjectedSearchResult[];
 }
 
-/** Parse the CLI's comma-separated presentation selectors. */
-export function parseSelectFields(value: string): ParsedSelect {
-  const specs = value.split(",").map((field) => field.trim());
+export type SelectionKind = "stored-record" | "search-result";
+
+/** Parse CLI text or MCP selector arrays into one shared presentation plan. */
+export function parseSelection(
+  value: string | readonly string[],
+  options: { readonly kind: SelectionKind },
+): ParsedSelect {
+  const specs = (typeof value === "string" ? value.split(",") : value).map(
+    (field) => field.trim(),
+  );
   if (specs.length === 0 || specs.some((field) => field === "")) {
     throw new Error("select at least one field");
   }
@@ -71,6 +78,9 @@ export function parseSelectFields(value: string): ParsedSelect {
     }
 
     if ((bareSelectFields as readonly string[]).includes(spec)) {
+      if (spec === "score" && options.kind === "stored-record") {
+        throw new Error("score is available only on search results");
+      }
       const field = spec as BareSelectField;
       fields.add(field);
       if (field === "meta") includeFullMeta = true;
@@ -98,6 +108,11 @@ export function parseSelectFields(value: string): ParsedSelect {
   };
 }
 
+/** Backwards-compatible CLI parser for search-result selection. */
+export function parseSelectFields(value: string): ParsedSelect {
+  return parseSelection(value, { kind: "search-result" });
+}
+
 /** Project full wire results for presentation without changing the RPC shape. */
 export function projectSearchEnvelope(
   envelope: { readonly results: readonly SearchResult[] },
@@ -110,8 +125,26 @@ export function projectSearchEnvelope(
   };
 }
 
+export type ProjectedStoredRecord = Partial<StoredRecord> & {
+  readonly contentLength?: number;
+};
+
+export function projectStoredRecord(
+  result: StoredRecord,
+  select: ParsedSelect,
+): ProjectedStoredRecord {
+  return projectRecord(result, select);
+}
+
 export function projectSearchResult(
   result: SearchResult,
+  select: ParsedSelect,
+): ProjectedSearchResult {
+  return projectRecord(result, select);
+}
+
+function projectRecord(
+  result: StoredRecord | SearchResult,
   select: ParsedSelect,
 ): ProjectedSearchResult {
   const projected: Partial<SearchResult> & { contentLength?: number } = {};
@@ -150,7 +183,9 @@ export function projectSearchResult(
   if (select.fields.has("tree")) projected.tree = result.tree;
   if (select.fields.has("name")) projected.name = result.name;
   if (select.fields.has("temporal")) projected.temporal = result.temporal;
-  if (select.fields.has("score")) projected.score = result.score;
+  if (select.fields.has("score") && "score" in result) {
+    projected.score = result.score;
+  }
   if (select.fields.has("hasEmbedding")) {
     projected.hasEmbedding = result.hasEmbedding;
   }

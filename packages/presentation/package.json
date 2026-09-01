@@ -1,0 +1,27 @@
+{
+  "name": "@searchgres/presentation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runtime-neutral local record selection and projection for Searchgres surfaces.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:unit": "node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@searchgres/protocol": "workspace:*"
+  }
+}

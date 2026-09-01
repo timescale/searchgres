@@ -6,6 +6,10 @@ import {
   createFetchTransport,
   type SearchgresClient,
 } from "@searchgres/client";
+import {
+  parseSelectFields,
+  projectSearchEnvelope,
+} from "@searchgres/presentation";
 import type { Filter } from "@searchgres/protocol";
 import { exportRecords, importRecords } from "./bulk.ts";
 import { filterExpressionFromFlags } from "./filter-input.ts";
@@ -29,7 +33,6 @@ import {
   readStructuredInput,
   writeStructuredOutput,
 } from "./format.ts";
-import { parseSelectFields, projectSearchEnvelope } from "./selection.ts";
 
 export { flagsFromOptions };
 

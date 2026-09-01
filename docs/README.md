@@ -29,6 +29,8 @@ in a few minutes.
   delete, subtree operations, and transactions.
 - **[Run in production](guides/production.md)** — deployment, pooling, worker
   operations, monitoring, and reindex cutovers.
+- **[Use the MCP server](mcp/index.md)** — run `sg-mcp` over stdio and understand
+  its read, write, projection, and safety boundaries.
 
 ## Reference
 

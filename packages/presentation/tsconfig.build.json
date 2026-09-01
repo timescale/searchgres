@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "tsconfig.build.tsbuildinfo",
+    "paths": {
+      "@searchgres/protocol": ["../protocol/dist/index.d.ts"]
+    }
+  },
+  "exclude": ["src/**/*.test.ts"]
+}

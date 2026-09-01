@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { YAML } from "bun";
 import postgres, { type Sql } from "postgres";
 import { createIndex, dropIndex } from "searchgres";
@@ -21,6 +23,7 @@ let fakeEmbeddings: ReturnType<typeof Bun.serve>;
 // the server; `sg` is the client the assertions drive.
 const sgServer = fileURLToPath(new URL("../dist/sg-server", import.meta.url));
 const sg = fileURLToPath(new URL("../../cli/dist/sg", import.meta.url));
+const sgMcp = fileURLToPath(new URL("../../mcp/dist/sg-mcp", import.meta.url));
 
 let server: Bun.Subprocess | undefined;
 let serverUrl: URL;
@@ -473,6 +476,8 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   expect(hybrid.results[0]?.name).toBe("cat");
   expect(hybrid.results[0]?.score).toBeGreaterThan(0);
 
+  await assertMcpCommands();
+
   const bird = await client.upsert({
     record: { content: "A bird sings", tree: "pets", name: "bird" },
   });
@@ -532,6 +537,81 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   // dozen times, and process startup dominates. A CI runner is slower than a
   // developer machine, so the default budget is not a useful signal here.
 }, 120_000);
+
+async function assertMcpCommands(): Promise<void> {
+  const transport = new StdioClientTransport({
+    command: sgMcp,
+    args: ["--server", serverUrl.toString().replace(/\/$/, "")],
+    stderr: "pipe",
+  });
+  const client = new McpClient({
+    name: "searchgres-integration",
+    version: "1",
+  });
+  try {
+    await client.connect(transport);
+    expect((await client.listTools()).tools).toHaveLength(12);
+    const created = mcpText(
+      await client.callTool({
+        name: "searchgres_create",
+        arguments: {
+          record: {
+            content: "MCP integration record",
+            tree: "mcp",
+            name: "integration",
+          },
+        },
+      }),
+    ) as { result: { id: string } };
+    const found = mcpText(
+      await client.callTool({
+        name: "searchgres_search",
+        arguments: {
+          fulltext: "integration",
+          filter: { tree: "mcp" },
+          select: ["id", "name", "versionHash", "content:3"],
+        },
+      }),
+    ) as {
+      results: Array<{ id: string; versionHash: string; content: string }>;
+    };
+    expect(found.results[0]).toMatchObject({
+      id: created.result.id,
+      content: "MCP",
+    });
+    const selected = found.results[0];
+    if (!selected) throw new Error("MCP search returned no record");
+    await client.callTool({
+      name: "searchgres_update",
+      arguments: {
+        id: selected.id,
+        priorVersionHash: selected.versionHash,
+        patch: { meta: { source: "mcp" } },
+      },
+    });
+    expect(
+      mcpText(
+        await client.callTool({
+          name: "searchgres_get",
+          arguments: { id: selected.id, select: ["id", "meta.source"] },
+        }),
+      ),
+    ).toEqual({ record: { id: selected.id, meta: { source: "mcp" } } });
+  } finally {
+    await client.close();
+  }
+}
+
+function mcpText(result: Awaited<ReturnType<McpClient["callTool"]>>): unknown {
+  expect(result.structuredContent).toBeUndefined();
+  const content = (
+    result.content as Array<{ type: string; text?: string }> | undefined
+  )?.[0];
+  if (content?.type !== "text" || content.text === undefined) {
+    throw new Error("MCP tool returned no text content");
+  }
+  return JSON.parse(content.text);
+}
 
 async function runSg(args: readonly string[], stdin?: string): Promise<string> {
   const process = Bun.spawn({

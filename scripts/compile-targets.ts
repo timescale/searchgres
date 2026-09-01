@@ -1,6 +1,6 @@
-// Cross-compiles one binary for every release target. Shared by both binaries
-// so the target list exists once: `sg` and `sg-server` must ship for the same
-// platforms, and a list per package would drift.
+// Cross-compiles one binary for every release target. Shared by all binary
+// surfaces so `sg`, `sg-server`, and `sg-mcp` ship for the same platforms and a
+// target list per package cannot drift.
 //
 //   ../../bun ../../scripts/compile-targets.ts <name> <entrypoint>
 const [name, entrypoint] = Bun.argv.slice(2);
