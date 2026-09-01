@@ -24,6 +24,7 @@ export interface ParseFilterOptions {
 /** A local DSL failure with stable machine-readable and source coordinates. */
 export class FilterExpressionError extends Error {
   readonly reason: FilterExpressionErrorReason;
+  readonly detail: string;
   readonly sourceName: string;
   readonly offset: number;
   readonly line: number;
@@ -49,6 +50,7 @@ export class FilterExpressionError extends Error {
     );
     this.name = "FilterExpressionError";
     this.reason = options.reason;
+    this.detail = options.detail;
     this.sourceName = options.sourceName;
     this.offset = options.offset;
     this.line = location.line;

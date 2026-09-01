@@ -71,7 +71,12 @@ reference are updated with:
 ```
 
 `ebnf2railroad` is development-only; grammar generation is never part of package
-installation or runtime.
+installation or runtime. The DSL's executable language examples live in
+`packages/filter/test/cases.yaml`: each case contains an expression and exactly
+one expected protocol result or structured error. The Node test harness loads
+that conformance file with the development-only `yaml` package. Keep generated
+limit and diagnostic-mechanics tests in TypeScript rather than encoding huge or
+programmatically constructed inputs in YAML.
 
 The suites expect PostgreSQL at `TEST_DATABASE_URL`, defaulting to
 `postgresql://postgres@127.0.0.1:5432/postgres`. The image includes

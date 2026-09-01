@@ -24,5 +24,8 @@
   },
   "dependencies": {
     "@searchgres/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "yaml": "2.8.2"
   }
 }

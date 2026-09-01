@@ -1,0 +1,219 @@
+- name: tree predicate with a bare atom
+  expression: (tree docs.api)
+  result:
+    tree: docs.api
+
+- name: empty root tree with a JSON string
+  expression: (tree "")
+  result:
+    tree: ""
+
+- name: lquery predicate
+  expression: '(lquery "docs.*{1,3}")'
+  result:
+    lquery: docs.*{1,3}
+
+- name: ltxtquery predicate
+  expression: '(ltxtquery "postgres & search")'
+  result:
+    ltxtquery: postgres & search
+
+- name: nested metadata containment
+  expression: '(meta {"status":"published","priority":2,"nested":{"ok":true},"tags":["postgres","search"]})'
+  result:
+    meta:
+      status: published
+      priority: 2
+      nested:
+        ok: true
+      tags:
+        - postgres
+        - search
+
+- name: JSONPath metadata predicate
+  expression: '(meta-predicate "$.status == \"published\"")'
+  result:
+    metaPredicate: '$.status == "published"'
+
+- name: temporal within predicate
+  expression: (temporal-within 2025-01-01T00:00:00Z 2026-01-01T00:00:00Z)
+  result:
+    temporalWithin:
+      - 2025-01-01T00:00:00Z
+      - 2026-01-01T00:00:00Z
+
+- name: temporal overlaps predicate
+  expression: (temporal-overlaps 2024-01-01T00:00:00Z 2025-01-01T00:00:00Z)
+  result:
+    temporalOverlaps:
+      - 2024-01-01T00:00:00Z
+      - 2025-01-01T00:00:00Z
+
+- name: temporal before predicate
+  expression: (temporal-before 2027-01-01T00:00:00Z)
+  result:
+    temporalBefore: 2027-01-01T00:00:00Z
+
+- name: temporal after predicate
+  expression: (temporal-after 2020-01-01T00:00:00Z)
+  result:
+    temporalAfter: 2020-01-01T00:00:00Z
+
+- name: temporal contains predicate
+  expression: (temporal-contains 2025-06-01T00:00:00Z)
+  result:
+    temporalContains: 2025-06-01T00:00:00Z
+
+- name: regexp predicate with escaped Unicode
+  expression: '(regexp "error; \ud83d\ude00")'
+  result:
+    regexp: 'error; 😀'
+
+- name: and composition preserves child order
+  expression: |
+    (and
+      (tree docs)
+      (meta {"status":"published"})
+      (temporal-after 2025-01-01T00:00:00Z))
+  result:
+    and:
+      - tree: docs
+      - meta:
+          status: published
+      - temporalAfter: 2025-01-01T00:00:00Z
+
+- name: nested or and not composition is preserved
+  expression: |
+    (or
+      (tree guides)
+      (and
+        (tree reference)
+        (not (meta {"archived":true}))))
+  result:
+    or:
+      - tree: guides
+      - and:
+          - tree: reference
+          - not:
+              meta:
+                archived: true
+
+- name: semicolon comments and CRLF-style spacing
+  expression: "; heading\r\n(and (tree docs) ; inline\r\n(meta {\"status\":\"published\"}))"
+  result:
+    and:
+      - tree: docs
+      - meta:
+          status: published
+
+- name: unknown operator
+  expression: (Tree docs)
+  error:
+    reason: syntax
+    line: 1
+    column: 2
+    detail: expected known operator, found `Tree`
+
+- name: and requires at least two expressions
+  expression: (and (tree docs))
+  error:
+    reason: arity
+    line: 1
+    column: 1
+    detail: '`and` requires at least two expressions'
+
+- name: or requires at least two expressions
+  expression: (or (tree docs))
+  error:
+    reason: arity
+    line: 1
+    column: 1
+    detail: '`or` requires at least two expressions'
+
+- name: not requires exactly one expression
+  expression: (not (tree docs) (tree guides))
+  error:
+    reason: arity
+    line: 1
+    column: 1
+    detail: '`not` requires exactly one expression'
+
+- name: predicate rejects missing argument
+  expression: (tree)
+  error:
+    reason: syntax
+    line: 1
+    column: 6
+    detail: expected spacing before argument 1 of `tree`
+
+- name: predicate rejects extra argument
+  expression: (tree docs guides)
+  error:
+    reason: arity
+    line: 1
+    column: 1
+    detail: '`tree` requires exactly 1 argument'
+
+- name: malformed metadata JSON
+  expression: '(meta {"status":"published",})'
+  error:
+    reason: json
+    line: 1
+    column: 7
+    detail: invalid JSON object
+
+- name: metadata must be a nonempty object
+  expression: (meta {})
+  error:
+    reason: validation
+    line: 1
+    column: 1
+    detail: meta filter must not be an empty object
+
+- name: empty regexp is rejected
+  expression: (regexp "")
+  error:
+    reason: validation
+    line: 1
+    column: 1
+    detail: '`regexp` requires nonempty text'
+
+- name: invalid tree path is rejected
+  expression: (tree docs/api)
+  error:
+    reason: validation
+    line: 1
+    column: 1
+    detail: expected dot-separated ltree labels matching [A-Za-z0-9_-]+ (or an empty string for the root)
+
+- name: invalid timestamp is rejected
+  expression: (temporal-after yesterday)
+  error:
+    reason: validation
+    line: 1
+    column: 1
+    detail: '`temporal-after` expects ISO 8601 timestamps with offsets'
+
+- name: inverted temporal range is rejected
+  expression: (temporal-within 2026-01-01T00:00:00Z 2025-01-01T00:00:00Z)
+  error:
+    reason: validation
+    line: 1
+    column: 1
+    detail: interval start must be before its end
+
+- name: trailing expression is rejected
+  expression: (tree docs) (tree guides)
+  error:
+    reason: syntax
+    line: 1
+    column: 13
+    detail: unexpected trailing input
+
+- name: unterminated JSON string is rejected
+  expression: '(regexp "unfinished)'
+  error:
+    reason: json
+    line: 1
+    column: 9
+    detail: unterminated JSON string
