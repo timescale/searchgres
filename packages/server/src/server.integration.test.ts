@@ -135,6 +135,161 @@ async function assertCliCommands(): Promise<void> {
       "ndjson",
     ]),
   ).toContain("inserted");
+  await assertSearchFilterFlags(server);
+}
+
+/**
+ * Every filter-leaf flag `sg search` exposes, against records planted for the
+ * purpose. Each assertion pins the leaf's *discriminating* power — it must
+ * match the intended record and exclude the others — so a flag wired to the
+ * wrong filter key fails here rather than silently returning everything.
+ */
+async function assertSearchFilterFlags(server: string): Promise<void> {
+  await runSg([
+    "upsert-many",
+    "--server",
+    server,
+    "--input",
+    JSON.stringify({
+      records: [
+        {
+          content: "Filter probe alpha",
+          tree: "filters.alpha",
+          name: "alpha",
+          meta: { colour: "red", size: 10 },
+          temporal: ["2024-03-01T00:00:00Z", "2024-03-02T00:00:00Z"],
+        },
+        {
+          content: "Filter probe beta",
+          tree: "filters.beta",
+          name: "beta",
+          meta: { colour: "blue", size: 99 },
+          temporal: ["2024-06-01T00:00:00Z", "2024-06-02T00:00:00Z"],
+        },
+      ],
+    }),
+  ]);
+
+  const names = async (args: readonly string[]): Promise<readonly string[]> => {
+    const output = JSON.parse(
+      await runSg(["search", "--server", server, ...args]),
+    ) as { readonly results: readonly { readonly name: string | null }[] };
+    return output.results.map((result) => result.name ?? "");
+  };
+
+  // Tree containment, lquery patterns, and ltxtquery word matching.
+  expect(await names(["--tree", "filters.alpha"])).toEqual(["alpha"]);
+  expect((await names(["--tree", "filters"])).toSorted()).toEqual([
+    "alpha",
+    "beta",
+  ]);
+  expect(await names(["--lquery", "filters.beta"])).toEqual(["beta"]);
+  expect(await names(["--ltxtquery", "alpha"])).toEqual(["alpha"]);
+
+  // Metadata by equality and by JSONPath predicate.
+  expect(await names(["--meta", '{"colour":"red"}'])).toEqual(["alpha"]);
+  expect(await names(["--meta-predicate", "$.size > 50"])).toEqual(["beta"]);
+
+  // Temporal leaves. `within`/`overlaps` take a start,end window; the three
+  // point leaves take a single instant.
+  expect(
+    await names([
+      "--temporal-within",
+      "2024-02-01T00:00:00Z,2024-04-01T00:00:00Z",
+    ]),
+  ).toEqual(["alpha"]);
+  expect(
+    await names([
+      "--temporal-overlaps",
+      "2024-05-15T00:00:00Z,2024-06-15T00:00:00Z",
+    ]),
+  ).toEqual(["beta"]);
+  expect(await names(["--temporal-before", "2024-04-01T00:00:00Z"])).toEqual([
+    "alpha",
+  ]);
+  expect(await names(["--temporal-after", "2024-04-01T00:00:00Z"])).toEqual([
+    "beta",
+  ]);
+  expect(await names(["--temporal-contains", "2024-03-01T12:00:00Z"])).toEqual([
+    "alpha",
+  ]);
+
+  // Several leaves AND together, and a contradictory pair matches nothing.
+  expect(
+    await names(["--tree", "filters", "--meta", '{"colour":"blue"}']),
+  ).toEqual(["beta"]);
+  expect(
+    await names(["--tree", "filters.alpha", "--meta-predicate", "$.size > 50"]),
+  ).toEqual([]);
+
+  // regexp is not indexable, so it may not stand alone — but composes.
+  expect(await names(["--tree", "filters", "--regexp", "probe be+ta"])).toEqual(
+    ["beta"],
+  );
+  await expect(
+    runSg(["search", "--server", server, "--regexp", "probe"]),
+  ).rejects.toThrow(/indexable filter/);
+
+  // Filters compose with a ranking arm, and ordering/paging knobs apply to a
+  // filter-only listing.
+  expect(await names(["--fulltext", "beta", "--tree", "filters"])).toEqual([
+    "beta",
+  ]);
+  expect(
+    await names(["--tree", "filters", "--order", "asc", "--limit", "1"]),
+  ).toHaveLength(1);
+
+  // Malformed flag values are rejected with an actionable message rather than
+  // reaching the server.
+  await expect(
+    runSg(["search", "--server", server, "--meta", "not-json"]),
+  ).rejects.toThrow(/--meta must be valid JSON/);
+  await expect(
+    runSg(["search", "--server", server, "--meta", '["array"]']),
+  ).rejects.toThrow(/--meta must be a JSON object/);
+  await expect(
+    runSg(["search", "--server", server, "--temporal-within", "only-one"]),
+  ).rejects.toThrow(/"start,end" range/);
+  // These knobs are not search criteria on their own, so pair each with a
+  // filter; otherwise the "no criteria" guard fires before the value is parsed.
+  await expect(
+    runSg([
+      "search",
+      "--server",
+      server,
+      "--tree",
+      "filters",
+      "--order",
+      "sideways",
+    ]),
+  ).rejects.toThrow(/--order must be one of asc, desc/);
+  await expect(
+    runSg([
+      "search",
+      "--server",
+      server,
+      "--semantic",
+      "probe",
+      "--semantic-threshold",
+      "7",
+    ]),
+  ).rejects.toThrow(/between 0 and 1/);
+  await expect(runSg(["search", "--server", server])).rejects.toThrow(
+    /requires --input, a ranking flag/,
+  );
+
+  // A user error is one line on stderr, not a stack trace through the compiled
+  // bundle. Assert on the whole output so a regression that reintroduces the
+  // trace fails here.
+  const rejection = await runSg([
+    "search",
+    "--server",
+    server,
+    "--meta",
+    "not-json",
+  ]).catch((error: unknown) => String(error));
+  expect(rejection).not.toContain("at <anonymous>");
+  expect(rejection).not.toContain("$bunfs");
 }
 
 test("compiled sg writes through the queue and performs semantic and hybrid search", async () => {

@@ -1,5 +1,10 @@
 import { Command } from "commander";
-import { flagsFromOptions, runCommand } from "./cli.ts";
+import { filterFlagNames, flagsFromOptions, runCommand } from "./cli.ts";
+
+/** `temporal-within` -> `temporalWithin`, matching Commander's attribute names. */
+function camelCaseFlag(flag: string): string {
+  return flag.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
 
 /** Commander owns command discovery, help, and shell-facing parse errors.
  * The command handlers delegate to the existing typed CLI implementation while
@@ -118,6 +123,30 @@ function register(
     .option("--limit <n>", "maximum result count")
     .option("--semantic <text>", "semantic query text")
     .option("--fulltext <text>", "full-text query text")
+    // Filter leaves. Supplying several ANDs them together; each is also a
+    // filter-only search on its own.
+    .option("--meta <json>", "metadata filter as a JSON object")
+    .option(
+      "--meta-predicate <jsonpath>",
+      "JSONPath predicate evaluated against metadata",
+    )
+    .option("--temporal-within <start,end>", "record falls inside the window")
+    .option("--temporal-overlaps <start,end>", "record overlaps the window")
+    .option("--temporal-before <ts>", "record is strictly before this instant")
+    .option("--temporal-after <ts>", "record is strictly after this instant")
+    .option("--temporal-contains <ts>", "record contains this instant")
+    .option(
+      "--regexp <pattern>",
+      "case-insensitive POSIX regex on content; needs another filter",
+    )
+    .option("--candidate-limit <n>", "per-arm candidate pool size")
+    .option(
+      "--semantic-threshold <n>",
+      "minimum cosine similarity in [0,1]; higher is stricter",
+    )
+    .option("--semantic-weight <n>", "semantic RRF weight in [0,1]")
+    .option("--fulltext-weight <n>", "full-text RRF weight in [0,1]")
+    .option("--order <direction>", "filter-only search: asc or desc")
     .option("--config <path>", "server configuration path")
     .option("--env-file <path>", "dotenv file")
     .option("--no-env-file", "do not load a dotenv file")
@@ -182,7 +211,17 @@ function hideIrrelevantOptions(command: Command, name: string): void {
     count: ["tree", "lquery", "ltxtquery", "limit"],
     list: ["lquery"],
     tree: ["levels"],
-    search: ["semantic", "fulltext", "tree", "limit"],
+    search: [
+      "semantic",
+      "fulltext",
+      ...filterFlagNames.map(camelCaseFlag),
+      "limit",
+      "candidateLimit",
+      "semanticThreshold",
+      "semanticWeight",
+      "fulltextWeight",
+      "order",
+    ],
     upsert: [],
     "upsert-many": [],
     insert: [],

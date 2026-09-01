@@ -204,7 +204,17 @@ function allowedRemoteFlags(command: string): ReadonlySet<string> {
     deltree: ["tree", "dry-run"],
     count: ["tree", "lquery", "ltxtquery", "limit"],
     list: ["lquery"],
-    search: ["semantic", "fulltext", "tree", "limit"],
+    search: [
+      "semantic",
+      "fulltext",
+      ...filterFlagNames,
+      "limit",
+      "candidate-limit",
+      "semantic-threshold",
+      "semantic-weight",
+      "fulltext-weight",
+      "order",
+    ],
   };
   return new Set([...shared, ...(commandFlags[command] ?? [])]);
 }
@@ -246,17 +256,18 @@ function paramsFromFlags(
   if (command === "search") {
     const semantic = optionalFlag(flags, "semantic");
     const fulltext = optionalFlag(flags, "fulltext");
-    const tree = optionalFlag(flags, "tree");
-    if (!semantic && !fulltext && !tree)
+    const leaves = filterLeavesFromFlags(flags);
+    if (!semantic && !fulltext && leaves.length === 0)
       throw new Error(
-        "search requires --input, --semantic, --fulltext, or --tree",
+        "search requires --input, a ranking flag (--semantic, --fulltext), or a filter flag",
       );
     return {
       ...(semantic ? { semantic } : {}),
       ...(fulltext ? { fulltext } : {}),
-      ...(tree ? { filter: { tree } } : {}),
-      ...(optionalFlag(flags, "limit")
-        ? { limit: positiveInteger(value("limit"), "limit") }
+      ...(leaves.length > 0 ? { filter: conjoin(leaves) } : {}),
+      ...numericSearchOptions(flags),
+      ...(optionalFlag(flags, "order")
+        ? { order: enumeration(value("order"), "order", ["asc", "desc"]) }
         : {}),
     };
   }
@@ -662,6 +673,146 @@ function nonnegativeInteger(value: string, name: string): number {
   if (!Number.isInteger(number) || number < 0)
     throw new Error(`--${name} must be a nonnegative integer`);
   return number;
+}
+
+/**
+ * The filter leaves reachable from `sg search` flags, in the order they appear
+ * in the generated help. Each entry names the protocol filter key and how its
+ * flag value is parsed; `--kebab-case` is derived from the key, so adding a
+ * leaf here is all it takes to expose one.
+ *
+ * Boolean composition (`and`/`or`/`not`) is deliberately absent: these flags
+ * are the easy path and are ANDed together. Composable filters get `--filter`.
+ */
+const filterLeafFlags = [
+  { key: "tree", parse: (raw: string) => raw },
+  { key: "lquery", parse: (raw: string) => raw },
+  { key: "ltxtquery", parse: (raw: string) => raw },
+  { key: "meta", parse: (raw: string) => parseJsonObject(raw, "meta") },
+  { key: "metaPredicate", parse: (raw: string) => raw },
+  {
+    key: "temporalWithin",
+    parse: (raw: string) => parseRange(raw, "temporal-within"),
+  },
+  {
+    key: "temporalOverlaps",
+    parse: (raw: string) => parseRange(raw, "temporal-overlaps"),
+  },
+  { key: "temporalBefore", parse: (raw: string) => raw },
+  { key: "temporalAfter", parse: (raw: string) => raw },
+  { key: "temporalContains", parse: (raw: string) => raw },
+  { key: "regexp", parse: (raw: string) => raw },
+] as const satisfies readonly {
+  key: string;
+  parse: (raw: string) => unknown;
+}[];
+
+/** `temporalWithin` -> `temporal-within`. */
+export function flagNameFor(key: string): string {
+  return key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+/** Every filter leaf flag name, for option registration and flag validation. */
+export const filterFlagNames: readonly string[] = filterLeafFlags.map((leaf) =>
+  flagNameFor(leaf.key),
+);
+
+/** Collect the filter leaves the caller supplied, in declaration order. */
+function filterLeavesFromFlags(
+  flags: Map<string, string | true>,
+): readonly Record<string, unknown>[] {
+  const leaves: Record<string, unknown>[] = [];
+  for (const { key, parse } of filterLeafFlags) {
+    const raw = optionalFlag(flags, flagNameFor(key));
+    if (raw === undefined) continue;
+    leaves.push({ [key]: parse(raw) });
+  }
+  return leaves;
+}
+
+/**
+ * AND the supplied leaves. A single leaf is passed through bare because the
+ * filter schema requires `and` to hold at least two members.
+ */
+function conjoin(
+  leaves: readonly Record<string, unknown>[],
+): Record<string, unknown> {
+  const [first] = leaves;
+  if (first === undefined) throw new Error("expected at least one filter leaf");
+  return leaves.length === 1 ? first : { and: [...leaves] };
+}
+
+function parseJsonObject(raw: string, name: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (cause) {
+    throw new Error(
+      `--${name} must be valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+    throw new Error(`--${name} must be a JSON object`);
+  return parsed;
+}
+
+/**
+ * A `start,end` window. Timestamps must carry an offset (the server enforces
+ * that), so split on the first comma only — an ISO-8601 instant contains none.
+ */
+function parseRange(raw: string, name: string): readonly string[] {
+  const separator = raw.indexOf(",");
+  if (separator === -1)
+    throw new Error(`--${name} must be a "start,end" range`);
+  const start = raw.slice(0, separator).trim();
+  const end = raw.slice(separator + 1).trim();
+  if (start === "" || end === "")
+    throw new Error(`--${name} must be a "start,end" range`);
+  return [start, end];
+}
+
+/** The numeric ranking/paging knobs shared by ranked and filter-only search. */
+function numericSearchOptions(
+  flags: Map<string, string | true>,
+): Record<string, number> {
+  const options: Record<string, number> = {};
+  for (const name of ["limit", "candidate-limit"]) {
+    const raw = optionalFlag(flags, name);
+    if (raw !== undefined)
+      options[camelCase(name)] = positiveInteger(raw, name);
+  }
+  for (const name of [
+    "semantic-threshold",
+    "semantic-weight",
+    "fulltext-weight",
+  ]) {
+    const raw = optionalFlag(flags, name);
+    if (raw !== undefined) options[camelCase(name)] = unitInterval(raw, name);
+  }
+  return options;
+}
+
+/** `candidate-limit` -> `candidateLimit`. */
+function camelCase(flag: string): string {
+  return flag.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function unitInterval(value: string, name: string): number {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0 || number > 1)
+    throw new Error(`--${name} must be a number between 0 and 1`);
+  return number;
+}
+
+function enumeration<T extends string>(
+  value: string,
+  name: string,
+  allowed: readonly T[],
+): T {
+  const match = allowed.find((candidate) => candidate === value);
+  if (match === undefined)
+    throw new Error(`--${name} must be one of ${allowed.join(", ")}`);
+  return match;
 }
 
 function positiveInteger(value: string, name: string): number {
