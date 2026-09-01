@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { YAML } from "bun";
 import postgres, { type Sql } from "postgres";
 import { createIndex, dropIndex } from "searchgres";
 import { createSearchgresClient } from "../../client/src/index.ts";
@@ -221,6 +222,47 @@ async function assertCliCommands(): Promise<void> {
   await assertSearchFilterFlags(server);
 }
 
+async function assertLocalSearchSelection(server: string): Promise<void> {
+  const command = [
+    "search",
+    "--server",
+    server,
+    "--tree",
+    "filters",
+    "--select",
+    "id,content:2,score",
+  ];
+
+  const json = JSON.parse(await runSg(["--json", ...command])) as {
+    readonly results: readonly Record<string, unknown>[];
+  };
+  expect(json.results).toHaveLength(2);
+  for (const result of json.results) {
+    expect(Object.keys(result)).toEqual([
+      "id",
+      "content",
+      "contentLength",
+      "score",
+    ]);
+    expect(result.content).toBe("Fi");
+  }
+
+  const yaml = YAML.parse(await runSg(["--yaml", ...command])) as {
+    readonly results: readonly Record<string, unknown>[];
+  };
+  expect(yaml).toEqual(json);
+
+  const ndjson = (await runSg(["--ndjson", ...command]))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(ndjson).toEqual([...json.results]);
+
+  await expect(
+    runSg([...command.slice(0, -1), "id,content:10,content:-10.."]),
+  ).rejects.toThrow(/Invalid --select: only one distinct content selection/);
+}
+
 /**
  * The parts of `sg search` that only a real process against a real server can
  * prove: that a flag-built filter reaches PostgreSQL and selects the right
@@ -253,6 +295,8 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
       },
     ],
   });
+
+  await assertLocalSearchSelection(server);
 
   const names = async (args: readonly string[]): Promise<readonly string[]> => {
     const output = JSON.parse(

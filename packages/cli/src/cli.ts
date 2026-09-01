@@ -27,6 +27,7 @@ import {
   readStructuredInput,
   writeStructuredOutput,
 } from "./format.ts";
+import { parseSelectFields, projectSearchEnvelope } from "./selection.ts";
 
 export { flagsFromOptions };
 
@@ -61,10 +62,7 @@ export async function runCommand(
     case "delete":
       return runDelete(client, flags, args);
     case "search":
-      return output(
-        await client.search(paramsFromFlags("search", flags) as never),
-        flags,
-      );
+      return runSearch(client, flags);
     case "import":
       return runImport(client, flags, args);
     case "export":
@@ -87,6 +85,28 @@ export async function runCommand(
     default:
       throw new Error(usage);
   }
+}
+
+async function runSearch(
+  client: SearchgresClient,
+  flags: Flags,
+): Promise<void> {
+  const rawSelect = optionalFlag(flags, "select");
+  let select: ReturnType<typeof parseSelectFields> | undefined;
+  if (rawSelect !== undefined) {
+    try {
+      select = parseSelectFields(rawSelect);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid --select: ${message}`);
+    }
+  }
+
+  const result = await client.search(paramsFromFlags("search", flags) as never);
+  output(
+    select === undefined ? result : projectSearchEnvelope(result, select),
+    flags,
+  );
 }
 
 function assertOutputFormatApplies(command: string, flags: Flags): void {

@@ -97,6 +97,10 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
     .option("--semantic-threshold <n>", "minimum cosine similarity in [0,1]")
     .option("--semantic-weight <n>", "semantic RRF weight in [0,1]")
     .option("--fulltext-weight <n>", "full-text RRF weight in [0,1]")
+    .option(
+      "--select <fields>",
+      "comma-separated output fields, e.g. id,content:200,score",
+    )
     .option("--order <direction>", "filter-only order: asc or desc")
     .option("--after <uuid>", "filter-only keyset cursor")
     .option("--before <uuid>", "reverse filter-only keyset cursor");

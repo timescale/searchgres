@@ -170,6 +170,12 @@ test("invalid flag values are rejected before a request is made", () => {
   expect(() => search()).toThrow(/requires a ranking flag/);
 });
 
+test("presentation selection is never included in search RPC params", () => {
+  expect(search(["tree", "docs"], ["select", "id,content:200"])).toEqual({
+    filter: { tree: "docs" },
+  });
+});
+
 test("flag names derive from leaf keys", () => {
   expect(flagNameFor("temporalWithin")).toBe("temporal-within");
   expect(flagNameFor("tree")).toBe("tree");
