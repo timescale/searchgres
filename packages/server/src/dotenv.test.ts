@@ -11,6 +11,10 @@ test("dotenvLine round-trips the values a real .env holds", async () => {
   const values: Record<string, string> = {
     SG_PLAIN: "abc123",
     SG_URL: "postgres://user:secret@host:5432/db?sslmode=require",
+    // The correct spelling of a password containing "#". A URL with a literal
+    // "#" is invalid (it starts a fragment), so the encoded form is the only
+    // valid one — and it holds no "#", so it writes cleanly.
+    SG_URL_ENCODED_HASH: "postgres://user:p%23w@host:5432/db",
     SG_KEY: "sk-proj-AbC123_-xyz",
     SG_EQUALS: "a=b",
     SG_INNER_SPACE: "two words",
@@ -46,7 +50,7 @@ test("dotenvLine refuses values a reader would misinterpret", () => {
   const rejected: readonly (readonly [string, RegExp])[] = [
     ["has\nnewline", /line break/],
     ["has\rcarriage", /line break/],
-    ["pass#word", /treat as starting a comment|starting a comment/],
+    ["pass#word", /start of a comment/],
     [" leading", /leading or trailing whitespace/],
     ["trailing ", /leading or trailing whitespace/],
   ];
@@ -58,6 +62,24 @@ test("dotenvLine refuses values a reader would misinterpret", () => {
       /Set SG_X in the environment instead/,
     );
   }
+});
+
+test("a # in a connection string is advised to percent-encode", () => {
+  // `new URL` rejects this outright, so the user has a malformed URL rather than
+  // an unwritable one; the message should fix the URL, not route them to an
+  // environment variable they do not need.
+  expect(() => new URL("postgres://user:p#w@host:5432/db")).toThrow();
+  expect(() => dotenvLine("SG_DB", "postgres://user:p#w@host:5432/db")).toThrow(
+    /percent-encode it as "%23"/,
+  );
+
+  // A non-URL value gets the generic advice: there is nothing to re-encode.
+  expect(() => dotenvLine("SG_KEY", "sk-has#hash")).toThrow(
+    /Set SG_KEY in the environment instead/,
+  );
+  expect(() => dotenvLine("SG_KEY", "sk-has#hash")).not.toThrow(
+    /percent-encode/,
+  );
 });
 
 test("loadDotenv never overwrites an existing environment variable", async () => {

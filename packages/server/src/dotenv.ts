@@ -43,13 +43,30 @@ export async function loadDotenv(path: string): Promise<void> {
  * quotes to a deployed server.
  */
 function unrepresentable(value: string): string | undefined {
-  if (/[\r\n]/.test(value))
-    return "contains a line break, which cannot be written to a .env file";
+  if (/[\r\n]/.test(value)) return "it contains a line break";
   if (value.includes("#"))
-    return 'contains "#", which dotenv-style readers treat as starting a comment';
+    return 'it contains "#", which dotenv-style readers treat as the start of a comment';
   if (value !== value.trim())
-    return "has leading or trailing whitespace, which some readers strip";
+    return "it has leading or trailing whitespace, which some readers strip";
   return undefined;
+}
+
+/**
+ * Advice specific to the value at hand. A `#` in a connection string is almost
+ * always an unencoded password character, and that URL is already invalid —
+ * `new URL("postgres://u:p#w@h/db")` throws, because `#` begins a fragment.
+ * Percent-encoding is both the correct URL and representable here, so say so
+ * rather than sending the user to an environment variable they do not need.
+ */
+function remedy(name: string, value: string): string {
+  if (value.includes("#") && /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    return (
+      `If that "#" is part of a password, percent-encode it as "%23": ` +
+      `a URL with a literal "#" is invalid anyway, since "#" starts a fragment. ` +
+      `Otherwise set ${name} in the environment instead of the file.`
+    );
+  }
+  return `Set ${name} in the environment instead, and leave it blank in the file.`;
 }
 
 /**
@@ -62,8 +79,7 @@ export function dotenvLine(name: string, value: string): string {
   const problem = unrepresentable(value);
   if (problem !== undefined) {
     throw new Error(
-      `Cannot write ${name} to a .env file: the value ${problem}. ` +
-        `Set ${name} in the environment instead, and leave it blank in the file.`,
+      `Cannot write ${name} to a .env file: ${problem}. ${remedy(name, value)}`,
     );
   }
   return `${name}=${value}\n`;

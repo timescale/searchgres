@@ -160,9 +160,9 @@ format. There is no dependency for it, deliberately:
 
 - `dotenv` has no writer, so the half where mistakes are costly would stay ours.
 - The dialects disagree on the cases that matter. `dotenv` reads `#` as starting
-  a comment, which would silently truncate a database password containing one.
-  Docker Compose's `env_file` — our other consumer, via `compose.yaml` — takes
-  every character literally and does **not** strip quotes.
+  a comment and truncates there; Docker Compose's `env_file` — our other
+  consumer, via `compose.yaml` — takes every character literally and does **not**
+  strip quotes.
 
 Because quoting cannot satisfy both (`K="v"` reaches a Compose-deployed server
 with literal quotes), `dotenvLine` writes only values that all three readers
@@ -170,6 +170,12 @@ agree on and rejects the rest with a message pointing at the environment
 variable instead. Rejected: line breaks, `#`, and leading or trailing
 whitespace. Everything else — `=`, `:`, `/`, `@`, `?`, `$`, quotes, backslashes,
 inner spaces — is written literally and round-trips.
+
+Ordinary connection strings are unaffected: `#` is not legal in a URL outside a
+fragment, so `postgres://u:p#w@h/db` is already invalid (`new URL` throws) and
+the correct spelling, `postgres://u:p%23w@h/db`, contains no `#` and writes
+cleanly. The rejection message says so, rather than sending the user to an
+environment variable they do not need.
 
 memory-engine, for comparison, never generated a `.env`: it shipped a
 hand-maintained `.env.sample` to copy. We accept the extra responsibility
