@@ -1,12 +1,11 @@
 import { mkdir, readFile, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import * as clack from "@clack/prompts";
 import { createClient, createFetchTransport } from "@searchgres/client";
-import {
-  loadServerConfig,
-  parseServerConfig,
-  startServer,
-} from "@searchgres/server";
+// The `/config` subpath, deliberately: the package root re-exports startServer,
+// whose transitive dependencies (@ai-sdk/openai, the tokenizer pool) cost ~150ms
+// to initialize in the compiled binary. Config parsing needs none of them, and
+// `sg server` imports the root lazily when it actually serves.
+import { loadServerConfig, parseServerConfig } from "@searchgres/server/config";
 import { JSON5, YAML } from "bun";
 import postgres from "postgres";
 import { createIndex, dropIndex } from "searchgres";
@@ -72,6 +71,11 @@ async function runServer(flags: Map<string, string | true>): Promise<void> {
     );
   }
   const config = await loadServerConfig(configPath);
+  // Imported here rather than at module scope: startServer's transitive
+  // dependencies (@ai-sdk/openai and the tokenizer pool) dominate `sg`'s
+  // startup, and only this command needs them. Config parsing is cheap and
+  // stays a static import for the commands that read a config without serving.
+  const { startServer } = await import("@searchgres/server");
   const server = await startServer(config, {
     readOnly: flags.has("read-only"),
   });
@@ -457,6 +461,11 @@ async function runInit(flags: Map<string, string | true>): Promise<void> {
 }
 
 async function runInitWizard(): Promise<void> {
+  // Imported here, not at module scope: @clack/prompts costs ~57ms to
+  // initialize inside the compiled binary — most of `sg`'s startup — and only
+  // the interactive wizard ever needs it. Every other command, including every
+  // scripted one, skips it entirely.
+  const clack = await import("@clack/prompts");
   clack.intro("Initialize Searchgres");
   const ask = async (message: string, initialValue?: string) => {
     const answer = await clack.text({
