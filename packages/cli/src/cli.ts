@@ -231,11 +231,11 @@ function paramsFromFlags(
     const names = ["tree", "lquery", "ltxtquery"].filter((name) =>
       optionalFlag(flags, name),
     );
-    if (names.length !== 1)
+    const [name] = names;
+    if (names.length !== 1 || name === undefined)
       throw new Error(
         "count requires exactly one of --tree, --lquery, or --ltxtquery",
       );
-    const name = names[0]!;
     return {
       selector: { [name]: value(name) },
       ...(optionalFlag(flags, "limit")
@@ -610,10 +610,12 @@ async function loadDotenv(path: string): Promise<void> {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) continue;
     const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
-    if (!match)
+    // Destructuring a possibly-absent match yields undefined for both groups,
+    // so one guard covers a non-matching line and narrows both to string.
+    const [, name, rawValue] = match ?? [];
+    if (name === undefined || rawValue === undefined)
       throw new Error(`${path}:${lineNumber + 1}: invalid .env assignment`);
-    const name = match[1]!;
-    let value = match[2]!;
+    let value = rawValue;
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))

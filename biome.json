@@ -19,7 +19,7 @@
     "rules": {
       "preset": "recommended",
       "style": {
-        "noNonNullAssertion": "warn"
+        "noNonNullAssertion": "error"
       }
     }
   },
