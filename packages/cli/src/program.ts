@@ -1,4 +1,4 @@
-import { Command, Option } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import { filterFlagNames, flagsFromOptions, runCommand } from "./cli.ts";
 
 /** Commander owns command discovery, help, arguments, and shell-facing errors. */
@@ -209,18 +209,47 @@ function addFilterOptions(command: Command): void {
       "case-insensitive POSIX content regex; needs another filter",
     );
 
+  const leafAttributes = filterFlagNames.map(optionAttribute);
+  command
+    .addOption(
+      new Option("--filter <expression>", "explicit S-expression filter DSL")
+        .argParser(singleOptionValue("--filter"))
+        .conflicts(["filterFile", ...leafAttributes]),
+    )
+    .addOption(
+      new Option(
+        "--filter-file <path>",
+        "read filter DSL from a UTF-8 file; - reads stdin",
+      )
+        .argParser(singleOptionValue("--filter-file"))
+        .conflicts(["filter", ...leafAttributes]),
+    );
+
   // Keep this assertion adjacent to registration: adding a leaf in cli.ts
   // without giving Commander a matching option should fail immediately.
   const registered = new Set(
     command.options.map((option) => option.attributeName()),
   );
   for (const name of filterFlagNames) {
-    const attribute = name.replace(/-([a-z])/g, (_, letter: string) =>
-      letter.toUpperCase(),
-    );
+    const attribute = optionAttribute(name);
     if (!registered.has(attribute))
       throw new Error(`missing --${name} registration`);
   }
+}
+
+function optionAttribute(name: string): string {
+  return name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function singleOptionValue(
+  name: string,
+): (value: string, previous: string | undefined) => string {
+  return (value, previous) => {
+    if (previous !== undefined) {
+      throw new InvalidArgumentError(`${name} may be specified only once`);
+    }
+    return value;
+  };
 }
 
 function action(command: Command, name: string): void {

@@ -1,0 +1,28 @@
+{
+  "name": "@searchgres/filter",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runtime-neutral parser for the Searchgres filter expression DSL.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "grammar"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:unit": "node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@searchgres/protocol": "workspace:*"
+  }
+}

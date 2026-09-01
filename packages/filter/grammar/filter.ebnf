@@ -1,0 +1,75 @@
+(* Searchgres filter expression DSL. ISO/IEC 14977 EBNF. *)
+
+filter = spacing, expression, spacing ;
+
+expression = conjunction
+           | disjunction
+           | negation
+           | tree predicate
+           | lquery predicate
+           | ltxtquery predicate
+           | meta predicate
+           | jsonpath predicate
+           | temporal within predicate
+           | temporal overlaps predicate
+           | temporal before predicate
+           | temporal after predicate
+           | temporal contains predicate
+           | regexp predicate ;
+
+conjunction = "(", "and", required spacing,
+              expression, required spacing, expression,
+              { required spacing, expression }, spacing, ")" ;
+
+disjunction = "(", "or", required spacing,
+              expression, required spacing, expression,
+              { required spacing, expression }, spacing, ")" ;
+
+negation = "(", "not", required spacing, expression, spacing, ")" ;
+
+tree predicate = "(", "tree", required spacing, text, spacing, ")" ;
+lquery predicate = "(", "lquery", required spacing, text, spacing, ")" ;
+ltxtquery predicate = "(", "ltxtquery", required spacing, text, spacing, ")" ;
+meta predicate = "(", "meta", required spacing, json object, spacing, ")" ;
+jsonpath predicate = "(", "meta-predicate", required spacing, text, spacing, ")" ;
+
+temporal within predicate = "(", "temporal-within", required spacing,
+                            text, required spacing, text, spacing, ")" ;
+
+temporal overlaps predicate = "(", "temporal-overlaps", required spacing,
+                              text, required spacing, text, spacing, ")" ;
+
+temporal before predicate = "(", "temporal-before", required spacing,
+                            text, spacing, ")" ;
+
+temporal after predicate = "(", "temporal-after", required spacing,
+                           text, spacing, ")" ;
+
+temporal contains predicate = "(", "temporal-contains", required spacing,
+                              text, spacing, ")" ;
+
+regexp predicate = "(", "regexp", required spacing, text, spacing, ")" ;
+
+text = atom | json string ;
+atom = atom character, { atom character } ;
+atom character = ? any Unicode character except whitespace, parentheses, braces, brackets, comma, double quote, or semicolon ? ;
+
+spacing = { whitespace | comment } ;
+required spacing = (whitespace | comment), { whitespace | comment } ;
+whitespace = " " | ? tab ? | ? carriage return ? | ? line feed ? ;
+comment = ";", { ? any Unicode character except carriage return or line feed ? },
+          [ line terminator ] ;
+line terminator = ? carriage return ?, [ ? line feed ? ] | ? line feed ? ;
+
+json object = "{", json whitespace,
+              [ json member, { json whitespace, ",", json whitespace, json member } ],
+              json whitespace, "}" ;
+json member = json string, json whitespace, ":", json whitespace, json value ;
+json value = json object | json array | json string | json number
+           | "true" | "false" | "null" ;
+json array = "[", json whitespace,
+             [ json value, { json whitespace, ",", json whitespace, json value } ],
+             json whitespace, "]" ;
+json string = ? a JSON string as specified by RFC 8259 ? ;
+json number = ? a JSON number as specified by RFC 8259 ? ;
+json whitespace = { " " | ? tab ? | ? carriage return ? | ? line feed ? } ;

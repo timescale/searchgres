@@ -305,6 +305,76 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
     return output.results.map((result) => result.name ?? "").toSorted();
   };
 
+  const inlineDsl = await names([
+    "--filter",
+    '(and (tree filters) (or (meta {"colour":"red"}) (not (meta {"colour":"blue"}))))',
+  ]);
+  expect(inlineDsl).toEqual(["alpha"]);
+
+  const filterPath = `/tmp/searchgres-filter-${process.pid}.sgfilter`;
+  const dslExportPath = `/tmp/searchgres-filter-export-${process.pid}.json`;
+  try {
+    await Bun.write(
+      filterPath,
+      '; loaded from UTF-8\n(and (tree filters) (meta {"colour":"blue"}))',
+    );
+    expect(await names(["--filter-file", filterPath])).toEqual(["beta"]);
+
+    const stdinOutput = JSON.parse(
+      await runSg(
+        ["--json", "search", "--server", server, "--filter-file", "-"],
+        '(and (tree filters) (meta {"colour":"red"}))',
+      ),
+    ) as { readonly results: readonly { readonly name: string | null }[] };
+    expect(stdinOutput.results.map((result) => result.name)).toEqual(["alpha"]);
+
+    await runSg([
+      "export",
+      dslExportPath,
+      "--server",
+      server,
+      "--format",
+      "json",
+      "--filter",
+      '(and (tree filters) (meta {"colour":"red"}))',
+    ]);
+    const dslExport = JSON.parse(
+      await Bun.file(dslExportPath).text(),
+    ) as readonly { readonly name: string | null }[];
+    expect(dslExport.map((record) => record.name)).toEqual(["alpha"]);
+  } finally {
+    await Promise.all([
+      rm(filterPath, { force: true }),
+      rm(dslExportPath, { force: true }),
+    ]);
+  }
+
+  await expect(
+    runSg([
+      "search",
+      "--server",
+      server,
+      "--filter",
+      "(tree filters)",
+      "--tree",
+      "filters",
+    ]),
+  ).rejects.toThrow(/cannot be used with option '--tree/);
+  await expect(
+    runSg([
+      "search",
+      "--server",
+      server,
+      "--filter",
+      "(tree filters)",
+      "--filter",
+      "(tree filters.alpha)",
+    ]),
+  ).rejects.toThrow(/may be specified only once/);
+  await expect(
+    runSg(["search", "--server", server, "--filter", "(and (tree filters))"]),
+  ).rejects.toThrow(/Invalid filter expression.*requires at least two/s);
+
   // One per leaf type, each discriminating between the two records: an ltree
   // containment, a JSONB path predicate, a temporal window, and a regex that
   // must be composed with an indexable leaf. Together these prove the flags
@@ -463,12 +533,18 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
   // developer machine, so the default budget is not a useful signal here.
 }, 120_000);
 
-async function runSg(args: readonly string[]): Promise<string> {
+async function runSg(args: readonly string[], stdin?: string): Promise<string> {
   const process = Bun.spawn({
     cmd: [sg, ...args],
+    stdin: stdin === undefined ? undefined : "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
+  const input = process.stdin;
+  if (stdin !== undefined && input !== undefined && typeof input !== "number") {
+    input.write(stdin);
+    input.end();
+  }
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(process.stdout).text(),
     new Response(process.stderr).text(),

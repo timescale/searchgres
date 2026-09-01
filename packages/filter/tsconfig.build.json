@@ -9,10 +9,8 @@
     "sourceMap": true,
     "tsBuildInfoFile": "tsconfig.build.tsbuildinfo",
     "paths": {
-      "@searchgres/filter": ["../filter/dist/index.d.ts"],
-      "@searchgres/protocol": ["../protocol/dist/index.d.ts"],
-      "searchgres": ["../core/dist/index.d.ts"]
+      "@searchgres/protocol": ["../protocol/dist/index.d.ts"]
     }
   },
-  "exclude": ["src/**/*.test.ts", "src/**/*.smoke.ts"]
+  "exclude": ["src/**/*.test.ts"]
 }

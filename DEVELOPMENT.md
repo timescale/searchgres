@@ -17,8 +17,9 @@ tooling, including nested calls inside scripts:
 To change the Bun version, edit `version=` in `./bun` and the `oven/bun` tag in
 `docker/Dockerfile.server`.
 
-Bun is the development toolchain only. `searchgres`, `@searchgres/protocol`, and
-`@searchgres/client` must run on Node, Bun, and Deno: Biome bans the `Bun`/`Deno`
+Bun is the development toolchain only. `searchgres`, `@searchgres/protocol`,
+`@searchgres/filter`, and `@searchgres/client` must run on Node, Bun, and Deno:
+Biome bans the `Bun`/`Deno`
 globals and Bun-only/Deno-only specifiers there, and CI installs the packed
 tarball into a scratch project and imports it by package name under all three
 runtimes. Only `@searchgres/server` and `@searchgres/cli` may use `Bun.*`, and
@@ -30,13 +31,14 @@ they ship as compiled binaries rather than as importable source.
 | --- | --- |
 | `packages/core` | Runtime-agnostic Postgres search library; published as `searchgres`. |
 | `packages/protocol` | Runtime-neutral Zod RPC contract/OpenRPC source. |
+| `packages/filter` | Private runtime-neutral parser for the `sg` filter-expression DSL. |
 | `packages/client` | Runtime-agnostic fetch JSON-RPC client. |
 | `packages/server` | Bun server component and the `sg-server` binary: config, RPC service, providers, tokenizer pool, worker lifecycle, provisioning. |
 | `packages/cli` | Bun-only `sg` binary: the unprivileged client, including import/export and its own flag/format helpers. It shares no code with `sg-server`. |
 
-Dependency direction is intentionally one-way: CLI may use server/client/core;
-server uses core/protocol; client uses protocol. Core, protocol, and client must
-not use Bun APIs.
+Dependency direction is intentionally one-way: CLI uses client/filter/protocol;
+filter and client use protocol; server uses core/protocol. The CLI never imports
+server or core. Core, protocol, filter, and client must not use Bun APIs.
 
 ## Checks and tests
 
@@ -45,8 +47,9 @@ not use Bun APIs.
 ./bun run check:full   # everything CI runs, database included
 ```
 
-`check:full` is the pre-push gate. It runs the same scripts CI runs, and manages
-its own throwaway database via `scripts/with-postgres.ts` — the one place the
+`check:full` is the pre-push gate. It runs the same scripts CI runs, including a
+freshness check for the generated filter railroad diagrams, and manages its own
+throwaway database via `scripts/with-postgres.ts` — the one place the
 container lifecycle is defined, shared with CI so the two cannot drift.
 
 Against a database you manage yourself:
@@ -58,6 +61,17 @@ Against a database you manage yourself:
 ./bun run --filter @searchgres/server test:db   # just the compiled-server suite
 ./bun run pg:rm
 ```
+
+The filter DSL's authoritative ISO/IEC 14977 grammar and generated railroad
+reference are updated with:
+
+```sh
+./bun run generate:filter-grammar
+./bun run check:filter-grammar
+```
+
+`ebnf2railroad` is development-only; grammar generation is never part of package
+installation or runtime.
 
 The suites expect PostgreSQL at `TEST_DATABASE_URL`, defaulting to
 `postgresql://postgres@127.0.0.1:5432/postgres`. The image includes

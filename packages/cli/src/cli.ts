@@ -6,7 +6,9 @@ import {
   createFetchTransport,
   type SearchgresClient,
 } from "@searchgres/client";
+import type { Filter } from "@searchgres/protocol";
 import { exportRecords, importRecords } from "./bulk.ts";
+import { filterExpressionFromFlags } from "./filter-input.ts";
 import {
   camelCase,
   enumeration,
@@ -102,7 +104,9 @@ async function runSearch(
     }
   }
 
-  const result = await client.search(paramsFromFlags("search", flags) as never);
+  const result = await client.search(
+    (await resolvedSearchParams(flags, true)) as never,
+  );
   output(
     select === undefined ? result : projectSearchEnvelope(result, select),
     flags,
@@ -344,17 +348,19 @@ async function runExport(
     file: args[0],
     format: format as "ndjson" | "json" | "yaml" | "md",
     limit: rawLimit === undefined ? 0 : nonnegativeInteger(rawLimit, "limit"),
-    search: exportSearchParams(flags) as never,
+    search: (await exportSearchParams(flags)) as never,
   });
   console.error(
     `exported ${summary.exported} record(s); ${summary.withoutEmbedding} without an embedding`,
   );
 }
 
-function exportSearchParams(flags: Flags): Record<string, unknown> {
+async function exportSearchParams(
+  flags: Flags,
+): Promise<Record<string, unknown>> {
   const withoutLimit = new Map(flags);
   withoutLimit.delete("limit");
-  return searchParamsFromFlags(withoutLimit, false);
+  return resolvedSearchParams(withoutLimit, false);
 }
 
 async function outputCreated(
@@ -451,22 +457,44 @@ export function paramsFromFlags(command: string, flags: Flags): unknown {
         : { limit: positiveInteger(requiredFlag(flags, "limit"), "limit") }),
     };
   }
-  if (command === "search") return searchParamsFromFlags(flags, true);
+  if (command === "search") {
+    if (flags.has("filter") || flags.has("filter-file")) {
+      throw new Error(
+        "filter expressions require asynchronous input resolution",
+      );
+    }
+    return searchParamsFromFlags(flags, true);
+  }
   throw new Error(`cannot derive ${command} params from flags`);
+}
+
+async function resolvedSearchParams(
+  flags: Flags,
+  requireCriterion: boolean,
+): Promise<Record<string, unknown>> {
+  const expression = await filterExpressionFromFlags(flags);
+  return searchParamsFromFlags(flags, requireCriterion, expression);
 }
 
 function searchParamsFromFlags(
   flags: Flags,
   requireCriterion: boolean,
+  expression?: Filter,
 ): Record<string, unknown> {
   const semantic = optionalFlag(flags, "semantic");
   const fulltext = optionalFlag(flags, "fulltext");
   const leaves = filterLeavesFromFlags(flags);
+  if (expression !== undefined && leaves.length > 0) {
+    throw new Error(
+      "--filter and --filter-file cannot be combined with flat filter flags",
+    );
+  }
   if (
     requireCriterion &&
     semantic === undefined &&
     fulltext === undefined &&
-    leaves.length === 0
+    leaves.length === 0 &&
+    expression === undefined
   ) {
     throw new Error(
       "search requires a ranking flag (--semantic, --fulltext) or a filter flag",
@@ -475,7 +503,11 @@ function searchParamsFromFlags(
   return {
     ...(semantic === undefined ? {} : { semantic }),
     ...(fulltext === undefined ? {} : { fulltext }),
-    ...(leaves.length === 0 ? {} : { filter: conjoin(leaves) }),
+    ...(expression !== undefined
+      ? { filter: expression }
+      : leaves.length === 0
+        ? {}
+        : { filter: conjoin(leaves) }),
     ...numericSearchOptions(flags),
     ...(optionalFlag(flags, "order") === undefined
       ? {}

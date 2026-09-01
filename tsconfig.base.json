@@ -8,6 +8,7 @@
     "target": "es2023",
     "lib": ["es2023"],
     "paths": {
+      "@searchgres/filter": ["./packages/filter/src/index.ts"],
       "@searchgres/protocol": ["./packages/protocol/src/index.ts"],
       "searchgres": ["./packages/core/src/index.ts"]
     },

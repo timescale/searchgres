@@ -7,7 +7,12 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/dist", "!packages/server/assets"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!docs/reference/filter-syntax.html",
+      "!packages/server/assets"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -38,7 +43,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/core/**"],
+      "includes": ["packages/core/**", "packages/filter/**"],
       "linter": {
         "rules": {
           "style": {
@@ -46,8 +51,8 @@
               "level": "error",
               "options": {
                 "deniedGlobals": {
-                  "Bun": "searchgres core must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Bun global.",
-                  "Deno": "searchgres core must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Deno global."
+                  "Bun": "this package must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Bun global.",
+                  "Deno": "this package must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Deno global."
                 }
               }
             },
@@ -57,7 +62,7 @@
                 "patterns": [
                   {
                     "group": ["bun", "bun:*"],
-                    "message": "searchgres core must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of Bun-only APIs."
+                    "message": "this package must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of Bun-only APIs."
                   },
                   {
                     "group": [
@@ -68,7 +73,7 @@
                       "http://**",
                       "https://**"
                     ],
-                    "message": "searchgres core must run on Node, Bun, and Deno. jsr:/npm:/URL specifiers are Deno-only; use a bare package specifier resolved from package.json."
+                    "message": "this package must run on Node, Bun, and Deno. jsr:/npm:/URL specifiers are Deno-only; use a bare package specifier resolved from package.json."
                   }
                 ]
               }

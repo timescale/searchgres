@@ -20,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: ./bun install --frozen-lockfile
+      - run: ./bun run check:filter-grammar
       - run: ./bun run typecheck
       - run: ./bun run lint
 
@@ -85,6 +86,17 @@ jobs:
           deno-version: v2.x
       - run: ./bun install --frozen-lockfile
       - run: ./bun run build
+
+      - name: Import private filter build
+        run: |
+          script='const m = await import("./packages/filter/dist/index.js");
+                  const filter = m.parseFilter("(tree docs)");
+                  if (filter.tree !== "docs") throw new Error("filter parser smoke failed");'
+          case "${{ matrix.runtime }}" in
+            node) node --input-type=module -e "$script" ;;
+            bun)  ./bun -e "$script" ;;
+            deno) deno eval --no-lock "$script" ;;
+          esac
 
       # A real consumer installs with npm, so the scratch project does too —
       # this leg deliberately exercises the npm install path the published
