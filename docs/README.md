@@ -27,6 +27,8 @@ in a few minutes.
   search, composable filters, and pagination.
 - **[Manage records and trees](guides/records-and-trees.md)** — read, patch,
   delete, subtree operations, and transactions.
+- **[Configure and run the API server](guides/server.md)** — generate files
+  offline, initialize PostgreSQL, serve, and use strict idempotent provisioning.
 - **[Run in production](guides/production.md)** — deployment, pooling, worker
   operations, monitoring, and reindex cutovers.
 - **[Use the MCP server](mcp/index.md)** — run `sg-mcp` over stdio and understand

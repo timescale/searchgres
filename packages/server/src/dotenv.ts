@@ -85,7 +85,7 @@ export function dotenvLine(name: string, value: string): string {
   return `${name}=${value}\n`;
 }
 
-/** Write a `.env.example` beside a config, and git-ignore the real `.env`. */
+/** `sg-server config` writes an example beside its config and ignores `.env`. */
 export async function writeDotenvExample(
   configPath: string,
   databaseUrlEnv: string,

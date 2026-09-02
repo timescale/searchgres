@@ -2,19 +2,16 @@ import { Command } from "commander";
 import { runServerCommand } from "./cli.ts";
 import { flagsFromOptions } from "./flags.ts";
 
-/**
- * Commander owns command discovery, help, and parse errors for `sg-server`.
- * Only the three privileged commands live here; everything else is `sg`.
- */
+/** Commander owns command discovery, help, and parse errors for `sg-server`. */
 export async function runProgram(argv: readonly string[]): Promise<void> {
   const program = new Command()
     .name("sg-server")
-    .description("Searchgres index provisioning and server")
+    .description("Searchgres server configuration, provisioning, and runtime")
     .showSuggestionAfterError();
 
   program
-    .command("init")
-    .description("create an index and write a server config")
+    .command("config")
+    .description("generate a server config without connecting to PostgreSQL")
     .usage("[--config <path> --schema <schema> ...]")
     .option("--config <path>", "config file to write (.yaml, .yml, or .json5)")
     .option("--database-url-env <name>", "database URL environment variable")
@@ -34,31 +31,71 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
     .option("--max-tokens <n>", "raw content token budget")
     .option("--dry-run", "print what would be written without writing it");
 
-  program
-    .command("serve")
-    .description("run the server")
-    .usage("--config <path> [--read-only]")
-    .option("--config <path>", "server configuration path")
-    .option("--env-file <path>", "dotenv file")
-    .option("--no-env-file", "do not load a dotenv file")
-    .option(
-      "--read-only",
-      "disable mutating RPC methods and the embedding worker",
-    );
+  addEnvironmentOptions(
+    program
+      .command("init")
+      .description("initialize the configured index in PostgreSQL")
+      .usage("--config <path> [--if-not-exists]")
+      .option("--config <path>", "server configuration path")
+      .option(
+        "--if-not-exists",
+        "accept an existing compatible Searchgres index",
+      ),
+  );
 
-  program
-    .command("destroy")
-    .description("drop the index this config points at")
-    .usage("--config <path> --yes")
-    .option("--config <path>", "server configuration path")
-    .option("--yes", "confirm destructive action");
+  addEnvironmentOptions(
+    program
+      .command("serve")
+      .description("run the server")
+      .usage("--config <path> [--read-only]")
+      .option("--config <path>", "server configuration path")
+      .option(
+        "--read-only",
+        "disable mutating RPC methods and the embedding worker",
+      ),
+  );
+
+  addEnvironmentOptions(
+    program
+      .command("destroy")
+      .description("drop the index this config points at")
+      .usage("--config <path> --yes")
+      .option("--config <path>", "server configuration path")
+      .option("--yes", "confirm destructive action"),
+  );
 
   for (const command of program.commands) {
     command.action(async (...actionArgs: unknown[]) => {
       const invoked = actionArgs.at(-1) as Command;
-      await runServerCommand(invoked.name(), flagsFromOptions(invoked.opts()));
+      const flags = flagsFromOptions(invoked.opts());
+      restoreEnvironmentOptionHistory(flags, argv);
+      await runServerCommand(invoked.name(), flags);
     });
   }
 
   await program.parseAsync(["node", "sg-server", ...argv]);
+}
+
+function addEnvironmentOptions(command: Command): Command {
+  return command
+    .option("--env-file <path>", "dotenv file")
+    .option("--no-env-file", "do not load a dotenv file");
+}
+
+function restoreEnvironmentOptionHistory(
+  flags: Map<string, string | true>,
+  argv: readonly string[],
+): void {
+  // Commander maps both options to one `envFile` attribute, so if both are
+  // supplied the later value hides the earlier one. Retain raw presence here
+  // so the command layer can reject the conflict instead of silently choosing.
+  for (const [index, argument] of argv.entries()) {
+    if (argument === "--no-env-file") flags.set("no-env-file", true);
+    if (argument === "--env-file") {
+      const value = argv[index + 1];
+      if (value !== undefined) flags.set("env-file", value);
+    } else if (argument.startsWith("--env-file=")) {
+      flags.set("env-file", argument.slice("--env-file=".length));
+    }
+  }
 }

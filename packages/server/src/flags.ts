@@ -14,9 +14,15 @@ export type Flags = Map<string, string | true>;
 export function flagsFromOptions(options: Record<string, unknown>): Flags {
   const flags: Flags = new Map();
   for (const [name, value] of Object.entries(options)) {
-    if (value === undefined || value === false) continue;
+    if (value === undefined) continue;
     const flag = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-    flags.set(flag, value === true ? true : String(value));
+    // Commander represents an explicitly supplied negated option such as
+    // `--no-env-file` as `{ envFile: false }`; absent options are omitted.
+    if (value === false) {
+      flags.set(`no-${flag}`, true);
+    } else {
+      flags.set(flag, value === true ? true : String(value));
+    }
   }
   return flags;
 }

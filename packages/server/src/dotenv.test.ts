@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { dotenvLine, loadDotenv } from "./dotenv.ts";
 
 test("dotenvLine round-trips the values a real .env holds", async () => {
-  // Written by `sg-server init` from prompt answers: a database URL and an API
+  // Written by the `sg-server config` wizard: a database URL and an API
   // key. Every character here is literal in all three readers that see the file
   // (this one, dotenv-style tooling, and Docker Compose's env_file).
   const values: Record<string, string> = {

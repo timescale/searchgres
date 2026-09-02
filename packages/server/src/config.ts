@@ -2,6 +2,7 @@ import { JSON5, YAML } from "bun";
 import { z } from "zod";
 
 const durationPattern = /^(\d+)(ms|s|m|h|d)$/;
+const maximumDimensions = { vector: 2_000, halfvec: 4_000 } as const;
 
 function durationToMilliseconds(value: string): number {
   const match = durationPattern.exec(value);
@@ -94,22 +95,35 @@ export const serverConfigSchema = z.strictObject({
     api: databaseRoleSchema.prefault({}),
     worker: workerDatabaseRoleSchema.prefault({}),
   }),
-  index: z.strictObject({
-    schema: z.string().min(1),
-    embedding: z.strictObject({
-      provider: z.literal("openai-compatible"),
-      model: z.string().min(1),
-      baseUrl: z.url().optional(),
-      apiKeyEnv: z.string().min(1).optional(),
+  index: z
+    .strictObject({
+      schema: z.string().min(1),
+      dimensions: z.number().int().positive(),
+      vectorType: z.enum(["vector", "halfvec"]),
+      embedding: z.strictObject({
+        provider: z.literal("openai-compatible"),
+        model: z.string().min(1),
+        baseUrl: z.url().optional(),
+        apiKeyEnv: z.string().min(1).optional(),
+      }),
+      truncate: truncationSchema.prefault({ kind: "none" }),
+      worker: z
+        .strictObject({
+          interval: durationSchema.prefault("1s"),
+          batchSize: z.number().int().min(1).max(1000).prefault(100),
+        })
+        .prefault({}),
+    })
+    .superRefine((index, context) => {
+      const maximum = maximumDimensions[index.vectorType];
+      if (index.dimensions > maximum) {
+        context.addIssue({
+          code: "custom",
+          path: ["dimensions"],
+          message: `must be between 1 and ${maximum} for ${index.vectorType}`,
+        });
+      }
     }),
-    truncate: truncationSchema.prefault({ kind: "none" }),
-    worker: z
-      .strictObject({
-        interval: durationSchema.prefault("1s"),
-        batchSize: z.number().int().min(1).max(1000).prefault(100),
-      })
-      .prefault({}),
-  }),
 });
 
 export type ServerConfig = z.output<typeof serverConfigSchema>;

@@ -87,6 +87,8 @@ database:
   urlEnv: ${databaseEnvironment}
 index:
   schema: ${schema}
+  dimensions: 4
+  vectorType: halfvec
   embedding:
     provider: openai-compatible
     model: deterministic-test-model
@@ -105,6 +107,175 @@ index:
     stderr: "pipe",
   });
   await waitForReady(serverUrl, server);
+});
+
+test("compiled config and init commands separate files from provisioning", async () => {
+  const directory = `/tmp/searchgres-lifecycle-${process.pid}`;
+  const lifecycleSchema = `sgtest_lifecycle_${crypto.randomUUID().replaceAll("-", "")}`;
+  const collisionSchema = `sgtest_collision_${crypto.randomUUID().replaceAll("-", "")}`;
+  const lifecycleConfig = `${directory}/searchgres.yaml`;
+  const collisionConfig = `${directory}/collision.yaml`;
+  const environmentSuffix = crypto.randomUUID().replaceAll("-", "");
+  const databaseEnv = `SEARCHGRES_LIFECYCLE_${environmentSuffix}_DATABASE_URL`;
+  const missingKeyEnv = `SEARCHGRES_LIFECYCLE_${environmentSuffix}_MISSING_KEY`;
+  const configArgs = (path: string, configuredSchema: string) => [
+    "config",
+    "--config",
+    path,
+    "--database-url-env",
+    databaseEnv,
+    "--schema",
+    configuredSchema,
+    "--embedding-model",
+    "deterministic-test-model",
+    "--dimensions",
+    "4",
+    "--vector-type",
+    "halfvec",
+    "--api-key-env",
+    missingKeyEnv,
+    "--base-url",
+    `${fakeEmbeddings.url.toString().replace(/\/$/, "")}/v1`,
+  ];
+
+  try {
+    const generated = await runSgServer(
+      configArgs(lifecycleConfig, lifecycleSchema),
+      {},
+    );
+    expect(generated.exitCode).toBe(0);
+    expect(await Bun.file(lifecycleConfig).exists()).toBe(true);
+    expect(process.env[databaseEnv]).toBeUndefined();
+    expect(process.env[missingKeyEnv]).toBeUndefined();
+    await Bun.write(`${directory}/.env`, `${databaseEnv}=${databaseUrl}\n`);
+
+    const skippedEnv = await runSgServer([
+      "init",
+      "--config",
+      lifecycleConfig,
+      "--no-env-file",
+    ]);
+    expect(skippedEnv.exitCode).toBe(1);
+    expect(skippedEnv.stderr).toContain(
+      `Environment variable ${databaseEnv} is required`,
+    );
+
+    const initialized = await runSgServer([
+      "init",
+      "--config",
+      lifecycleConfig,
+    ]);
+    expect(initialized.exitCode).toBe(0);
+    expect(initialized.stdout).toContain(`Created index "${lifecycleSchema}"`);
+
+    const strictRepeat = await runSgServer([
+      "init",
+      "--config",
+      lifecycleConfig,
+    ]);
+    expect(strictRepeat.exitCode).toBe(1);
+
+    const idempotent = await runSgServer([
+      "init",
+      "--config",
+      lifecycleConfig,
+      "--if-not-exists",
+    ]);
+    expect(idempotent.exitCode).toBe(0);
+    expect(idempotent.stdout).toContain(
+      "already exists and matches the server config",
+    );
+
+    const explicitEnvironment = `${directory}/provision.env`;
+    await Bun.write(explicitEnvironment, `${databaseEnv}=${databaseUrl}\n`);
+    expect(
+      (
+        await runSgServer([
+          "init",
+          "--config",
+          lifecycleConfig,
+          "--if-not-exists",
+          "--env-file",
+          explicitEnvironment,
+        ])
+      ).exitCode,
+    ).toBe(0);
+    const conflictingEnvironmentOptions = await runSgServer([
+      "init",
+      "--config",
+      lifecycleConfig,
+      "--env-file",
+      explicitEnvironment,
+      "--no-env-file",
+    ]);
+    expect(conflictingEnvironmentOptions.exitCode).toBe(1);
+    expect(conflictingEnvironmentOptions.stderr).toContain(
+      "--env-file and --no-env-file cannot be used together",
+    );
+
+    const parsed = YAML.parse(await Bun.file(lifecycleConfig).text()) as {
+      index: { dimensions: number };
+    };
+    parsed.index.dimensions = 5;
+    await Bun.write(lifecycleConfig, YAML.stringify(parsed));
+    const mismatch = await runSgServer([
+      "init",
+      "--config",
+      lifecycleConfig,
+      "--if-not-exists",
+    ]);
+    expect(mismatch.exitCode).toBe(1);
+    expect(mismatch.stderr).toContain(
+      "configured halfvec(5), database has halfvec(4)",
+    );
+    const serveMismatch = await runSgServer(
+      ["serve", "--config", lifecycleConfig],
+      { [missingKeyEnv]: "unused" },
+    );
+    expect(serveMismatch.exitCode).toBe(1);
+    expect(serveMismatch.stderr).toContain(
+      "configured halfvec(5), database has halfvec(4)",
+    );
+    parsed.index.dimensions = 4;
+    await Bun.write(lifecycleConfig, YAML.stringify(parsed));
+
+    // Explicit process environment wins over a bad config-relative .env.
+    await Bun.write(
+      `${directory}/.env`,
+      `${databaseEnv}=postgresql://invalid.invalid/postgres\n`,
+    );
+    const environmentWins = await runSgServer(
+      ["init", "--config", lifecycleConfig, "--if-not-exists"],
+      { [databaseEnv]: databaseUrl },
+    );
+    expect(environmentWins.exitCode).toBe(0);
+
+    await sql`create schema ${sql(collisionSchema)}`;
+    expect(
+      (await runSgServer(configArgs(collisionConfig, collisionSchema), {}))
+        .exitCode,
+    ).toBe(0);
+    const collision = await runSgServer(
+      ["init", "--config", collisionConfig, "--if-not-exists"],
+      { [databaseEnv]: databaseUrl },
+    );
+    expect(collision.exitCode).toBe(1);
+    expect(collision.stderr).toContain("is not a searchgres index");
+
+    await Bun.write(`${directory}/.env`, `${databaseEnv}=${databaseUrl}\n`);
+    const destroyed = await runSgServer([
+      "destroy",
+      "--config",
+      lifecycleConfig,
+      "--yes",
+    ]);
+    expect(destroyed.exitCode).toBe(0);
+    expect(destroyed.stdout).toContain(`Destroyed index "${lifecycleSchema}"`);
+  } finally {
+    await sql`drop schema if exists ${sql(lifecycleSchema)} cascade`;
+    await sql`drop schema if exists ${sql(collisionSchema)} cascade`;
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 async function assertCliCommands(): Promise<void> {
@@ -611,6 +782,28 @@ function mcpText(result: Awaited<ReturnType<McpClient["callTool"]>>): unknown {
     throw new Error("MCP tool returned no text content");
   }
   return JSON.parse(content.text);
+}
+
+async function runSgServer(
+  args: readonly string[],
+  environment: Readonly<Record<string, string>> = {},
+): Promise<{
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}> {
+  const child = Bun.spawn({
+    cmd: [sgServer, ...args],
+    env: { ...process.env, ...environment },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
 }
 
 async function runSg(args: readonly string[], stdin?: string): Promise<string> {

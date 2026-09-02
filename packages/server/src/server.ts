@@ -28,6 +28,7 @@ import {
 } from "searchgres";
 import type { z } from "zod";
 import { readRequiredEnvironment, type ServerConfig } from "./config.ts";
+import { assertConfiguredIndexShape } from "./index-shape.ts";
 import { TokenizerPool } from "./tokenizer-pool.ts";
 
 const SERVER_VERSION = "0.0.0";
@@ -76,11 +77,13 @@ export async function startServer(
       embedding,
       truncate,
     });
+    assertConfiguredIndexShape(apiIndex, config.index);
     if (!options.readOnly) {
       const workerIndex = await openIndex(workerSql, config.index.schema, {
         embedding,
         truncate,
       });
+      assertConfiguredIndexShape(workerIndex, config.index);
       worker = workerIndex.startEmbeddingWorker({
         intervalMs: config.index.worker.interval,
         batchSize: config.index.worker.batchSize,

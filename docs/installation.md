@@ -20,7 +20,7 @@ npm install @ai-sdk/openai   # or @ai-sdk/mistral, @ai-sdk/google, ...
 searchgres is runtime-agnostic and ships as ESM with type declarations:
 
 - Node 22 or newer
-- Bun 1.2 or newer
+- Bun 1.4 or newer
 - Deno 2 or newer
 
 ## PostgreSQL
@@ -81,6 +81,18 @@ psql postgres://postgres@127.0.0.1:5432/postgres -c \
   "select name, default_version from pg_available_extensions
    where name in ('vector','pg_textsearch','ltree') order by name;"
 ```
+
+If you are using the API server, configuration generation does not need this
+database to be running. Generate and review files first, then provision:
+
+```bash
+sg-server config
+sg-server init --config searchgres.yaml
+sg-server serve --config searchgres.yaml
+```
+
+See [Configure and run the API server](guides/server.md) for noninteractive
+options, dotenv precedence, and strict `--if-not-exists` behavior.
 
 ## You own the connection pool
 

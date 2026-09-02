@@ -93,6 +93,18 @@ Compiled binaries layer remote workflows over the same core:
 - `sg-mcp` exposes twelve MCP tools over stdio. It talks only to `sg-server`,
   registers all tools by default, and accepts `--read-only` to omit mutations.
 
+Generate server files offline, review them, and then initialize PostgreSQL:
+
+```bash
+sg-server config
+sg-server init --config searchgres.yaml
+sg-server serve --config searchgres.yaml
+```
+
+Use `init --if-not-exists` for strict idempotent provisioning: an existing index
+is accepted only when it is a valid, shape-compatible Searchgres index. See the
+[API server guide](docs/guides/server.md).
+
 The MCP binary requires only `--server <url>` or `SEARCHGRES_URL`; it does not
 read server config, dotenv, database credentials, or local import/export files.
 See the [MCP server guide](docs/mcp/index.md).
@@ -106,6 +118,7 @@ See the [MCP server guide](docs/mcp/index.md).
 - [Generate embeddings](docs/guides/embeddings.md)
 - [Search and filter](docs/guides/search.md)
 - [Manage records and trees](docs/guides/records-and-trees.md)
+- [Configure and run the API server](docs/guides/server.md)
 - [Run in production](docs/guides/production.md)
 - [Use the MCP server](docs/mcp/index.md)
 - [API reference](docs/reference/api.md) ·

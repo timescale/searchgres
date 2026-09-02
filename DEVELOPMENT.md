@@ -105,7 +105,7 @@ There are three, and the split is load-bearing:
 | Binary | Package | Commands | Needs |
 | --- | --- | --- | --- |
 | `sg` | `packages/cli` | records, trees, search | `fetch` only |
-| `sg-server` | `packages/server` | `init`, `serve`, `destroy` | PostgreSQL, core, provider credentials |
+| `sg-server` | `packages/server` | `config`, `init`, `serve`, `destroy` | PostgreSQL, core, provider credentials |
 | `sg-mcp` | `packages/mcp` | twelve MCP tools over stdio | `fetch`, MCP SDK |
 
 `bun build --compile` initializes a binary's entire module graph at startup
@@ -145,34 +145,40 @@ resolve those paths directly rather than keeping copies.
 
 ## Local setup
 
-Interactive bootstrap creates an index, server config, `.env.example`, and (if
-credentials are entered) a local `.env`:
+Generate a reviewable server config and environment-file template without
+connecting to PostgreSQL or the embedding provider:
 
 ```sh
-./packages/server/dist/sg-server init
+./packages/server/dist/sg-server config
 ```
 
 Or supply explicit noninteractive arguments:
 
 ```sh
-SEARCHGRES_DATABASE_URL='postgresql://postgres@127.0.0.1:5432/postgres' \
-./packages/server/dist/sg-server init \
+./packages/server/dist/sg-server config \
   --config searchgres.yaml \
   --database-url-env SEARCHGRES_DATABASE_URL \
   --schema docs \
   --embedding-model text-embedding-3-small \
-  --dimensions 1536
+  --dimensions 1536 \
+  --vector-type halfvec
 ```
 
-Start the server:
+After reviewing the generated files, initialize the configured database schema
+and start the server:
 
 ```sh
+./packages/server/dist/sg-server init --config searchgres.yaml
 ./packages/server/dist/sg-server serve --config searchgres.yaml
 ```
 
-The server loads a `.env` next to its config by default without overwriting
-already-set process environment variables. Use `--env-file <path>` or
-`--no-env-file` to control that behavior.
+Use `init --if-not-exists` in idempotent automation. It accepts only an existing
+valid Searchgres index whose vector type and dimensions match the config; it
+never ignores malformed, incompatible, or ordinary same-named schemas.
+
+`init`, `serve`, and `destroy` load a `.env` next to the config by default without
+overwriting already-set process environment variables. Use
+`--env-file <path>` or `--no-env-file` to control that behavior.
 
 Use `--read-only` for a query-only server: it rejects mutation RPC methods and
 does not start the embedding worker, while semantic search still embeds query
@@ -180,8 +186,9 @@ text on demand.
 
 ## `.env` handling
 
-`sg-server init` generates a `.env`, so this repository owns both halves of the
-format. There is no dependency for it, deliberately:
+The interactive `sg-server config` wizard can generate a `.env`, so this
+repository owns both halves of the format. There is no dependency for it,
+deliberately:
 
 - `dotenv` has no writer, so the half where mistakes are costly would stay ours.
 - The dialects disagree on the cases that matter. `dotenv` reads `#` as starting
@@ -208,26 +215,29 @@ because one-command setup is worth it, which is why the validation exists.
 
 ## Docker Compose
 
-`compose.yaml` avoids a bootstrap cycle with profiles: the database starts by
-default, while the server starts only with the `server` profile. The `tools`
-profile provides `sg` inside the Compose network, so initialization can reach
-the database hostname `db` and write config files back to the working directory.
+The current `compose.yaml` still uses profiles until the evaluation-stack
+redesign lands. Generate files first, then initialize from the reviewed config:
 
 ```sh
-# 1. Start only PostgreSQL (no config file required).
+# 1. Start PostgreSQL.
 docker compose up -d db
 
-# 2. Create the index/config interactively. Choose host 0.0.0.0 when prompted.
-docker compose --profile tools run --rm cli init
+# 2. Generate config locally through the tools image. Choose host 0.0.0.0.
+docker compose --profile tools run --rm cli config
 
-# 3. Start the configured server.
+# 3. Initialize that exact config in PostgreSQL.
+docker compose --profile tools run --rm cli init \
+  --config searchgres.yaml --if-not-exists
+
+# 4. Start the server.
 docker compose --profile server up -d server
 ```
 
 The tools container defaults `SEARCHGRES_DATABASE_URL` to
-`postgresql://postgres@db:5432/postgres`. `init` writes `searchgres.yaml` and
-optionally `.env` in the project root; the server mounts both. Do not run bare
-`docker compose up` expecting the server before initialization.
+`postgresql://postgres@db:5432/postgres`. This profile-based workflow is an
+interim development path; the planned evaluation Compose stack will replace it
+with a checked-in config, local Ollama model, and ordinary one-command
+`docker compose up`.
 
 ## Generated files
 

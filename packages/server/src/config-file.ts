@@ -2,8 +2,8 @@ import { JSON5, YAML } from "bun";
 
 /**
  * Serialize a generated server config in the encoding its filename implies.
- * `sg-server init` writes the file; `serve` and `destroy` read it back through
- * loadServerConfig.
+ * `sg-server config` writes the file; `init`, `serve`, and `destroy` read it
+ * back through loadServerConfig.
  */
 export function renderConfig(path: string, config: unknown): string {
   const name = path.toLowerCase();

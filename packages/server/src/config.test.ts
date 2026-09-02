@@ -7,6 +7,8 @@ const minimalConfig = {
   database: { urlEnv: "SEARCHGRES_DATABASE_URL" },
   index: {
     schema: "docs",
+    dimensions: 768,
+    vectorType: "halfvec",
     embedding: { provider: "openai-compatible", model: "test-model" },
   },
 };
@@ -21,6 +23,32 @@ describe("server config", () => {
     expect(config.database.api.session.statementTimeout).toBe(30_000);
     expect(config.database.worker.session.statementTimeout).toBe(25_000);
     expect(config.index.worker.interval).toBe(1_000);
+  });
+
+  test("enforces the vector-type dimension ceilings", () => {
+    expect(() =>
+      parseServerConfig({
+        ...minimalConfig,
+        index: { ...minimalConfig.index, dimensions: 4_001 },
+      }),
+    ).toThrow(/4000.*halfvec/);
+    expect(() =>
+      parseServerConfig({
+        ...minimalConfig,
+        index: {
+          ...minimalConfig.index,
+          dimensions: 2_001,
+          vectorType: "vector",
+        },
+      }),
+    ).toThrow(/2000.*vector/);
+  });
+
+  test("requires the immutable index shape", () => {
+    const { dimensions: _, ...withoutDimensions } = minimalConfig.index;
+    expect(() =>
+      parseServerConfig({ ...minimalConfig, index: withoutDimensions }),
+    ).toThrow();
   });
 
   test("accepts an explicit request body limit", () => {
