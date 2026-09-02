@@ -57,6 +57,35 @@ needed. See [Evaluate with Docker Compose](docs/guides/docker-compose.md) for
 sample commands, restart/reset behavior, and the evaluation-only security
 boundary.
 
+### Evaluation performance
+
+This stack optimizes for a free, zero-configuration evaluation, not maximum
+embedding throughput. Its Ollama service runs `nomic-embed-text` on CPU in the
+container runtime's Linux VM; the stack does not configure GPU access. That is a
+property of this evaluation environment, not an inherent Searchgres limit.
+Searchgres can use any caller-supplied AI SDK embedding model, including a remote
+provider or a GPU-backed local service.
+
+For orientation, one Apple Silicon arm64 run using a Podman VM with about 3.8 GB
+of memory imported 500 short records in 0.10 seconds. The asynchronous worker,
+configured in batches of 100, made all 500 semantically searchable in 14.7
+seconds—about 34 embeddings per second. Once embedded, BM25, semantic, and hybrid
+queries each completed in roughly 46–60 ms. Records are available to filters and
+BM25 immediately while their embeddings are generated in the background.
+
+These numbers are illustrative rather than a benchmark guarantee: CPU model,
+VM resources, record length, cold starts, and host load all matter. Hundreds of
+short records should be comfortable for evaluation; use a production embedding
+provider or a GPU-backed service when ingestion throughput is important.
+
+Ollama may log that the requested 8,192-token context exceeds
+`n_ctx_train=2048` for this model. Nomic v1.5 has a 2,048-token base context in
+its GGUF metadata and extends to 8,192 tokens with RoPE. Ollama's packaged
+Modelfile sets `num_ctx 8192` and applies that model-level override, while the
+runner warning still reports the base GGUF/training metadata. The warning is
+therefore Ollama-specific and does not indicate that Searchgres has a 2,048-token
+context limit.
+
 ## Install
 
 Install the latest release of all three compiled executables:
