@@ -107,19 +107,19 @@
                 "patterns": [
                   {
                     "group": ["searchgres", "searchgres/**"],
-                    "message": "sg must stay thin: bun --compile initializes the whole module graph at startup, so importing the core library here costs every sg invocation. Database and provisioning work belongs in sg-server (packages/server/src/cli.ts)."
+                    "message": "searchgres must stay thin: bun --compile initializes the whole module graph at startup, so importing the core library here costs every searchgres invocation. Database and provisioning work belongs in searchgres-server (packages/server/src/cli.ts)."
                   },
                   {
                     "group": ["postgres", "postgres/**"],
-                    "message": "sg must stay thin: it talks to the server over fetch, never to PostgreSQL directly. Database work belongs in sg-server."
+                    "message": "searchgres must stay thin: it talks to the server over fetch, never to PostgreSQL directly. Database work belongs in searchgres-server."
                   },
                   {
                     "group": ["@searchgres/server", "@searchgres/server/**"],
-                    "message": "sg must stay thin: importing the server pulls the embedding provider and tokenizer pool into startup. This belongs in sg-server."
+                    "message": "searchgres must stay thin: importing the server pulls the embedding provider and tokenizer pool into startup. This belongs in searchgres-server."
                   },
                   {
                     "group": ["@clack/prompts", "@clack/prompts/**"],
-                    "message": "sg must stay thin: the prompt library is only needed by sg-server's interactive init."
+                    "message": "searchgres must stay thin: the prompt library is only needed by searchgres-server's interactive config command."
                   }
                 ]
               }
@@ -148,7 +148,7 @@
                       "@searchgres/cli",
                       "@searchgres/cli/**"
                     ],
-                    "message": "sg-mcp is an unprivileged remote client; use @searchgres/client and runtime-neutral shared packages only."
+                    "message": "searchgres-mcp is an unprivileged remote client; use @searchgres/client and runtime-neutral shared packages only."
                   }
                 ]
               }
@@ -168,7 +168,7 @@
                 "patterns": [
                   {
                     "group": ["@searchgres/cli", "@searchgres/cli/**"],
-                    "message": "sg-server shares no code with sg. It owns a config file, a .env, and database/provider credentials; sg knows only a server URL. Duplicate the helper here rather than coupling the privileged binary to the unprivileged one."
+                    "message": "searchgres-server shares no code with searchgres. It owns a config file, a .env, and database/provider credentials; searchgres knows only a server URL. Duplicate the helper here rather than coupling the privileged binary to the unprivileged one."
                   }
                 ]
               }

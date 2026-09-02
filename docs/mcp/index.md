@@ -1,6 +1,6 @@
 # Searchgres MCP server
 
-`sg-mcp` exposes one Searchgres API server as twelve MCP tools over stdio. It is
+`searchgres-mcp` exposes one Searchgres API server as twelve MCP tools over stdio. It is
 an unprivileged remote client: it never reads server config, dotenv, database or
 embedding credentials, or arbitrary import/export files.
 
@@ -9,13 +9,13 @@ embedding credentials, or arbitrary import/export files.
 Pass the base server URL explicitly:
 
 ```sh
-sg-mcp --server http://127.0.0.1:3000
+searchgres-mcp --server http://127.0.0.1:3000
 ```
 
-or through the same environment variable as `sg`:
+or through the same environment variable as `searchgres`:
 
 ```sh
-SEARCHGRES_URL=http://127.0.0.1:3000 sg-mcp
+SEARCHGRES_URL=http://127.0.0.1:3000 searchgres-mcp
 ```
 
 The process writes MCP frames only to stdout and operational messages to stderr.

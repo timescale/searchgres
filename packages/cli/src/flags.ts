@@ -1,12 +1,12 @@
-// Flag plumbing for `sg`.
+// Flag plumbing for `searchgres`.
 //
 // This module must stay dependency-free. `bun build --compile` initializes a
 // binary's entire module graph at startup, executed or not, so anything
-// reachable from `sg`'s entry point is paid by every invocation. A Biome rule
+// reachable from `searchgres`'s entry point is paid by every invocation. A Biome rule
 // (see biome.json) enforces the important half of that: no postgres, core
 // library, server, or prompt library anywhere under packages/cli/src.
 //
-// `sg-server` deliberately does not import this. The two binaries share no code:
+// `searchgres-server` deliberately does not import this. The two binaries share no code:
 // a handful of one-line validators is not worth a dependency edge between the
 // unprivileged client and the privileged provisioning tool.
 

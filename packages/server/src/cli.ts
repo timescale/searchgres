@@ -1,6 +1,6 @@
-// `sg-server`: the privileged binary. It owns server config, database
+// `searchgres-server`: the privileged binary. It owns server config, database
 // provisioning, provider credentials, worker lifecycle, and serving. Everyday
-// record/search commands remain in the independent `sg` binary.
+// record/search commands remain in the independent `searchgres` binary.
 
 import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -24,16 +24,16 @@ import { startServer } from "./server.ts";
 
 const environmentFlags = new Set(["config", "env-file", "no-env-file"]);
 const usage = `Usage:
-  sg-server config [--config <path> --schema <schema> ...]
-  sg-server init --config <config.yaml|config.json5>
+  searchgres-server config [--config <path> --schema <schema> ...]
+  searchgres-server init --config <config.yaml|config.json5>
                  [--env-file <path>|--no-env-file] [--if-not-exists]
-  sg-server serve --config <config.yaml|config.json5>
+  searchgres-server serve --config <config.yaml|config.json5>
                   [--env-file <path>|--no-env-file] [--read-only]
-  sg-server destroy --config <config.yaml|config.json5>
+  searchgres-server destroy --config <config.yaml|config.json5>
                     [--env-file <path>|--no-env-file] --yes
 
-Run \`sg-server <command> --help\` for a command's options. Everyday record and
-search commands live in the \`sg\` binary.
+Run \`searchgres-server <command> --help\` for a command's options. Everyday record and
+search commands live in the \`searchgres\` binary.
 `;
 
 export async function runServerCommand(
@@ -78,7 +78,9 @@ async function runServe(flags: Flags): Promise<void> {
 async function runDestroy(flags: Flags): Promise<void> {
   rejectUnknownFlags(flags, new Set([...environmentFlags, "yes"]));
   if (!flags.has("yes")) {
-    throw new Error("sg-server destroy is destructive; pass --yes to confirm");
+    throw new Error(
+      "searchgres-server destroy is destructive; pass --yes to confirm",
+    );
   }
   const { config } = await loadConfiguredCommand(flags);
   const databaseUrl = requiredEnvironment(

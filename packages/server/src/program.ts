@@ -2,10 +2,10 @@ import { Command } from "commander";
 import { runServerCommand } from "./cli.ts";
 import { flagsFromOptions } from "./flags.ts";
 
-/** Commander owns command discovery, help, and parse errors for `sg-server`. */
+/** Commander owns command discovery, help, and parse errors for `searchgres-server`. */
 export async function runProgram(argv: readonly string[]): Promise<void> {
   const program = new Command()
-    .name("sg-server")
+    .name("searchgres-server")
     .description("Searchgres server configuration, provisioning, and runtime")
     .showSuggestionAfterError();
 
@@ -73,7 +73,7 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
     });
   }
 
-  await program.parseAsync(["node", "sg-server", ...argv]);
+  await program.parseAsync(["node", "searchgres-server", ...argv]);
 }
 
 function addEnvironmentOptions(command: Command): Command {

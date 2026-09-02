@@ -31,7 +31,7 @@ in a few minutes.
   offline, initialize PostgreSQL, serve, and use strict idempotent provisioning.
 - **[Run in production](guides/production.md)** — deployment, pooling, worker
   operations, monitoring, and reindex cutovers.
-- **[Use the MCP server](mcp/index.md)** — run `sg-mcp` over stdio and understand
+- **[Use the MCP server](mcp/index.md)** — run `searchgres-mcp` over stdio and understand
   its read, write, projection, and safety boundaries.
 
 ## Reference

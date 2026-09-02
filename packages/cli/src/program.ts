@@ -4,9 +4,9 @@ import { filterFlagNames, flagsFromOptions, runCommand } from "./cli.ts";
 /** Commander owns command discovery, help, arguments, and shell-facing errors. */
 export async function runProgram(argv: readonly string[]): Promise<void> {
   const program = new Command()
-    .name("sg")
+    .name("searchgres")
     .description(
-      "Searchgres client: records, trees, import/export, and search. Provisioning and serving live in sg-server.",
+      "Searchgres client: records, trees, import/export, and search. Provisioning and serving live in searchgres-server.",
     )
     .showSuggestionAfterError()
     .configureHelp({ showGlobalOptions: true })
@@ -181,15 +181,15 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
     "copy",
   );
 
-  const moved = new Set(["server", "serve", "init", "destroy"]);
+  const moved = new Set(["server", "serve", "config", "init", "destroy"]);
   const [first] = argv;
   if (first !== undefined && moved.has(first)) {
     throw new Error(
-      `\`sg ${first}\` lives in the sg-server binary: run \`sg-server ${first === "server" ? "serve" : first}\``,
+      `\`searchgres ${first}\` lives in the searchgres-server binary: run \`searchgres-server ${first === "server" ? "serve" : first}\``,
     );
   }
 
-  await program.parseAsync(["node", "sg", ...argv]);
+  await program.parseAsync(["node", "searchgres", ...argv]);
 }
 
 function addFilterOptions(command: Command): void {

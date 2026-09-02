@@ -1,8 +1,11 @@
-// Cross-compiles one binary for every release target. Shared by all binary
-// surfaces so `sg`, `sg-server`, and `sg-mcp` ship for the same platforms and a
-// target list per package cannot drift.
-//
-//   ../../bun ../../scripts/compile-targets.ts <name> <entrypoint>
+// Cross-compile one native executable for every release target. All binary
+// surfaces emit into the repository-level dist/ directory so platform bundles
+// cannot be confused with package-local JavaScript/type build output.
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { signMacosBinary } from "./macos-sign.ts";
+
 const [name, entrypoint] = Bun.argv.slice(2);
 if (name === undefined || entrypoint === undefined) {
   console.error(
@@ -10,6 +13,9 @@ if (name === undefined || entrypoint === undefined) {
   );
   process.exit(1);
 }
+
+const outputDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
+mkdirSync(outputDirectory, { recursive: true });
 
 const targets = [
   { target: "bun-linux-x64", suffix: "linux-amd64" },
@@ -21,7 +27,7 @@ const targets = [
 ] as const;
 
 for (const { target, suffix } of targets) {
-  const output = `dist/${name}-${suffix}`;
+  const output = join(outputDirectory, `${name}-${suffix}`);
   console.log(`Compiling ${target} → ${output}`);
   const result = Bun.spawnSync({
     cmd: [
@@ -36,4 +42,11 @@ for (const { target, suffix } of targets) {
     stderr: "inherit",
   });
   if (result.exitCode !== 0) process.exit(result.exitCode);
+
+  if (suffix.startsWith("macos-")) signMacosBinary(output);
+
+  const digest = new Bun.CryptoHasher("sha256")
+    .update(await Bun.file(output).arrayBuffer())
+    .digest("hex");
+  await Bun.write(`${output}.sha256`, `${digest}  ${name}-${suffix}\n`);
 }

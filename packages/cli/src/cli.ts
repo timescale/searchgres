@@ -1,6 +1,6 @@
-// `sg`: the unprivileged client. It talks only to a searchgres server over
+// `searchgres`: the unprivileged client. It talks only to a searchgres server over
 // JSON-RPC. Provisioning, database access, and provider credentials remain in
-// the independent `sg-server` binary.
+// the independent `searchgres-server` binary.
 import {
   createClient,
   createFetchTransport,
@@ -37,10 +37,10 @@ import {
 export { flagsFromOptions };
 
 const usage = `Usage:
-  sg <command> [options]
+  searchgres <command> [options]
 
-Run \`sg --help\` for the command list. Creating an index and running a server
-live in a separate binary: see \`sg-server --help\`.
+Run \`searchgres --help\` for the command list. Creating an index and running a server
+live in a separate binary: see \`searchgres-server --help\`.
 `;
 
 export async function runCommand(
@@ -48,9 +48,14 @@ export async function runCommand(
   flags: Flags,
   args: readonly string[] = [],
 ): Promise<void> {
-  if (command === "server" || command === "init" || command === "destroy") {
+  if (
+    command === "server" ||
+    command === "config" ||
+    command === "init" ||
+    command === "destroy"
+  ) {
     throw new Error(
-      `\`sg ${command}\` lives in the sg-server binary: run \`sg-server ${command}\``,
+      `\`searchgres ${command}\` lives in the searchgres-server binary: run \`searchgres-server ${command}\``,
     );
   }
   assertOutputFormatApplies(command, flags);

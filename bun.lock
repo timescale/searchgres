@@ -15,9 +15,6 @@
     "packages/cli": {
       "name": "@searchgres/cli",
       "version": "0.0.0",
-      "bin": {
-        "sg": "./dist/sg",
-      },
       "dependencies": {
         "@searchgres/client": "workspace:*",
         "@searchgres/filter": "workspace:*",
@@ -61,9 +58,6 @@
     "packages/mcp": {
       "name": "@searchgres/mcp",
       "version": "0.0.0",
-      "bin": {
-        "sg-mcp": "./dist/sg-mcp",
-      },
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.29.0",
         "@searchgres/client": "workspace:*",
@@ -90,9 +84,6 @@
     "packages/server": {
       "name": "@searchgres/server",
       "version": "0.0.0",
-      "bin": {
-        "sg-server": "./dist/sg-server",
-      },
       "dependencies": {
         "@ai-sdk/openai": "^4.0.52",
         "@clack/prompts": "^0.11.0",

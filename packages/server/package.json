@@ -23,9 +23,9 @@
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo src/tokenizer.worker.generated.cjs",
     "typecheck": "../../bun run bundle:tokenizer-worker && tsc -p tsconfig.json",
     "test:unit": "../../bun run bundle:tokenizer-worker && find src -name '*.test.ts' ! -name '*.integration.test.ts' -print0 | xargs -0 ../../bun test",
-    "test:db": "test -x dist/sg-server && test -x ../cli/dist/sg && test -x ../mcp/dist/sg-mcp || { echo \"binaries are missing; run ./bun run compile\" >&2; exit 1; }; ../../bun test ./src/*.integration.test.ts",
-    "compile": "../../bun build ./src/bin.ts --compile --outfile dist/sg-server",
-    "compile:all": "../../bun ../../scripts/compile-targets.ts sg-server ./src/bin.ts"
+    "test:db": "test -x ../../dist/searchgres-server && test -x ../../dist/searchgres && test -x ../../dist/searchgres-mcp || { echo \"binaries are missing; run ./bun run compile\" >&2; exit 1; }; ../../bun test ./src/*.integration.test.ts",
+    "compile": "mkdir -p ../../dist && ../../bun build ./src/bin.ts --compile --outfile ../../dist/searchgres-server && ../../bun ../../scripts/macos-sign.ts ../../dist/searchgres-server",
+    "compile:all": "../../bun ../../scripts/compile-targets.ts searchgres-server ./src/bin.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.52",
@@ -39,8 +39,5 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.29.0"
-  },
-  "bin": {
-    "sg-server": "./dist/sg-server"
   }
 }

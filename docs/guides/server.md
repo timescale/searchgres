@@ -1,8 +1,8 @@
 # Configure and run the API server
 
-`sg-server` is the privileged Searchgres process. It owns the PostgreSQL
+`searchgres-server` is the privileged Searchgres process. It owns the PostgreSQL
 connection, embedding-provider configuration, index provisioning, background
-embedding worker, and HTTP API. The `sg` and `sg-mcp` clients never read these
+embedding worker, and HTTP API. The `searchgres` and `searchgres-mcp` clients never read these
 credentials or this config.
 
 ## 1. Generate configuration offline
@@ -10,7 +10,7 @@ credentials or this config.
 Run the interactive generator:
 
 ```sh
-sg-server config
+searchgres-server config
 ```
 
 This writes a YAML or JSON5 server config, a `.env.example`, and a `.gitignore`
@@ -21,7 +21,7 @@ running.
 For automation, provide the values explicitly:
 
 ```sh
-sg-server config \
+searchgres-server config \
   --config searchgres.yaml \
   --database-url-env SEARCHGRES_DATABASE_URL \
   --schema docs \
@@ -71,7 +71,7 @@ not require one.
 After reviewing the files and starting PostgreSQL:
 
 ```sh
-sg-server init --config searchgres.yaml
+searchgres-server init --config searchgres.yaml
 ```
 
 `init` only provisions the database. It never edits the config or environment
@@ -82,7 +82,7 @@ in `public` and create the index schema.
 For containers and other repeatable automation:
 
 ```sh
-sg-server init --config searchgres.yaml --if-not-exists
+searchgres-server init --config searchgres.yaml --if-not-exists
 ```
 
 `--if-not-exists` is deliberately strict:
@@ -98,14 +98,14 @@ It never rebuilds, migrates, replaces, or deletes an existing schema.
 ## 4. Serve
 
 ```sh
-sg-server serve --config searchgres.yaml
+searchgres-server serve --config searchgres.yaml
 ```
 
 The server validates the configured shape before opening its HTTP listener. It
 then starts the embedding worker unless `--read-only` is supplied:
 
 ```sh
-sg-server serve --config searchgres.yaml --read-only
+searchgres-server serve --config searchgres.yaml --read-only
 ```
 
 Read-only mode rejects mutating RPC methods and does not drain record embedding
@@ -128,7 +128,7 @@ files are allowed; missing required variables are reported by name.
 Dropping an index is explicit and destructive:
 
 ```sh
-sg-server destroy --config searchgres.yaml --yes
+searchgres-server destroy --config searchgres.yaml --yes
 ```
 
 It loads environment variables using the same rules and drops only the literal
@@ -148,4 +148,4 @@ index:
 
 The server intentionally does not guess these values or silently rewrite the
 file. If uncertain, inspect the database objects or regenerate a config with
-`sg-server config`, then review it before use.
+`searchgres-server config`, then review it before use.

@@ -1,5 +1,27 @@
 # Install searchgres
 
+## Compiled executables
+
+Install the latest release of `searchgres`, `searchgres-server`, and
+`searchgres-mcp`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | sh
+```
+
+The installer detects Linux or macOS on amd64/arm64 (and Windows under a POSIX
+shell), downloads all three matching GitHub release assets, and verifies their
+individual SHA-256 files before installing anything. The default destination is
+`~/.local/bin` when `~/.local` exists, otherwise `~/bin`.
+
+Override the destination or install a specific release tag with environment
+variables on the receiving shell:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | \
+  SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=v0.1.0 sh
+```
+
 ## Packages
 
 ```bash
@@ -86,9 +108,9 @@ If you are using the API server, configuration generation does not need this
 database to be running. Generate and review files first, then provision:
 
 ```bash
-sg-server config
-sg-server init --config searchgres.yaml
-sg-server serve --config searchgres.yaml
+searchgres-server config
+searchgres-server init --config searchgres.yaml
+searchgres-server serve --config searchgres.yaml
 ```
 
 See [Configure and run the API server](guides/server.md) for noninteractive

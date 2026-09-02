@@ -1,7 +1,7 @@
-// Flag plumbing for `sg-server`.
+// Flag plumbing for `searchgres-server`.
 //
-// Intentionally a separate copy from the equivalent in `packages/cli`: `sg` and
-// `sg-server` share no code. They are different tools with different privileges
+// Intentionally a separate copy from the equivalent in `packages/cli`: `searchgres` and
+// `searchgres-server` share no code. They are different tools with different privileges
 // — one holds database and provider credentials, the other only a server URL —
 // and coupling them through a helper module would create a dependency edge
 // between the privileged and unprivileged binaries for the sake of a few

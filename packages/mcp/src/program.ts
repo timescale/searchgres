@@ -5,7 +5,7 @@ import { createMcpServer, MCP_VERSION } from "./server.ts";
 
 export async function runProgram(argv: readonly string[]): Promise<void> {
   const program = new Command()
-    .name("sg-mcp")
+    .name("searchgres-mcp")
     .description("Searchgres MCP server over stdio")
     .showSuggestionAfterError()
     .version(MCP_VERSION)
@@ -18,7 +18,7 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
       35_000,
     );
 
-  await program.parseAsync(["node", "sg-mcp", ...argv]);
+  await program.parseAsync(["node", "searchgres-mcp", ...argv]);
   const options = program.opts<{
     server?: string;
     readOnly?: boolean;
@@ -46,7 +46,7 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
   };
   process.on("SIGINT", close);
   process.on("SIGTERM", close);
-  console.error("sg-mcp running on stdio");
+  console.error("searchgres-mcp running on stdio");
 }
 
 function parseDuration(value: string): number {

@@ -4,9 +4,12 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/package.json
 COPY packages/protocol/package.json packages/protocol/package.json
+COPY packages/filter/package.json packages/filter/package.json
+COPY packages/presentation/package.json packages/presentation/package.json
 COPY packages/client/package.json packages/client/package.json
 COPY packages/server/package.json packages/server/package.json
 COPY packages/cli/package.json packages/cli/package.json
+COPY packages/mcp/package.json packages/mcp/package.json
 RUN bun install --frozen-lockfile
 COPY . .
 # The scripts invoke bun as ./bun (or ../../bun), which downloads the pinned
@@ -19,9 +22,10 @@ RUN printf '#!/bin/sh\nexec bun "$@"\n' > ./bun \
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-# Both binaries: sg-server provisions and serves, sg is the client. They are
-# separate artifacts so that `sg` carries no database driver or provider code.
-COPY --from=build /app/packages/cli/dist/sg /usr/local/bin/sg
-COPY --from=build /app/packages/server/dist/sg-server /usr/local/bin/sg-server
-ENTRYPOINT ["sg-server"]
+# Both binaries: searchgres-server provisions and serves; searchgres is the
+# client. They remain separate artifacts so ordinary client commands carry no
+# database driver or provider code.
+COPY --from=build /app/dist/searchgres /usr/local/bin/searchgres
+COPY --from=build /app/dist/searchgres-server /usr/local/bin/searchgres-server
+ENTRYPOINT ["searchgres-server"]
 CMD ["serve", "--config", "/config/searchgres.yaml"]

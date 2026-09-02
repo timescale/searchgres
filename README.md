@@ -40,6 +40,20 @@ local development. See [Install searchgres](docs/installation.md).
 
 ## Install
 
+Install the latest release of all three compiled executables:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | sh
+```
+
+The installer downloads `searchgres`, `searchgres-server`, and
+`searchgres-mcp` for the current OS and architecture, then verifies each release
+checksum. It installs into `~/.local/bin` when that directory or its parent
+exists, otherwise `~/bin`. Set `SEARCHGRES_INSTALL_DIR` to choose another
+location.
+
+For the runtime-agnostic TypeScript library:
+
 ```bash
 npm install searchgres postgres @ai-sdk/openai   # or any AI SDK provider
 ```
@@ -88,17 +102,17 @@ Full walkthrough: **[Get started](docs/getting-started.md)**.
 
 Compiled binaries layer remote workflows over the same core:
 
-- `sg-server` provisions and serves one configured index.
-- `sg` provides records, trees, import/export, and search over HTTP.
-- `sg-mcp` exposes twelve MCP tools over stdio. It talks only to `sg-server`,
+- `searchgres-server` provisions and serves one configured index.
+- `searchgres` provides records, trees, import/export, and search over HTTP.
+- `searchgres-mcp` exposes twelve MCP tools over stdio. It talks only to `searchgres-server`,
   registers all tools by default, and accepts `--read-only` to omit mutations.
 
 Generate server files offline, review them, and then initialize PostgreSQL:
 
 ```bash
-sg-server config
-sg-server init --config searchgres.yaml
-sg-server serve --config searchgres.yaml
+searchgres-server config
+searchgres-server init --config searchgres.yaml
+searchgres-server serve --config searchgres.yaml
 ```
 
 Use `init --if-not-exists` for strict idempotent provisioning: an existing index

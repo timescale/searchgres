@@ -8,16 +8,13 @@
   "engines": {
     "bun": ">=1.4.0"
   },
-  "bin": {
-    "sg-mcp": "./dist/sg-mcp"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "typecheck": "tsc -p tsconfig.json",
     "test:unit": "find src -name '*.test.ts' -print0 | xargs -0 ../../bun test",
-    "compile": "../../bun build ./src/bin.ts --compile --outfile dist/sg-mcp",
-    "compile:all": "../../bun ../../scripts/compile-targets.ts sg-mcp ./src/bin.ts"
+    "compile": "mkdir -p ../../dist && ../../bun build ./src/bin.ts --compile --outfile ../../dist/searchgres-mcp && ../../bun ../../scripts/macos-sign.ts ../../dist/searchgres-mcp",
+    "compile:all": "../../bun ../../scripts/compile-targets.ts searchgres-mcp ./src/bin.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

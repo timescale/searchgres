@@ -2,7 +2,7 @@ import { JSON5, YAML } from "bun";
 
 /**
  * Serialize a generated server config in the encoding its filename implies.
- * `sg-server config` writes the file; `init`, `serve`, and `destroy` read it
+ * `searchgres-server config` writes the file; `init`, `serve`, and `destroy` read it
  * back through loadServerConfig.
  */
 export function renderConfig(path: string, config: unknown): string {

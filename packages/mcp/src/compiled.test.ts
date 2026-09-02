@@ -6,9 +6,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { READ_TOOL_NAMES, TOOL_NAMES } from "./server.ts";
 
-test("compiled sg-mcp serves stdio and honors --read-only", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "sg-mcp-"));
-  const binary = join(directory, "sg-mcp");
+test("compiled searchgres-mcp serves stdio and honors --read-only", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "searchgres-mcp-"));
+  const binary = join(directory, "searchgres-mcp");
   const requests: Array<{ method: string; params?: unknown }> = [];
   const api = Bun.serve({
     port: 0,

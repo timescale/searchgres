@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { dotenvLine, loadDotenv } from "./dotenv.ts";
 
 test("dotenvLine round-trips the values a real .env holds", async () => {
-  // Written by the `sg-server config` wizard: a database URL and an API
+  // Written by the `searchgres-server config` wizard: a database URL and an API
   // key. Every character here is literal in all three readers that see the file
   // (this one, dotenv-style tooling, and Docker Compose's env_file).
   const values: Record<string, string> = {
@@ -24,7 +24,7 @@ test("dotenvLine round-trips the values a real .env holds", async () => {
     SG_EMPTY: "",
   };
 
-  const directory = await mkdtemp(join(tmpdir(), "sg-dotenv-"));
+  const directory = await mkdtemp(join(tmpdir(), "searchgres-dotenv-"));
   try {
     const path = join(directory, ".env");
     await Bun.write(
@@ -83,7 +83,7 @@ test("a # in a connection string is advised to percent-encode", () => {
 });
 
 test("loadDotenv never overwrites an existing environment variable", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "sg-dotenv-"));
+  const directory = await mkdtemp(join(tmpdir(), "searchgres-dotenv-"));
   try {
     const path = join(directory, ".env");
     await Bun.write(path, "SG_PRESET=from-file\nSG_UNSET=from-file\n");
@@ -99,7 +99,7 @@ test("loadDotenv never overwrites an existing environment variable", async () =>
 });
 
 test("loadDotenv accepts comments, blanks, export, and quoted values", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "sg-dotenv-"));
+  const directory = await mkdtemp(join(tmpdir(), "searchgres-dotenv-"));
   try {
     const path = join(directory, ".env");
     await Bun.write(
@@ -129,7 +129,7 @@ test("loadDotenv accepts comments, blanks, export, and quoted values", async () 
 test("loadDotenv rejects a malformed line instead of skipping it", async () => {
   // Skipping would hide a typo in a variable name, and the failure would then
   // surface as a missing-credential error somewhere unrelated.
-  const directory = await mkdtemp(join(tmpdir(), "sg-dotenv-"));
+  const directory = await mkdtemp(join(tmpdir(), "searchgres-dotenv-"));
   try {
     const path = join(directory, ".env");
     await Bun.write(path, "SG_OK=1\nNOT AN ASSIGNMENT\n");
@@ -143,5 +143,5 @@ test("loadDotenv rejects a malformed line instead of skipping it", async () => {
 });
 
 test("loadDotenv is a no-op when the file does not exist", async () => {
-  await loadDotenv(join(tmpdir(), "sg-dotenv-does-not-exist", ".env"));
+  await loadDotenv(join(tmpdir(), "searchgres-dotenv-does-not-exist", ".env"));
 });

@@ -85,7 +85,7 @@ export function dotenvLine(name: string, value: string): string {
   return `${name}=${value}\n`;
 }
 
-/** `sg-server config` writes an example beside its config and ignores `.env`. */
+/** `searchgres-server config` writes an example beside its config and ignores `.env`. */
 export async function writeDotenvExample(
   configPath: string,
   databaseUrlEnv: string,

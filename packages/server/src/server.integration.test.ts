@@ -18,12 +18,18 @@ const configPath = `/tmp/searchgres-server-${process.pid}.yaml`;
 let sql: Sql;
 let fakeEmbeddings: ReturnType<typeof Bun.serve>;
 // The canonical binary, built by `@searchgres/cli`'s compile script. Resolved
-// from this file rather than the cwd so there is exactly one `sg` in the repo.
-// Both binaries, resolved from this file rather than the cwd. `sg-server` runs
-// the server; `sg` is the client the assertions drive.
-const sgServer = fileURLToPath(new URL("../dist/sg-server", import.meta.url));
-const sg = fileURLToPath(new URL("../../cli/dist/sg", import.meta.url));
-const sgMcp = fileURLToPath(new URL("../../mcp/dist/sg-mcp", import.meta.url));
+// from this file rather than the cwd so there is exactly one `searchgres` in the repo.
+// Both binaries, resolved from this file rather than the cwd. `searchgres-server` runs
+// the server; `searchgres` is the client the assertions drive.
+const searchgresServer = fileURLToPath(
+  new URL("../../../dist/searchgres-server", import.meta.url),
+);
+const searchgres = fileURLToPath(
+  new URL("../../../dist/searchgres", import.meta.url),
+);
+const searchgresMcp = fileURLToPath(
+  new URL("../../../dist/searchgres-mcp", import.meta.url),
+);
 
 let server: Bun.Subprocess | undefined;
 let serverUrl: URL;
@@ -101,7 +107,7 @@ index:
 `,
   );
   server = Bun.spawn({
-    cmd: [sgServer, "serve", "--config", configPath],
+    cmd: [searchgresServer, "serve", "--config", configPath],
     env: { ...process.env, [databaseEnvironment]: databaseUrl },
     stdout: "pipe",
     stderr: "pipe",
@@ -139,7 +145,7 @@ test("compiled config and init commands separate files from provisioning", async
   ];
 
   try {
-    const generated = await runSgServer(
+    const generated = await runSearchgresServer(
       configArgs(lifecycleConfig, lifecycleSchema),
       {},
     );
@@ -149,7 +155,7 @@ test("compiled config and init commands separate files from provisioning", async
     expect(process.env[missingKeyEnv]).toBeUndefined();
     await Bun.write(`${directory}/.env`, `${databaseEnv}=${databaseUrl}\n`);
 
-    const skippedEnv = await runSgServer([
+    const skippedEnv = await runSearchgresServer([
       "init",
       "--config",
       lifecycleConfig,
@@ -160,7 +166,7 @@ test("compiled config and init commands separate files from provisioning", async
       `Environment variable ${databaseEnv} is required`,
     );
 
-    const initialized = await runSgServer([
+    const initialized = await runSearchgresServer([
       "init",
       "--config",
       lifecycleConfig,
@@ -168,14 +174,14 @@ test("compiled config and init commands separate files from provisioning", async
     expect(initialized.exitCode).toBe(0);
     expect(initialized.stdout).toContain(`Created index "${lifecycleSchema}"`);
 
-    const strictRepeat = await runSgServer([
+    const strictRepeat = await runSearchgresServer([
       "init",
       "--config",
       lifecycleConfig,
     ]);
     expect(strictRepeat.exitCode).toBe(1);
 
-    const idempotent = await runSgServer([
+    const idempotent = await runSearchgresServer([
       "init",
       "--config",
       lifecycleConfig,
@@ -190,7 +196,7 @@ test("compiled config and init commands separate files from provisioning", async
     await Bun.write(explicitEnvironment, `${databaseEnv}=${databaseUrl}\n`);
     expect(
       (
-        await runSgServer([
+        await runSearchgresServer([
           "init",
           "--config",
           lifecycleConfig,
@@ -200,7 +206,7 @@ test("compiled config and init commands separate files from provisioning", async
         ])
       ).exitCode,
     ).toBe(0);
-    const conflictingEnvironmentOptions = await runSgServer([
+    const conflictingEnvironmentOptions = await runSearchgresServer([
       "init",
       "--config",
       lifecycleConfig,
@@ -218,7 +224,7 @@ test("compiled config and init commands separate files from provisioning", async
     };
     parsed.index.dimensions = 5;
     await Bun.write(lifecycleConfig, YAML.stringify(parsed));
-    const mismatch = await runSgServer([
+    const mismatch = await runSearchgresServer([
       "init",
       "--config",
       lifecycleConfig,
@@ -228,7 +234,7 @@ test("compiled config and init commands separate files from provisioning", async
     expect(mismatch.stderr).toContain(
       "configured halfvec(5), database has halfvec(4)",
     );
-    const serveMismatch = await runSgServer(
+    const serveMismatch = await runSearchgresServer(
       ["serve", "--config", lifecycleConfig],
       { [missingKeyEnv]: "unused" },
     );
@@ -244,7 +250,7 @@ test("compiled config and init commands separate files from provisioning", async
       `${directory}/.env`,
       `${databaseEnv}=postgresql://invalid.invalid/postgres\n`,
     );
-    const environmentWins = await runSgServer(
+    const environmentWins = await runSearchgresServer(
       ["init", "--config", lifecycleConfig, "--if-not-exists"],
       { [databaseEnv]: databaseUrl },
     );
@@ -252,10 +258,14 @@ test("compiled config and init commands separate files from provisioning", async
 
     await sql`create schema ${sql(collisionSchema)}`;
     expect(
-      (await runSgServer(configArgs(collisionConfig, collisionSchema), {}))
-        .exitCode,
+      (
+        await runSearchgresServer(
+          configArgs(collisionConfig, collisionSchema),
+          {},
+        )
+      ).exitCode,
     ).toBe(0);
-    const collision = await runSgServer(
+    const collision = await runSearchgresServer(
       ["init", "--config", collisionConfig, "--if-not-exists"],
       { [databaseEnv]: databaseUrl },
     );
@@ -263,7 +273,7 @@ test("compiled config and init commands separate files from provisioning", async
     expect(collision.stderr).toContain("is not a searchgres index");
 
     await Bun.write(`${directory}/.env`, `${databaseEnv}=${databaseUrl}\n`);
-    const destroyed = await runSgServer([
+    const destroyed = await runSearchgresServer([
       "destroy",
       "--config",
       lifecycleConfig,
@@ -281,14 +291,14 @@ test("compiled config and init commands separate files from provisioning", async
 async function assertCliCommands(): Promise<void> {
   const server = serverUrl.toString().replace(/\/$/, "");
   expect(
-    JSON.parse(await runSg(["--json", "info", "--server", server])),
+    JSON.parse(await runSearchgres(["--json", "info", "--server", server])),
   ).toMatchObject({
     apiVersion: "v1",
     maxRequestBodyBytes: 1024 * 1024,
     capabilities: { readOnly: false },
   });
   const created = JSON.parse(
-    await runSg([
+    await runSearchgres([
       "--json",
       "create",
       "--server",
@@ -307,12 +317,18 @@ async function assertCliCommands(): Promise<void> {
   expect(created.result.id).toBeString();
   expect(
     JSON.parse(
-      await runSg(["--json", "get", created.result.id, "--server", server]),
+      await runSearchgres([
+        "--json",
+        "get",
+        created.result.id,
+        "--server",
+        server,
+      ]),
     ),
   ).toMatchObject({ record: { name: "cat" } });
   expect(
     JSON.parse(
-      await runSg([
+      await runSearchgres([
         "--json",
         "update",
         created.result.id,
@@ -325,7 +341,9 @@ async function assertCliCommands(): Promise<void> {
       ]),
     ),
   ).toMatchObject({ record: { meta: { source: "cli" } } });
-  expect(await runSg(["tree", "cli", "--server", server])).toContain("cli (1)");
+  expect(await runSearchgres(["tree", "cli", "--server", server])).toContain(
+    "cli (1)",
+  );
 
   const importPath = `/tmp/searchgres-import-${process.pid}.ndjson`;
   const createPath = `/tmp/searchgres-create-${process.pid}.yaml`;
@@ -342,12 +360,12 @@ async function assertCliCommands(): Promise<void> {
       ),
     ]);
     expect(
-      await runSg(["create", "--file", createPath, "--server", server]),
+      await runSearchgres(["create", "--file", createPath, "--server", server]),
     ).toContain("status: inserted");
-    expect(await runSg(["import", importPath, "--server", server])).toContain(
-      "inserted: 2",
-    );
-    await runSg([
+    expect(
+      await runSearchgres(["import", importPath, "--server", server]),
+    ).toContain("inserted: 2");
+    await runSearchgres([
       "export",
       exportPath,
       "--server",
@@ -364,7 +382,7 @@ async function assertCliCommands(): Promise<void> {
     expect(exported.map((record) => record.content)).toEqual(["one", "two"]);
     expect(exported[0]?.temporal).toEqual(["2024-01-01T00:00:00.000Z"]);
     expect(
-      await runSg([
+      await runSearchgres([
         "delete",
         "--tree",
         "cli.bulk",
@@ -374,10 +392,10 @@ async function assertCliCommands(): Promise<void> {
       ]),
     ).toContain("count: 2");
     await expect(
-      runSg(["delete", "--tree", "cli.bulk", "--server", server]),
+      runSearchgres(["delete", "--tree", "cli.bulk", "--server", server]),
     ).rejects.toThrow(/requires --yes/);
     expect(
-      await runSg([
+      await runSearchgres([
         "delete",
         "--tree",
         "cli.bulk",
@@ -407,7 +425,7 @@ async function assertLocalSearchSelection(server: string): Promise<void> {
     "id,content:2,score",
   ];
 
-  const json = JSON.parse(await runSg(["--json", ...command])) as {
+  const json = JSON.parse(await runSearchgres(["--json", ...command])) as {
     readonly results: readonly Record<string, unknown>[];
   };
   expect(json.results).toHaveLength(2);
@@ -421,24 +439,24 @@ async function assertLocalSearchSelection(server: string): Promise<void> {
     expect(result.content).toBe("Fi");
   }
 
-  const yaml = YAML.parse(await runSg(["--yaml", ...command])) as {
+  const yaml = YAML.parse(await runSearchgres(["--yaml", ...command])) as {
     readonly results: readonly Record<string, unknown>[];
   };
   expect(yaml).toEqual(json);
 
-  const ndjson = (await runSg(["--ndjson", ...command]))
+  const ndjson = (await runSearchgres(["--ndjson", ...command]))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line));
   expect(ndjson).toEqual([...json.results]);
 
   await expect(
-    runSg([...command.slice(0, -1), "id,content:10,content:-10.."]),
+    runSearchgres([...command.slice(0, -1), "id,content:10,content:-10.."]),
   ).rejects.toThrow(/Invalid --select: only one distinct content selection/);
 }
 
 /**
- * The parts of `sg search` that only a real process against a real server can
+ * The parts of `searchgres search` that only a real process against a real server can
  * prove: that a flag-built filter reaches PostgreSQL and selects the right
  * rows, that the server's own rules still apply, and that a rejection is a
  * readable message with a non-zero exit.
@@ -474,7 +492,7 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
 
   const names = async (args: readonly string[]): Promise<readonly string[]> => {
     const output = JSON.parse(
-      await runSg(["--json", "search", "--server", server, ...args]),
+      await runSearchgres(["--json", "search", "--server", server, ...args]),
     ) as { readonly results: readonly { readonly name: string | null }[] };
     return output.results.map((result) => result.name ?? "").toSorted();
   };
@@ -495,14 +513,14 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
     expect(await names(["--filter-file", filterPath])).toEqual(["beta"]);
 
     const stdinOutput = JSON.parse(
-      await runSg(
+      await runSearchgres(
         ["--json", "search", "--server", server, "--filter-file", "-"],
         '(and (tree filters) (meta {"colour":"red"}))',
       ),
     ) as { readonly results: readonly { readonly name: string | null }[] };
     expect(stdinOutput.results.map((result) => result.name)).toEqual(["alpha"]);
 
-    await runSg([
+    await runSearchgres([
       "export",
       dslExportPath,
       "--server",
@@ -524,7 +542,7 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
   }
 
   await expect(
-    runSg([
+    runSearchgres([
       "search",
       "--server",
       server,
@@ -535,7 +553,7 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
     ]),
   ).rejects.toThrow(/cannot be used with option '--tree/);
   await expect(
-    runSg([
+    runSearchgres([
       "search",
       "--server",
       server,
@@ -546,7 +564,13 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
     ]),
   ).rejects.toThrow(/may be specified only once/);
   await expect(
-    runSg(["search", "--server", server, "--filter", "(and (tree filters))"]),
+    runSearchgres([
+      "search",
+      "--server",
+      server,
+      "--filter",
+      "(and (tree filters))",
+    ]),
   ).rejects.toThrow(/Invalid filter expression.*requires at least two/s);
 
   // One per leaf type, each discriminating between the two records: an ltree
@@ -569,13 +593,13 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
 
   // Server-side rules the CLI does not (and should not) duplicate.
   await expect(
-    runSg(["search", "--server", server, "--regexp", "probe"]),
+    runSearchgres(["search", "--server", server, "--regexp", "probe"]),
   ).rejects.toThrow(/indexable filter/);
 
   // A rejected invocation exits non-zero with a single readable line — not a
   // stack trace pointing into the compiled bundle. Only the real binary can
   // show this.
-  const rejection = await runSg([
+  const rejection = await runSearchgres([
     "search",
     "--server",
     server,
@@ -587,7 +611,7 @@ async function assertSearchFilterFlags(server: string): Promise<void> {
   expect(rejection).not.toContain("$bunfs");
 }
 
-test("compiled sg writes through the queue and performs semantic and hybrid search", async () => {
+test("compiled searchgres writes through the queue and performs semantic and hybrid search", async () => {
   const client = createSearchgresClient({ url: new URL("rpc", serverUrl) });
   expect((await client.info()).maxRequestBodyBytes).toBe(1024 * 1024);
   const oversized = await fetch(new URL("rpc", serverUrl), {
@@ -711,7 +735,7 @@ test("compiled sg writes through the queue and performs semantic and hybrid sear
 
 async function assertMcpCommands(): Promise<void> {
   const transport = new StdioClientTransport({
-    command: sgMcp,
+    command: searchgresMcp,
     args: ["--server", serverUrl.toString().replace(/\/$/, "")],
     stderr: "pipe",
   });
@@ -784,7 +808,7 @@ function mcpText(result: Awaited<ReturnType<McpClient["callTool"]>>): unknown {
   return JSON.parse(content.text);
 }
 
-async function runSgServer(
+async function runSearchgresServer(
   args: readonly string[],
   environment: Readonly<Record<string, string>> = {},
 ): Promise<{
@@ -793,7 +817,7 @@ async function runSgServer(
   readonly stderr: string;
 }> {
   const child = Bun.spawn({
-    cmd: [sgServer, ...args],
+    cmd: [searchgresServer, ...args],
     env: { ...process.env, ...environment },
     stdout: "pipe",
     stderr: "pipe",
@@ -806,9 +830,12 @@ async function runSgServer(
   return { exitCode, stdout, stderr };
 }
 
-async function runSg(args: readonly string[], stdin?: string): Promise<string> {
+async function runSearchgres(
+  args: readonly string[],
+  stdin?: string,
+): Promise<string> {
   const process = Bun.spawn({
-    cmd: [sg, ...args],
+    cmd: [searchgres, ...args],
     stdin: stdin === undefined ? undefined : "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -823,7 +850,8 @@ async function runSg(args: readonly string[], stdin?: string): Promise<string> {
     new Response(process.stderr).text(),
     process.exited,
   ]);
-  if (exitCode !== 0) throw new Error(`sg failed (${exitCode}): ${stderr}`);
+  if (exitCode !== 0)
+    throw new Error(`searchgres failed (${exitCode}): ${stderr}`);
   return stdout.trim();
 }
 
@@ -853,7 +881,7 @@ async function waitForReady(url: URL, process: Bun.Subprocess): Promise<void> {
   while (Date.now() < deadline) {
     if (process.exitCode !== null) {
       const stderr = await processStderr(process);
-      throw new Error(`Compiled sg exited before readiness: ${stderr}`);
+      throw new Error(`Compiled searchgres exited before readiness: ${stderr}`);
     }
     try {
       const response = await fetch(new URL("readyz", url));
@@ -866,7 +894,9 @@ async function waitForReady(url: URL, process: Bun.Subprocess): Promise<void> {
     await Bun.sleep(25);
   }
   const stderr = await processStderr(process);
-  throw new Error(`Timed out waiting for compiled sg readiness: ${stderr}`);
+  throw new Error(
+    `Timed out waiting for compiled searchgres readiness: ${stderr}`,
+  );
 }
 
 async function processStderr(process: Bun.Subprocess): Promise<string> {

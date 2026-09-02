@@ -32,12 +32,12 @@ runtimes. Only `@searchgres/server`, `@searchgres/cli`, and `@searchgres/mcp` ma
 | --- | --- |
 | `packages/core` | Runtime-agnostic Postgres search library; published as `searchgres`. |
 | `packages/protocol` | Runtime-neutral Zod RPC contract/OpenRPC source. |
-| `packages/filter` | Private runtime-neutral parser for the `sg` filter-expression DSL. |
+| `packages/filter` | Private runtime-neutral parser for the `searchgres` filter-expression DSL. |
 | `packages/presentation` | Private runtime-neutral record selector/projector shared by CLI and MCP. |
 | `packages/client` | Runtime-agnostic fetch JSON-RPC client. |
-| `packages/server` | Bun server component and the `sg-server` binary: config, RPC service, providers, tokenizer pool, worker lifecycle, provisioning. |
-| `packages/cli` | Bun-only `sg` binary: the unprivileged client, including import/export and its own flag/format helpers. It shares no code with `sg-server`. |
-| `packages/mcp` | Bun-only `sg-mcp` stdio server: twelve agent tools over the remote client. |
+| `packages/server` | Bun server component and the `searchgres-server` binary: config, RPC service, providers, tokenizer pool, worker lifecycle, provisioning. |
+| `packages/cli` | Bun-only `searchgres` binary: the unprivileged client, including import/export and its own flag/format helpers. It shares no code with `searchgres-server`. |
+| `packages/mcp` | Bun-only `searchgres-mcp` stdio server: twelve agent tools over the remote client. |
 
 Dependency direction is intentionally one-way: CLI uses
 client/filter/presentation/protocol; MCP uses client/presentation/protocol;
@@ -104,32 +104,34 @@ There are three, and the split is load-bearing:
 
 | Binary | Package | Commands | Needs |
 | --- | --- | --- | --- |
-| `sg` | `packages/cli` | records, trees, search | `fetch` only |
-| `sg-server` | `packages/server` | `config`, `init`, `serve`, `destroy` | PostgreSQL, core, provider credentials |
-| `sg-mcp` | `packages/mcp` | twelve MCP tools over stdio | `fetch`, MCP SDK |
+| `searchgres` | `packages/cli` | records, trees, search | `fetch` only |
+| `searchgres-server` | `packages/server` | `config`, `init`, `serve`, `destroy` | PostgreSQL, core, provider credentials |
+| `searchgres-mcp` | `packages/mcp` | twelve MCP tools over stdio | `fetch`, MCP SDK |
 
 `bun build --compile` initializes a binary's entire module graph at startup
 whether a command uses it or not — a lazy `import()` does **not** defer it. A
-single binary therefore made every `sg search` pay for postgres, the embedding
-provider, and the prompt library: 68ms versus 20ms for the client alone. Keeping
-that code unreachable from `sg`'s entry point is the only mechanism that works,
-so **do not import `searchgres`, `postgres`, `@searchgres/server`, or
-`@clack/prompts` from `packages/cli/src`.**
+single binary therefore made every `searchgres search` pay for postgres, the
+embedding provider, and the prompt library: 68ms versus 20ms for the client
+alone. Keeping that code unreachable from `searchgres`'s entry point is the only
+mechanism that works, so **do not import `searchgres`, `postgres`,
+`@searchgres/server`, or `@clack/prompts` from `packages/cli/src`.**
 
-**The client binaries never import the server or each other.** `sg-server` owns a
-config file, a `.env`, and database and provider credentials; `sg` knows only a
-server URL (`--server` or `SEARCHGRES_URL`). Each binary package therefore keeps its own shell-facing helpers. Reusable
-runtime-neutral semantics belong in focused packages: selection and projection
-live only in `@searchgres/presentation`. Biome prevents MCP from importing CLI,
-server, core, or postgres and prevents CLI/server coupling.
+**The client binaries never import the server or each other.**
+`searchgres-server` owns a config file, a `.env`, and database and provider
+credentials; `searchgres` knows only a server URL (`--server` or
+`SEARCHGRES_URL`). Each binary package therefore keeps its own shell-facing
+helpers. Reusable runtime-neutral semantics belong in focused packages:
+selection and projection live only in `@searchgres/presentation`. Biome prevents
+MCP from importing CLI, server, core, or postgres and prevents CLI/server
+coupling.
 
 Build all three for the current host:
 
 ```sh
 ./bun run compile
-./packages/cli/dist/sg --help
-./packages/server/dist/sg-server --help
-./packages/mcp/dist/sg-mcp --help
+./dist/searchgres --help
+./dist/searchgres-server --help
+./dist/searchgres-mcp --help
 ```
 
 Build every release target (Linux/Windows/macOS, amd64 and arm64):
@@ -138,10 +140,29 @@ Build every release target (Linux/Windows/macOS, amd64 and arm64):
 ./bun run compile:all
 ```
 
-The root build bundles the tokenizer worker first because `sg-server` embeds it.
-Canonical binaries live at `packages/cli/dist/sg`,
-`packages/server/dist/sg-server`, and `packages/mcp/dist/sg-mcp`; black-box tests
-resolve those paths directly rather than keeping copies.
+These root `dist/` filenames are the release contract consumed by `install.sh`.
+A GitHub release must attach every platform binary plus a sibling
+`<asset>.sha256` containing its SHA-256 digest. The installer downloads and
+verifies all three matching executables before moving any into place. Its local
+HTTP fixture tests run as part of `test:unit`.
+
+On macOS, both commands replace Bun's signature with an ad-hoc signature carrying
+`scripts/macos-entitlements.plist`; `compile:all` does this for both macOS
+architectures before calculating their checksums. This makes local binaries
+immediately runnable and testable. Builds on other operating systems cannot run
+Apple's `codesign`, so the installer retains the same signing step as a fallback
+for downloaded macOS artifacts. To inspect a local build:
+
+```sh
+codesign --verify --strict dist/searchgres
+codesign -d --entitlements :- dist/searchgres
+```
+
+The root build bundles the tokenizer worker first because `searchgres-server`
+embeds it. Package-local `dist/` directories contain compiled JavaScript and
+type declarations; the three native executables live only in the root `dist/`
+directory. Root compile commands clear that directory first so stale platform
+artifacts cannot mask failures.
 
 ## Local setup
 
@@ -149,13 +170,13 @@ Generate a reviewable server config and environment-file template without
 connecting to PostgreSQL or the embedding provider:
 
 ```sh
-./packages/server/dist/sg-server config
+./dist/searchgres-server config
 ```
 
 Or supply explicit noninteractive arguments:
 
 ```sh
-./packages/server/dist/sg-server config \
+./dist/searchgres-server config \
   --config searchgres.yaml \
   --database-url-env SEARCHGRES_DATABASE_URL \
   --schema docs \
@@ -168,8 +189,8 @@ After reviewing the generated files, initialize the configured database schema
 and start the server:
 
 ```sh
-./packages/server/dist/sg-server init --config searchgres.yaml
-./packages/server/dist/sg-server serve --config searchgres.yaml
+./dist/searchgres-server init --config searchgres.yaml
+./dist/searchgres-server serve --config searchgres.yaml
 ```
 
 Use `init --if-not-exists` in idempotent automation. It accepts only an existing
@@ -186,7 +207,7 @@ text on demand.
 
 ## `.env` handling
 
-The interactive `sg-server config` wizard can generate a `.env`, so this
+The interactive `searchgres-server config` wizard can generate a `.env`, so this
 repository owns both halves of the format. There is no dependency for it,
 deliberately:
 
