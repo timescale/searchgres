@@ -1,5 +1,19 @@
 # Install searchgres
 
+For a no-API-key evaluation without installing a package or executable first,
+clone the repository and start the complete local stack:
+
+```bash
+git clone https://github.com/timescale/searchgres.git
+cd searchgres
+docker compose up --build
+```
+
+This evaluation-only path includes PostgreSQL, Ollama, model download,
+provisioning, and the API server. It is separate from installing Searchgres for
+a database and embedding provider you manage. See
+[Evaluate with Docker Compose](guides/docker-compose.md).
+
 ## Compiled executables
 
 Install the latest release of `searchgres`, `searchgres-server`, and
@@ -80,10 +94,12 @@ If your database restricts extension creation, pre-install the three extensions
 in `public` as a superuser; `createIndex()` then only needs schema/object
 creation rights.
 
-## Local setup with Docker
+## Database-only setup with Docker
 
 The repository includes a Dockerfile that builds PostgreSQL 18 with all three
-extensions and the required preload configuration.
+extensions and the required preload configuration. Use this path when you want
+to manage the Searchgres library/server and embedding provider yourself rather
+than running the evaluation stack above.
 
 ```bash
 # Build the image

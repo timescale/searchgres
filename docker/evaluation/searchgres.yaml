@@ -1,0 +1,25 @@
+# Evaluation-only configuration shared by the provision and server containers.
+# The model is pulled by compose.yaml; keep both model names in sync.
+version: 1
+server:
+  listen:
+    host: 0.0.0.0
+    port: 3000
+  maxRequestBodyBytes: 1048576
+database:
+  urlEnv: SEARCHGRES_DATABASE_URL
+index:
+  schema: searchgres
+  dimensions: 768
+  vectorType: halfvec
+  embedding:
+    provider: openai-compatible
+    model: nomic-embed-text
+    baseUrl: http://ollama:11434/v1
+  truncate:
+    kind: tokens
+    tokenizer: nomic-embed-text-v1.5
+    maxTokens: 8192
+  worker:
+    interval: 1s
+    batchSize: 100

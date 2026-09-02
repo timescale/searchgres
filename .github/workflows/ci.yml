@@ -23,6 +23,15 @@ jobs:
       - run: ./bun run check:filter-grammar
       - run: ./bun run typecheck
       - run: ./bun run lint
+      - run: docker compose config --quiet
+
+  docker-server:
+    name: Clean server image build
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -f docker/Dockerfile.server .
 
   test:
     name: Unit tests (node ${{ matrix.node }})

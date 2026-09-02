@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+dist
+**/dist
+download
+.env
+.env.*
+coverage
+*.log
+packages/server/src/tokenizer.worker.generated.cjs
+
+# The evaluation config is intentionally part of the clean server build context.
+!docker/evaluation/searchgres.yaml

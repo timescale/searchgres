@@ -14,17 +14,23 @@ RUN bun install --frozen-lockfile
 COPY . .
 # The scripts invoke bun as ./bun (or ../../bun), which downloads the pinned
 # version. This image already *is* that version, so shim those paths to the
-# image's bun and skip a redundant ~100MB download per build.
+# image's bun and skip a redundant ~100MB download per build. Build every
+# workspace from the clean context first, then compile only the two executables
+# the evaluation image needs; searchgres-mcp remains a separate distribution.
 RUN printf '#!/bin/sh\nexec bun "$@"\n' > ./bun \
   && chmod +x ./bun \
-  && bun run compile
+  && bun run build \
+  && rm -rf dist \
+  && mkdir -p dist \
+  && bun run --filter @searchgres/cli compile \
+  && bun run --filter @searchgres/server compile
 
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-# Both binaries: searchgres-server provisions and serves; searchgres is the
-# client. They remain separate artifacts so ordinary client commands carry no
-# database driver or provider code.
+# Only the two evaluation binaries: searchgres-server provisions and serves;
+# searchgres is the demo client and health-check executable. The final image has
+# no source tree, package manager, build dependencies, or provider credentials.
 COPY --from=build /app/dist/searchgres /usr/local/bin/searchgres
 COPY --from=build /app/dist/searchgres-server /usr/local/bin/searchgres-server
 ENTRYPOINT ["searchgres-server"]

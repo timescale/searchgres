@@ -38,6 +38,25 @@ search, and rank fusion — all executed in Postgres, filtered by the same query
 A Dockerfile that builds PostgreSQL 18 with all three extensions is included for
 local development. See [Install searchgres](docs/installation.md).
 
+## Evaluate locally with no API key
+
+The repository includes an evaluation-only stack with PostgreSQL, Ollama,
+automatic `nomic-embed-text` download, strict index provisioning, and the API
+server:
+
+```bash
+git clone https://github.com/timescale/searchgres.git
+cd searchgres
+docker compose up --build
+```
+
+When `server` is healthy, Searchgres is available at
+`http://127.0.0.1:3000`. The first run downloads several gigabytes of images and
+may take a few minutes. No generated config, provider account, or API key is
+needed. See [Evaluate with Docker Compose](docs/guides/docker-compose.md) for
+sample commands, restart/reset behavior, and the evaluation-only security
+boundary.
+
 ## Install
 
 Install the latest release of all three compiled executables:
@@ -133,6 +152,7 @@ See the [MCP server guide](docs/mcp/index.md).
 - [Search and filter](docs/guides/search.md)
 - [Manage records and trees](docs/guides/records-and-trees.md)
 - [Configure and run the API server](docs/guides/server.md)
+- [Evaluate with Docker Compose](docs/guides/docker-compose.md)
 - [Run in production](docs/guides/production.md)
 - [Use the MCP server](docs/mcp/index.md)
 - [API reference](docs/reference/api.md) ·

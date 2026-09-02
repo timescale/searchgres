@@ -12,8 +12,10 @@ in a few minutes.
 
 1. **[Get started](getting-started.md)** — from an empty database to your first
    semantic and hybrid results.
-2. **[Install searchgres](installation.md)** — prerequisites, PostgreSQL, the
-   required extensions, and a local Docker setup.
+2. **[Install searchgres](installation.md)** — executables, packages,
+   prerequisites, and PostgreSQL setup.
+3. **[Evaluate with Docker Compose](guides/docker-compose.md)** — run PostgreSQL,
+   Ollama, provisioning, and the API server with one command and no API key.
 
 ## Guides
 
@@ -29,6 +31,8 @@ in a few minutes.
   delete, subtree operations, and transactions.
 - **[Configure and run the API server](guides/server.md)** — generate files
   offline, initialize PostgreSQL, serve, and use strict idempotent provisioning.
+- **[Evaluate with Docker Compose](guides/docker-compose.md)** — start the
+  five-service local demo, use it, restart it, and reset its persistent state.
 - **[Run in production](guides/production.md)** — deployment, pooling, worker
   operations, monitoring, and reindex cutovers.
 - **[Use the MCP server](mcp/index.md)** — run `searchgres-mcp` over stdio and understand

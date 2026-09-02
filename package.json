@@ -22,6 +22,8 @@
     "test:db": "./bun run compile && ./bun run --filter searchgres test:db && ./bun run --filter @searchgres/server test:db",
     "generate:filter-grammar": "./bun scripts/filter-grammar.ts",
     "check:filter-grammar": "./bun scripts/filter-grammar.ts --check",
+    "check:compose": "docker compose config --quiet && ./bun test ./scripts/compose.test.ts",
+    "test:compose": "./bun scripts/compose-smoke.ts",
     "check": "./bun run check:filter-grammar && ./bun run typecheck && ./bun run lint && ./bun run test:unit",
     "check:full": "./bun run check && ./bun scripts/with-postgres.ts ./bun run test:db",
     "pg:build": "docker build -t searchgres-postgres -f docker/Dockerfile.postgres docker/",

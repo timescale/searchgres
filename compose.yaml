@@ -1,9 +1,28 @@
+# Evaluation/local-demo stack — not a production deployment.
+#
+# First run: docker compose up --build
+# Restart while preserving PostgreSQL and the downloaded model: docker compose down && docker compose up
+# Full reset: docker compose down -v
+#
+# PostgreSQL trust authentication, a privileged database role, an unauthenticated
+# Searchgres API, and CPU-only Ollama are deliberate evaluation conveniences.
+# Only the API is published, and only on host loopback. Production deployments
+# need managed credentials, TLS/network policy, backups, resource limits,
+# observability, and an independently operated embedding provider.
+
+x-ollama-image: &ollama-image ollama/ollama:0.15.4 # Publishes amd64/arm64; upstream MIT license.
+x-ollama-model: &ollama-model nomic-embed-text
+x-searchgres-image: &searchgres-image searchgres-evaluation-server
+x-searchgres-config: &searchgres-config ./docker/evaluation/searchgres.yaml:/config/searchgres.yaml:ro
+x-database-url: &database-url postgresql://postgres@db:5432/postgres
+
 services:
   db:
     build:
       context: ./docker
       dockerfile: Dockerfile.postgres
     environment:
+      # Evaluation only: never expose this trust-authenticated database network.
       POSTGRES_HOST_AUTH_METHOD: trust
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
@@ -11,28 +30,33 @@ services:
       timeout: 3s
       retries: 30
     volumes:
-      - searchgres-db:/var/lib/postgresql/data
+      # PostgreSQL 18 stores versioned data below this parent mount.
+      - searchgres-db:/var/lib/postgresql
 
-  server:
-    profiles: ["server"]
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.server
-    depends_on:
-      db:
-        condition: service_healthy
-    env_file:
-      - path: ./.env
-        required: false
+  ollama:
+    image: *ollama-image
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
     volumes:
-      - ./searchgres.yaml:/config/searchgres.yaml:ro
-    ports:
-      - "127.0.0.1:3000:3000"
+      - searchgres-ollama:/root/.ollama
 
-  # Provisioning runs searchgres-server (it needs the database and the core library);
-  # the client image also carries `searchgres` for ad-hoc record and search commands.
-  cli:
-    profiles: ["tools"]
+  model-pull:
+    image: *ollama-image
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: *ollama-model
+    command: ["pull", *ollama-model]
+    volumes:
+      - searchgres-ollama:/root/.ollama
+
+  provision:
+    image: *searchgres-image
     build:
       context: .
       dockerfile: docker/Dockerfile.server
@@ -40,14 +64,57 @@ services:
       db:
         condition: service_healthy
     environment:
-      SEARCHGRES_DATABASE_URL: postgresql://postgres@db:5432/postgres
-    env_file:
-      - path: ./.env
-        required: false
+      SEARCHGRES_DATABASE_URL: *database-url
+    command:
+      - init
+      - --config
+      - /config/searchgres.yaml
+      - --no-env-file
+      - --if-not-exists
     volumes:
-      - .:/workspace
-    working_dir: /workspace
-    entrypoint: ["searchgres-server"]
+      - *searchgres-config
+
+  server:
+    # Both Searchgres services declare the same tagged build so a clean checkout
+    # never tries to pull this local-only image. BuildKit deduplicates it, and
+    # classic builders reuse the completed layers.
+    image: *searchgres-image
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      model-pull:
+        condition: service_completed_successfully
+      provision:
+        condition: service_completed_successfully
+    environment:
+      SEARCHGRES_DATABASE_URL: *database-url
+    command:
+      - serve
+      - --config
+      - /config/searchgres.yaml
+      - --no-env-file
+    healthcheck:
+      test:
+        - CMD
+        - searchgres
+        - --server
+        - http://127.0.0.1:3000
+        - info
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    volumes:
+      - *searchgres-config
 
 volumes:
   searchgres-db:
+  searchgres-ollama:

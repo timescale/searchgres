@@ -4,6 +4,7 @@
 
 - Node 22.18+ for the Node compatibility tests
 - Docker, for PostgreSQL integration tests and Compose development
+- Docker Compose 2.20.0+, for the evaluation stack and its dependency conditions
 
 Bun is not a prerequisite. `./bun` is a wrapper that downloads the pinned Bun
 into the git-ignored `download/` directory on first use and execs it, so every
@@ -213,11 +214,11 @@ deliberately:
 
 - `dotenv` has no writer, so the half where mistakes are costly would stay ours.
 - The dialects disagree on the cases that matter. `dotenv` reads `#` as starting
-  a comment and truncates there; Docker Compose's `env_file` — our other
-  consumer, via `compose.yaml` — takes every character literally and does **not**
-  strip quotes.
+  a comment and truncates there; common deployment consumers such as Docker
+  Compose's `env_file` take every character literally and do **not** strip
+  quotes.
 
-Because quoting cannot satisfy both (`K="v"` reaches a Compose-deployed server
+Because quoting cannot satisfy both (`K="v"` can reach a Compose-deployed server
 with literal quotes), `dotenvLine` writes only values that all three readers
 agree on and rejects the rest with a message pointing at the environment
 variable instead. Rejected: line breaks, `#`, and leading or trailing
@@ -236,29 +237,43 @@ because one-command setup is worth it, which is why the validation exists.
 
 ## Docker Compose
 
-The current `compose.yaml` still uses profiles until the evaluation-stack
-redesign lands. Generate files first, then initialize from the reviewed config:
+Start the complete evaluation stack—PostgreSQL, Ollama, model pull, strict
+provisioning, and the server—with:
 
 ```sh
-# 1. Start PostgreSQL.
-docker compose up -d db
-
-# 2. Generate config locally through the tools image. Choose host 0.0.0.0.
-docker compose --profile tools run --rm cli config
-
-# 3. Initialize that exact config in PostgreSQL.
-docker compose --profile tools run --rm cli init \
-  --config searchgres.yaml --if-not-exists
-
-# 4. Start the server.
-docker compose --profile server up -d server
+docker compose up --build
 ```
 
-The tools container defaults `SEARCHGRES_DATABASE_URL` to
-`postgresql://postgres@db:5432/postgres`. This profile-based workflow is an
-interim development path; the planned evaluation Compose stack will replace it
-with a checked-in config, local Ollama model, and ordinary one-command
-`docker compose up`.
+The checked-in `docker/evaluation/searchgres.yaml` is mounted read-only into both
+provisioning and serving. No generated config, root `.env`, provider account, or
+API key is required. State survives `docker compose down`; use
+`docker compose down -v` for an explicit reset. The API is published only at
+`127.0.0.1:3000`, while PostgreSQL and Ollama have no host ports.
+
+Start only PostgreSQL for database development with:
+
+```sh
+docker compose up -d db
+docker compose exec db psql -U postgres -d postgres
+```
+
+Cheap deterministic topology checks run in `test:unit`; CI also runs
+`docker compose config --quiet` and builds the server image from the clean
+`.dockerignore` context. The real-model smoke test is opt-in because Ollama's
+image and model are large:
+
+```sh
+./bun run check:compose
+./bun run test:compose
+```
+
+The smoke script owns a unique Compose project and always removes its volumes.
+It tests semantic, BM25, and hybrid retrieval plus preserved-state restart and
+idempotent provisioning. Run the manual **Evaluation Compose smoke** GitHub
+Actions workflow as the Linux amd64 gate before releases and after stack/model
+changes. See
+[the evaluation guide](docs/guides/docker-compose.md) for operating and security
+caveats.
 
 ## Generated files
 

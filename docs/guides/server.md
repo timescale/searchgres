@@ -1,5 +1,10 @@
 # Configure and run the API server
 
+> Looking for a no-API-key local demo? The checked-in
+> [Docker Compose evaluation stack](docker-compose.md) configures PostgreSQL,
+> Ollama, provisioning, and this server automatically. This guide covers
+> managing your own server configuration and provider.
+
 `searchgres-server` is the privileged Searchgres process. It owns the PostgreSQL
 connection, embedding-provider configuration, index provisioning, background
 embedding worker, and HTTP API. The `searchgres` and `searchgres-mcp` clients never read these
