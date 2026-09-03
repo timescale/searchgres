@@ -86,9 +86,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p npm-tarballs
-          ./bun pm pack --cwd packages/core --destination "$PWD/npm-tarballs"
-          test -f "npm-tarballs/searchgres-${{ steps.version.outputs.version }}.tgz"
+          tarball_dir="$RUNNER_TEMP/npm-tarballs"
+          mkdir -p "$tarball_dir"
+          ./bun pm pack --cwd packages/core --destination "$tarball_dir"
+          test -f "$tarball_dir/searchgres-${{ steps.version.outputs.version }}.tgz"
           test -z "$(git status --porcelain)" || {
             echo "Packing left the checkout dirty" >&2
             git status --short >&2
@@ -100,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
-          tarball="$GITHUB_WORKSPACE/npm-tarballs/searchgres-${version}.tgz"
+          tarball="$RUNNER_TEMP/npm-tarballs/searchgres-${version}.tgz"
           package_dir="$RUNNER_TEMP/searchgres-package"
           consumer_dir="$RUNNER_TEMP/searchgres-consumer"
           mkdir -p "$package_dir" "$consumer_dir"
@@ -164,7 +165,7 @@ jobs:
             echo "searchgres@${version} is already published; skipping"
             exit 0
           fi
-          npm publish --access public --provenance "./npm-tarballs/searchgres-${version}.tgz"
+          npm publish --access public --provenance "$RUNNER_TEMP/npm-tarballs/searchgres-${version}.tgz"
 
       - name: Publish core package with npm trusted publishing
         if: steps.npm-auth.outputs.bootstrap == 'false'
@@ -178,4 +179,4 @@ jobs:
             echo "searchgres@${version} is already published; skipping"
             exit 0
           fi
-          npm publish --access public --provenance "./npm-tarballs/searchgres-${version}.tgz"
+          npm publish --access public --provenance "$RUNNER_TEMP/npm-tarballs/searchgres-${version}.tgz"
