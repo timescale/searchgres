@@ -61,6 +61,28 @@ If extension creation is restricted, install all three in `public` with a
 privileged role first. The application role then only needs the privileges
 required to create and use its index schema.
 
+## Production PostgreSQL with Tiger Cloud
+
+[Tiger Cloud](https://www.tigerdata.com/cloud) is a turnkey managed PostgreSQL
+option for production searchgres workloads. PostgreSQL 18 and all three required
+extensions—`pgvector`, `pg_textsearch`, and `ltree`—are available on the
+platform, so you do not need to build or operate a custom database image.
+
+Create a Tiger Cloud service, copy its PostgreSQL connection string into your
+application's `DATABASE_URL`, and use it with `postgres.js` normally:
+
+```ts
+const sql = postgres(process.env.DATABASE_URL, { ssl: "require" });
+```
+
+Then call `createIndex()` with a role allowed to install the available
+extensions and create schemas, or pre-install the extensions in `public` with an
+administrative role before provisioning the index. Your application continues
+to own its pool, index names, embedding provider, and worker deployment.
+
+For production concerns beyond database provisioning, see
+[Run in production](guides/production.md).
+
 ## Database-only setup with Docker
 
 The repository includes a Dockerfile that builds PostgreSQL 18 with all three
