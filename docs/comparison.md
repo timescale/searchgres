@@ -25,20 +25,46 @@ retrieval engine yourself.
 
 ## Compared with a vector database
 
-A vector database can be attractive when you want a hosted service, enormous
-specialized vector scale, or no PostgreSQL operations. searchgres instead keeps
-lexical, vector, and structured retrieval in PostgreSQL.
+Vector databases are optimized for nearest-neighbor search and can out-scale
+searchgres when the central problem is searching an enormous vector collection.
+But vector scale is only one axis of a search system, and many applications do
+not need billions of vectors. They need more ways to express relevance.
 
-That means:
+A vector database primarily answers “which embeddings are closest?” searchgres
+makes vectors one part of a broader retrieval model:
+
+- BM25 finds exact terms, identifiers, and phrases that semantic similarity can
+  miss;
+- RRF combines lexical and semantic rankings without mixing incompatible score
+  scales;
+- hierarchy, JSON metadata, represented time, and regex constrain both ranking
+  paths in the same query;
+- filter-only search supports browsing and synchronization without inventing a
+  vector query.
+
+For many application and RAG workloads, that flexibility can matter more to
+search quality than specialized vector scale. The benchmark architecture behind
+searchgres used this combination to produce strong retrieval with a deliberately
+simple data model.
+
+The operational substrate is also a major difference. PostgreSQL is a mature,
+popular relational database with real SQL and a widely understood ecosystem for
+transactions, backups, replication, monitoring, access control, and incident
+response. With searchgres you get:
 
 - one transactional database and backup system;
 - no synchronization between relational and vector stores;
-- PostgreSQL hierarchy, JSON, and temporal semantics;
-- direct SQL access;
-- deployment and provider control.
+- direct SQL access to ordinary records and schema-local routines;
+- PostgreSQL's hierarchy, JSON, and temporal types and indexes;
+- deployment, provider, and data ownership.
 
-The tradeoff is that searchgres requires PostgreSQL 18 with `pgvector`,
-`pg_textsearch`, and `ltree` available in `public`.
+Choose a specialized vector database when extreme vector scale is the dominant
+requirement. Choose searchgres when you want excellent hybrid and structured
+retrieval, SQL, and familiar PostgreSQL operations—and your workload fits on
+Postgres.
+
+searchgres requires PostgreSQL 18 with `pgvector`, `pg_textsearch`, and `ltree`
+available in `public`.
 
 ## Compared with a hosted search service
 
