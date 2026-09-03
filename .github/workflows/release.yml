@@ -1,0 +1,181 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-core:
+    name: Publish searchgres to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # npm trusted publishing exchanges GitHub's OIDC identity for a short-lived
+      # publish credential and uses the same identity for provenance.
+      id-token: write
+
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify release tag is on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must have vX.Y.Z format: $tag" >&2
+            exit 1
+          fi
+
+          git fetch origin main
+          commit="$(git rev-list -n 1 "$tag")"
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "Release tag $tag does not point to a commit on main" >&2
+            exit 1
+          fi
+
+      - name: Set up Node and npm registry
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      # npm trusted publishing requires npm >=11.5.1. Stay on npm 11 because
+      # npm 12.0.0 regressed provenance by failing to resolve sigstore.
+      - name: Install npm 11
+        run: npm install --global 'npm@^11.5.1'
+
+      - name: Install dependencies
+        run: ./bun install --frozen-lockfile
+
+      - name: Verify package version matches tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./packages/core/package.json').version")"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$package_version" != "$tag_version" ]; then
+            echo "packages/core/package.json version ($package_version) does not match tag ($tag_version)" >&2
+            exit 1
+          fi
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
+
+      - name: Check source
+        run: ./bun run check
+
+      - name: Build core
+        run: ./bun run --filter searchgres build
+
+      # Bun's pack command runs the package prepack/postpack hooks, including
+      # staging the root README, LICENSE, and NOTICE into the tarball. npm owns
+      # the upload so trusted publishing and provenance remain available.
+      - name: Pack core tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p npm-tarballs
+          ./bun pm pack --cwd packages/core --destination "$PWD/npm-tarballs"
+          test -f "npm-tarballs/searchgres-${{ steps.version.outputs.version }}.tgz"
+          test -z "$(git status --porcelain)" || {
+            echo "Packing left the checkout dirty" >&2
+            git status --short >&2
+            exit 1
+          }
+
+      - name: Verify packed package as a consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          tarball="$GITHUB_WORKSPACE/npm-tarballs/searchgres-${version}.tgz"
+          package_dir="$RUNNER_TEMP/searchgres-package"
+          consumer_dir="$RUNNER_TEMP/searchgres-consumer"
+          mkdir -p "$package_dir" "$consumer_dir"
+          tar -xzf "$tarball" -C "$package_dir"
+
+          node - "$package_dir/package/package.json" "$version" <<'NODE'
+          const manifest = require(process.argv[2]);
+          const expectedVersion = process.argv[3];
+          if (manifest.name !== "searchgres") throw new Error(`unexpected package name: ${manifest.name}`);
+          if (manifest.version !== expectedVersion) throw new Error(`unexpected package version: ${manifest.version}`);
+          if (manifest.private === true) throw new Error("packed package is private");
+          NODE
+
+          for file in README.md LICENSE NOTICE dist/index.js dist/index.d.ts; do
+            test -s "$package_dir/package/$file" || {
+              echo "Missing from packed package: $file" >&2
+              exit 1
+            }
+          done
+          if find "$package_dir/package/dist" -type f \( \( -name '*.ts' ! -name '*.d.ts' \) -o -name '*.test.*' \) | grep -q .; then
+            echo "Packed dist contains TypeScript source or tests" >&2
+            exit 1
+          fi
+
+          cd "$consumer_dir"
+          npm init -y >/dev/null
+          npm install --ignore-scripts "$tarball"
+          node --input-type=module - "$version" <<'NODE'
+          const expectedVersion = process.argv[2];
+          const library = await import("searchgres");
+          if (library.LIBRARY_VERSION !== expectedVersion) {
+            throw new Error(`library version ${library.LIBRARY_VERSION} does not match ${expectedVersion}`);
+          }
+          NODE
+
+      # `searchgres` does not exist on npm yet. Detect the bootstrap secret
+      # without exposing it to dependency installation, builds, or tests.
+      - name: Select npm authentication mode
+        id: npm-auth
+        shell: bash
+        env:
+          BOOTSTRAP_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$BOOTSTRAP_TOKEN" ]; then
+            echo "bootstrap=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bootstrap=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish core package with bootstrap token
+        if: steps.npm-auth.outputs.bootstrap == 'true'
+        shell: bash
+        # Use this path for the first release only. Once the package exists,
+        # configure npm trusted publishing and remove the repository secret.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          if npm view "searchgres@${version}" version >/dev/null 2>&1; then
+            echo "searchgres@${version} is already published; skipping"
+            exit 0
+          fi
+          npm publish --access public --provenance "./npm-tarballs/searchgres-${version}.tgz"
+
+      - name: Publish core package with npm trusted publishing
+        if: steps.npm-auth.outputs.bootstrap == 'false'
+        shell: bash
+        # No NODE_AUTH_TOKEN is present: npm exchanges the workflow's GitHub
+        # OIDC identity for a short-lived publish credential.
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          if npm view "searchgres@${version}" version >/dev/null 2>&1; then
+            echo "searchgres@${version} is already published; skipping"
+            exit 0
+          fi
+          npm publish --access public --provenance "./npm-tarballs/searchgres-${version}.tgz"

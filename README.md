@@ -1,12 +1,12 @@
 # searchgres
 
+[![npm version](https://img.shields.io/npm/v/searchgres.svg)](https://www.npmjs.com/package/searchgres)
+[![CI](https://github.com/timescale/searchgres/actions/workflows/ci.yml/badge.svg)](https://github.com/timescale/searchgres/actions/workflows/ci.yml)
+[![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/timescale/searchgres/blob/main/LICENSE)
+
 Postgres-native search for TypeScript. Semantic (vector), keyword (BM25), and
 hybrid retrieval — with composable hierarchy, metadata, temporal, and regex
 filters — over a PostgreSQL database you own and run.
-
-> **Status: pre-release, under active development.** The core library, API
-> server, client, CLI, and stdio MCP server are implemented. Expect breaking
-> changes until `1.0`.
 
 ## Why searchgres
 
@@ -19,14 +19,15 @@ search, and rank fusion — all executed in Postgres, filtered by the same query
   arms you pass.
 - **Filters that compose** — scope by tree path, JSONB metadata (containment or
   JSONPath), a time range, or a regex, combined with `and`/`or`/`not`.
-- **Bring your own embedding model** — any [AI SDK](https://sdk.vercel.ai)
+- **Bring your own embedding model** — any [AI SDK](https://ai-sdk.dev)
   provider or a custom implementation. searchgres never touches your credentials.
 - **Your database, your connection** — you pass a
   [`postgres.js`](https://github.com/porsager/postgres) pool; the library never
   opens or closes it.
 - **Async embedding built in** — writes are fast; records become semantically
   searchable as a queue is drained, by an in-process worker or on demand.
-- **Runs anywhere JavaScript does** — Node, Bun, and Deno.
+- **Cross-runtime core** — the same published package runs on Node, Bun, and
+  Deno.
 
 ## Requirements
 
@@ -36,7 +37,8 @@ search, and rank fusion — all executed in Postgres, filtered by the same query
 - **Node ≥ 22**, **Bun ≥ 1.4**, or **Deno ≥ 2.0**.
 
 A Dockerfile that builds PostgreSQL 18 with all three extensions is included for
-local development. See [Install searchgres](docs/installation.md).
+local development. See
+[Install searchgres](https://github.com/timescale/searchgres/blob/main/docs/installation.md).
 
 ## Evaluate locally with no API key
 
@@ -53,8 +55,9 @@ docker compose up --build
 When `server` is healthy, Searchgres is available at
 `http://127.0.0.1:3000`. The first run downloads several gigabytes of images and
 may take a few minutes. No generated config, provider account, or API key is
-needed. See [Evaluate with Docker Compose](docs/guides/docker-compose.md) for
-sample commands, restart/reset behavior, and the evaluation-only security
+needed. See the
+[Docker Compose evaluation guide](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)
+for sample commands, restart/reset behavior, and the evaluation-only security
 boundary.
 
 ### Evaluation performance
@@ -88,6 +91,21 @@ context limit.
 
 ## Install
 
+### TypeScript library
+
+Install the runtime-agnostic core, PostgreSQL driver, and the AI SDK provider of
+your choice:
+
+```bash
+npm install searchgres postgres @ai-sdk/openai
+```
+
+`searchgres` is compiled ESM with type declarations and supports Node, Bun, and
+Deno. It includes no native addon, postinstall script, provider credentials, or
+Bun-only runtime dependency.
+
+### Compiled tools
+
 Install the latest release of all three compiled executables:
 
 ```bash
@@ -99,12 +117,6 @@ The installer downloads `searchgres`, `searchgres-server`, and
 checksum. It installs into `~/.local/bin` when that directory or its parent
 exists, otherwise `~/bin`. Set `SEARCHGRES_INSTALL_DIR` to choose another
 location.
-
-For the runtime-agnostic TypeScript library:
-
-```bash
-npm install searchgres postgres @ai-sdk/openai   # or any AI SDK provider
-```
 
 ## Quick start
 
@@ -144,7 +156,8 @@ for (const hit of hits) console.log(hit.score, hit.tree, hit.content);
 await sql.end();
 ```
 
-Full walkthrough: **[Get started](docs/getting-started.md)**.
+Full walkthrough:
+**[Get started](https://github.com/timescale/searchgres/blob/main/docs/getting-started.md)**.
 
 ## Product surfaces
 
@@ -152,8 +165,9 @@ Compiled binaries layer remote workflows over the same core:
 
 - `searchgres-server` provisions and serves one configured index.
 - `searchgres` provides records, trees, import/export, and search over HTTP.
-- `searchgres-mcp` exposes twelve MCP tools over stdio. It talks only to `searchgres-server`,
-  registers all tools by default, and accepts `--read-only` to omit mutations.
+- `searchgres-mcp` exposes twelve MCP tools over stdio. It talks only to
+  `searchgres-server`, registers all tools by default, and accepts `--read-only`
+  to omit mutations.
 
 Generate server files offline, review them, and then initialize PostgreSQL:
 
@@ -165,32 +179,34 @@ searchgres-server serve --config searchgres.yaml
 
 Use `init --if-not-exists` for strict idempotent provisioning: an existing index
 is accepted only when it is a valid, shape-compatible Searchgres index. See the
-[API server guide](docs/guides/server.md).
+[API server guide](https://github.com/timescale/searchgres/blob/main/docs/guides/server.md).
 
 The MCP binary requires only `--server <url>` or `SEARCHGRES_URL`; it does not
 read server config, dotenv, database credentials, or local import/export files.
-See the [MCP server guide](docs/mcp/index.md).
+See the
+[MCP server guide](https://github.com/timescale/searchgres/blob/main/docs/mcp/index.md).
 
 ## Documentation
 
-- [Get started](docs/getting-started.md)
-- [Install searchgres](docs/installation.md)
-- [Create and manage indexes](docs/guides/indexes.md)
-- [Ingest records](docs/guides/ingest.md)
-- [Generate embeddings](docs/guides/embeddings.md)
-- [Search and filter](docs/guides/search.md)
-- [Manage records and trees](docs/guides/records-and-trees.md)
-- [Configure and run the API server](docs/guides/server.md)
-- [Evaluate with Docker Compose](docs/guides/docker-compose.md)
-- [Run in production](docs/guides/production.md)
-- [Use the MCP server](docs/mcp/index.md)
-- [API reference](docs/reference/api.md) ·
-  [Errors](docs/reference/errors.md) ·
-  [Direct SQL](docs/reference/sql.md)
+- [Get started](https://github.com/timescale/searchgres/blob/main/docs/getting-started.md)
+- [Install searchgres](https://github.com/timescale/searchgres/blob/main/docs/installation.md)
+- [Create and manage indexes](https://github.com/timescale/searchgres/blob/main/docs/guides/indexes.md)
+- [Ingest records](https://github.com/timescale/searchgres/blob/main/docs/guides/ingest.md)
+- [Generate embeddings](https://github.com/timescale/searchgres/blob/main/docs/guides/embeddings.md)
+- [Search and filter](https://github.com/timescale/searchgres/blob/main/docs/guides/search.md)
+- [Manage records and trees](https://github.com/timescale/searchgres/blob/main/docs/guides/records-and-trees.md)
+- [Configure and run the API server](https://github.com/timescale/searchgres/blob/main/docs/guides/server.md)
+- [Evaluate with Docker Compose](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)
+- [Run in production](https://github.com/timescale/searchgres/blob/main/docs/guides/production.md)
+- [Use the MCP server](https://github.com/timescale/searchgres/blob/main/docs/mcp/index.md)
+- [API reference](https://github.com/timescale/searchgres/blob/main/docs/reference/api.md) ·
+  [Errors](https://github.com/timescale/searchgres/blob/main/docs/reference/errors.md) ·
+  [Direct SQL](https://github.com/timescale/searchgres/blob/main/docs/reference/sql.md)
 
 ## License
 
-[Apache 2.0](LICENSE)
+[Apache 2.0](https://github.com/timescale/searchgres/blob/main/LICENSE)
 
 searchgres is derived from the search engine core of
-[Memory Engine](https://github.com/timescale/memory-engine). See [NOTICE](NOTICE).
+[Memory Engine](https://github.com/timescale/memory-engine). See the
+[NOTICE](https://github.com/timescale/searchgres/blob/main/NOTICE).

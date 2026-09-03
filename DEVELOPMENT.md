@@ -99,6 +99,51 @@ spelled out rather than using `--filter '*'`. `--filter '*'` respects dependency
 *order* but does not stop dependents when a dependency's script fails, turning
 one real error into a cascade of misleading ones.
 
+## Publishing the core package
+
+`packages/core` is the unscoped npm package `searchgres`. A push of a stable
+`vX.Y.Z` tag starts `.github/workflows/release.yml`; the workflow accepts only a
+tag whose commit is on `main` and whose version exactly matches
+`packages/core/package.json`. It runs the normal source checks, builds and packs
+the core, installs the tarball into a scratch consumer, verifies its public
+entry point and legal files, then publishes it with npm provenance.
+
+Releases are hand-versioned. Before tagging:
+
+1. Update `packages/core/package.json` and `packages/core/src/version.ts` to the
+   same version.
+2. Update `CHANGELOG.md`.
+3. Run `./bun run check:full`, commit the release changes, and merge them to
+   `main`.
+4. Tag that exact commit and push the tag:
+
+   ```sh
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+Do not move or reuse a published version tag. npm versions are immutable; a
+workflow rerun safely skips publication if that exact version already exists.
+
+The `searchgres` name is initially unclaimed, and npm cannot attach a trusted
+publisher to a package before its first publication. For the first release,
+create a short-lived granular npm publish token and add it as the repository
+Actions secret `NPM_TOKEN`. The workflow still requests GitHub's OIDC identity
+and passes `--provenance`, so the first tarball receives a provenance
+attestation. Afterward, configure the package on npm with this trusted
+publisher:
+
+- provider: **GitHub Actions**
+- organization: **timescale**
+- repository: **searchgres**
+- workflow: **release.yml**
+- environment: leave empty
+
+Then delete the `NPM_TOKEN` repository secret and revoke the bootstrap token.
+Future tags publish with short-lived npm credentials obtained through OIDC; no
+long-lived npm secret is needed. npm trusted publishing is workflow-filename
+sensitive, so coordinate any rename of `release.yml` with the package setting.
+
 ## Building the binaries
 
 There are three, and the split is load-bearing:
