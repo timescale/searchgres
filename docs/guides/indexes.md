@@ -1,8 +1,10 @@
 # Create and manage indexes
 
-An index is a single PostgreSQL schema holding your records and their search
-indexes. You choose its name and your application tracks it — searchgres keeps no
-registry and offers no discovery.
+An index is a single PostgreSQL schema holding your records, search indexes,
+queue, triggers, and SQL routines. You choose its name and your application
+tracks it—searchgres keeps no registry and offers no discovery. See
+[Architecture and responsibilities](../concepts/architecture.md) for the full
+boundary.
 
 ## Choose your index shape
 

@@ -1,7 +1,9 @@
 # Get started
 
-This guide takes you from an empty PostgreSQL database to working semantic and
-hybrid search. It should take a few minutes.
+This guide takes you from an empty PostgreSQL database to working semantic,
+keyword, and hybrid search with the core TypeScript library. It should take a
+few minutes. To evaluate the optional server without writing code instead, use
+the [Docker Compose guide](guides/docker-compose.md).
 
 You will:
 
@@ -161,10 +163,14 @@ await sql.end();
 
 ## What next?
 
+- [How search works](concepts/how-search-works.md) — BM25, vectors, RRF,
+  filters, scores, and candidate windows.
+- [Model records](concepts/record-model.md) — chunking, hierarchy, metadata,
+  temporal values, and derived records.
 - [Search and filter](guides/search.md) — scope searches by tree, metadata,
   time, and regex.
-- [Ingest records](guides/ingest.md) — idempotent upserts, named records, and
-  batches.
+- [Build a RAG retriever](guides/rag.md) — add trusted scope and format records
+  as model context.
 - [Generate embeddings](guides/embeddings.md) — run a continuous worker and
   monitor the queue.
 - [Run in production](guides/production.md) — deployment and operations.
