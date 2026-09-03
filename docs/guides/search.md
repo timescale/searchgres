@@ -1,7 +1,9 @@
 # Search and filter
 
 `index.search(options)` runs every kind of query. The retrieval mode is inferred
-from which arms you supply — there is no `mode` parameter.
+from which arms you supply—there is no `mode` parameter. For the reasoning behind
+BM25, vector search, RRF, candidate windows, and score semantics, read
+[How search works](../concepts/how-search-works.md).
 
 | You supply | You get |
 | --- | --- |
@@ -197,4 +199,5 @@ const next = await index.search({
 `order`, `after`, and `before` apply only to filter-only listing. Supplying them
 with a ranking arm is rejected — ranked results are top-k, not a paginated feed.
 
-Next: [Manage records and trees](records-and-trees.md).
+Next: [Build a RAG retriever](rag.md) or
+[Manage records and trees](records-and-trees.md).

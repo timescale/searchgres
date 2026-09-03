@@ -1,62 +1,87 @@
 # searchgres documentation
 
-searchgres is a Postgres-native search library for TypeScript. It gives you
-semantic (vector), keyword (BM25), and hybrid retrieval — with composable
-hierarchy, metadata, temporal, and regex filters — over a PostgreSQL database
-you own and run.
+searchgres is a Postgres-native search library for TypeScript. It combines BM25,
+vector search, Reciprocal Rank Fusion, and structured filters over a PostgreSQL
+index you own.
 
-New here? Start with **[Get started](getting-started.md)** for a working search
-in a few minutes.
+Bring a `postgres.js` connection and an AI SDK embedding model. searchgres
+manages the schema, native indexes, query routines, and asynchronous embedding
+workflow; your application retains control of its data model, provider, access
+policy, and retrieval pipeline.
 
-## Learn searchgres
+## Start here
 
-1. **[Get started](getting-started.md)** — from an empty database to your first
-   semantic and hybrid results.
-2. **[Install searchgres](installation.md)** — executables, packages,
-   prerequisites, and PostgreSQL setup.
-3. **[Evaluate with Docker Compose](guides/docker-compose.md)** — run PostgreSQL,
-   Ollama, provisioning, and the API server with one command and no API key.
+1. **[Get started](getting-started.md)** — create an index, ingest records,
+   generate embeddings, and run semantic, keyword, and hybrid searches.
+2. **[How search works](concepts/how-search-works.md)** — understand BM25,
+   vector retrieval, RRF, filters, scores, and candidate windows.
+3. **[Model records](concepts/record-model.md)** — decide how content, trees,
+   metadata, names, and temporal ranges represent your corpus.
+4. **[Architecture and responsibilities](concepts/architecture.md)** — see what
+   searchgres manages and what remains in your application.
 
-## Guides
+Want to evaluate it without writing an application? Use the
+**[Docker Compose stack](guides/docker-compose.md)** to run PostgreSQL, Ollama,
+provisioning, and the optional API server with no provider key.
 
-- **[Create and manage indexes](guides/indexes.md)** — choose dimensions and a
-  vector type, create and open an index, and rebuild safely.
-- **[Ingest records](guides/ingest.md)** — write one record or thousands,
-  idempotent upserts, named records, metadata, and temporal values.
-- **[Generate embeddings](guides/embeddings.md)** — how records become
-  semantically searchable, draining on demand, and running a worker.
-- **[Search and filter](guides/search.md)** — semantic, keyword, and hybrid
-  search, composable filters, and pagination.
+## Core library guides
+
+- **[Install searchgres](installation.md)** — package, runtime, PostgreSQL,
+  extensions, and privileges.
+- **[Create and manage indexes](guides/indexes.md)** — dimensions, vector type,
+  immutable index shape, multiple indexes, and cutovers.
+- **[Ingest records](guides/ingest.md)** — batches, idempotency, derived records,
+  and indexing existing data sources.
+- **[Generate embeddings](guides/embeddings.md)** — queue lifecycle, on-demand
+  draining, continuous workers, and monitoring.
+- **[Search and filter](guides/search.md)** — retrieval recipes, composable
+  filters, ranking controls, and pagination.
+- **[Build a RAG retriever](guides/rag.md)** — use the library as the retrieval
+  stage in an application-controlled RAG pipeline.
 - **[Manage records and trees](guides/records-and-trees.md)** — read, patch,
   delete, subtree operations, and transactions.
-- **[Configure and run the API server](guides/server.md)** — generate files
-  offline, initialize PostgreSQL, serve, and use strict idempotent provisioning.
-- **[Evaluate with Docker Compose](guides/docker-compose.md)** — start the
-  five-service local demo, use it, restart it, and reset its persistent state.
-- **[Run in production](guides/production.md)** — deployment, pooling, worker
-  operations, monitoring, and reindex cutovers.
-- **[Use the MCP server](mcp/index.md)** — run `searchgres-mcp` over stdio and understand
-  its read, write, projection, and safety boundaries.
+- **[Run in production](guides/production.md)** — pools, workers, observability,
+  access control, backups, and reindexing.
+
+## Evaluation and design evidence
+
+- **[Choosing searchgres](comparison.md)** — compare it with raw pgvector, vector
+  databases, hosted search, RAG frameworks, and memory systems.
+- **[Benchmarks and evidence](benchmarks/README.md)** — results and lessons from
+  the search-core prototype that directly preceded searchgres.
+- **[Runnable examples](../examples/README.md)** — small core-library programs
+  for basic search, RAG, document modeling, temporal search, and workers.
+
+## Optional applications
+
+The core library is the primary product. These applications are built on top of
+it and can be used as reference implementations or as-is:
+
+- **[API server](guides/server.md)** — expose one configured index over HTTP.
+- **[Docker Compose evaluation](guides/docker-compose.md)** — try the server and
+  search engine locally without an API key.
+- **[MCP server](mcp/index.md)** — give MCP-compatible agents read and write
+  tools over the API server.
 
 ## Reference
 
-- **[API reference](reference/api.md)** — every public function, option, and
-  return type.
-- **[Errors and recovery](reference/errors.md)** — the typed error hierarchy and
-  how to handle each case.
-- **[Direct SQL](reference/sql.md)** — optional: call the index's SQL routines
-  without the TypeScript library.
+- **[API reference](reference/api.md)** — public functions, options, and return
+  types.
+- **[Errors and recovery](reference/errors.md)** — typed errors and responses.
+- **[Direct SQL](reference/sql.md)** — call schema-local routines without the
+  TypeScript API.
 
 ## Core ideas
 
-- **You own the database and the connection.** You pass searchgres a
-  [`postgres.js`](https://github.com/porsager/postgres) pool; it never opens or
-  closes connections for you.
-- **An index is a PostgreSQL schema.** You choose its name and track it; there is
-  no hidden registry.
-- **Bring your own embedding model.** searchgres calls any
-  [AI SDK](https://sdk.vercel.ai) embedding model you supply and never touches
-  your provider credentials.
-- **Embedding is asynchronous by default.** A new or changed record is searchable
-  by keyword and filters immediately, and by semantic search once its vector is
-  generated.
+- **You own the database and connection.** searchgres never creates or closes
+  your pool.
+- **An index is a PostgreSQL schema.** It contains ordinary records plus native
+  BM25, HNSW, GiST, and GIN indexes.
+- **Retrieval modes compose with filters.** Search by meaning, exact terms,
+  hierarchy, metadata, represented time, and regex in one query.
+- **Bring your own embedding model.** Any AI SDK embedding model works;
+  searchgres does not handle provider credentials.
+- **Embedding is asynchronous by default.** New records work with BM25 and
+  filters immediately and join semantic results after queue processing.
+- **Application policy stays outside core.** Chunking, derivation, reranking,
+  authentication, and authorization can be composed around the library.

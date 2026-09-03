@@ -80,14 +80,35 @@ too chatty. Parameter values (including vectors) are never attached to spans.
 
 ## Access control
 
-searchgres has no user, account, or authorization model — `tree` is a data
-dimension, not a permission boundary. Access control is the responsibility of:
+searchgres has no user, account, or authorization model. The surrounding
+application authenticates callers and can translate identity into mandatory
+`tree` or `meta` filters:
 
-- your **application**, which decides who may call which operations, and
-- your **database roles/grants**, which decide what the connecting role can do.
+```ts
+const tenantScope = { tree: `tenants.${trustedTenantLabel}` } as const;
+const filter = requestFilter
+  ? { and: [tenantScope, requestFilter] as const }
+  : tenantScope;
 
-The index's SQL routines run as `security invoker`, so they act with the calling
-role's privileges. Grant that role only what it needs.
+const hits = await index.search({
+  semantic: query,
+  fulltext: query,
+  filter,
+});
+```
+
+This is an authorization boundary only when the application constructs the
+final filter and the caller cannot access an unscoped index handle or issue
+unrestricted SQL. Never trust a caller merely to include its own tenant filter.
+Validate or map external tenant identifiers to legal `ltree` labels rather than
+interpolating them directly.
+
+Database roles and grants provide another boundary. The index's SQL routines run
+as `security invoker`, so they act with the calling role's privileges. Grant each
+role only what it needs, and use separate indexes or database-level policy when
+your threat model requires stronger physical or database enforcement.
+
+See [Architecture and responsibilities](../concepts/architecture.md#access-control-with-composable-filters).
 
 ## Reindexing and cutover
 
