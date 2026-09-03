@@ -7,7 +7,8 @@ function markdownFiles(path: string): readonly string[] {
   if (extname(path) === ".md") return [path];
   return readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
     const child = join(path, entry.name);
-    return entry.isDirectory() ? markdownFiles(child) : [];
+    if (entry.isDirectory()) return markdownFiles(child);
+    return entry.isFile() && extname(child) === ".md" ? [child] : [];
   });
 }
 
@@ -18,6 +19,11 @@ const files = [
 ];
 
 const markdownLink = /(?<!!)\[[^\]]*\]\(([^)]+)\)/g;
+
+test("discovers nested public Markdown", () => {
+  assert.ok(files.includes("docs/concepts/how-search-works.md"));
+  assert.ok(files.includes("examples/basic-search/README.md"));
+});
 
 test("relative links in public Markdown resolve", () => {
   const broken: string[] = [];
