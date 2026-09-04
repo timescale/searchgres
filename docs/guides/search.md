@@ -153,7 +153,7 @@ await index.search({
 | `{ temporalBefore: t }` | Record's time is strictly before `t`. |
 | `{ temporalAfter: t }` | Record's time is strictly after `t`. |
 | `{ temporalContains: t }` | Record's time range contains `t`. |
-| `{ regexp: "429|throttl" }` | Case-insensitive POSIX match on `content`. |
+| <code>{ regexp: "429&#124;throttl" }</code> | Case-insensitive POSIX match on `content`. |
 
 Rules:
 
