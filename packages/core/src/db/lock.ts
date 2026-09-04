@@ -10,6 +10,9 @@ export function advisoryLockKey(name: string): AdvisoryLockKey {
   return [digest.readInt32BE(0), digest.readInt32BE(4)];
 }
 
+/** Serializes index provisioning, including required extension installation. */
+export const CREATE_INDEX_LOCK_KEY = advisoryLockKey("searchgres:create-index");
+
 /** Block transaction-locally until an advisory lock is acquired or times out. */
 export async function acquireAdvisoryLock(
   sql: postgres.ISql,

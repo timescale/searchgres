@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-04
+
+### Fixed
+
+- Database integration tests now serialize direct extension provisioning with
+  `createIndex`, preventing concurrent `CREATE EXTENSION` calls from racing on
+  fresh CI databases.
+
 ## [0.1.1] - 2026-09-04
 
 ### Fixed
