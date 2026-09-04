@@ -1,7 +1,7 @@
 import type postgres from "postgres";
 import { type IndexConfig, normalizeIndexConfig } from "./config.ts";
 import { ensureExtension } from "./db/extensions.ts";
-import { acquireAdvisoryLock, advisoryLockKey } from "./db/lock.ts";
+import { acquireAdvisoryLock, CREATE_INDEX_LOCK_KEY } from "./db/lock.ts";
 import { ensurePostgresVersion } from "./db/preflight.ts";
 import { createBatchUpsertRoutine } from "./db/routines/batch-upsert.ts";
 import { createRecordRoutines } from "./db/routines/records.ts";
@@ -43,7 +43,7 @@ export async function createIndex(
       ...DEFAULT_MIGRATION_TIMEOUTS,
       lockTimeout: DEFAULT_MIGRATION_LOCK_TIMEOUT,
     });
-    await acquireAdvisoryLock(tx, advisoryLockKey("searchgres:create-index"));
+    await acquireAdvisoryLock(tx, CREATE_INDEX_LOCK_KEY);
     await setLockTimeout(tx, DEFAULT_MIGRATION_TIMEOUTS.lockTimeout);
     await ensurePostgresVersion(tx);
 
