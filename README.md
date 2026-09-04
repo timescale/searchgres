@@ -113,20 +113,21 @@ No fact-extraction pipeline, opaque summarization, or RAG framework is imposed.
 
 ## How search works
 
-`index.search()` infers the retrieval mode from the arms you pass:
+`index.search()` infers the retrieval mode from the arguments you pass:
 
 | Input | Behavior |
 | --- | --- |
 | `semantic` or a precomputed `vector` | HNSW cosine search |
 | `fulltext` | BM25 keyword search |
-| a semantic arm and `fulltext` | RRF hybrid search |
+| `semantic` and `fulltext` | RRF hybrid search |
 | filters only | UUIDv7-ordered listing with keyset pagination |
-| either ranked arm plus `filter` | Ranked and scoped retrieval |
+| either ranked arg plus `filter` | Filtered and ranked retrieval |
+| both ranked args plus `filter` | Filtered and RRF hybrid search retrieval |
 
 Every hit is the full record plus its score. Newly written records are available
 to BM25 and filters immediately; they join semantic and hybrid results after the
 built-in embedding queue is drained. Run a bounded `processEmbeddings()` pass or
-start a concurrency-safe background worker.
+start a concurrency-safe background `EmbeddingWorker`.
 
 Read **[How search works](https://github.com/timescale/searchgres/blob/main/docs/concepts/how-search-works.md)**
 or jump to **[Search and filter](https://github.com/timescale/searchgres/blob/main/docs/guides/search.md)**.
@@ -153,8 +154,8 @@ and **[Choosing searchgres](https://github.com/timescale/searchgres/blob/main/do
 ## Evidence behind the design
 
 The architecture behind searchgres was evaluated on conversational-memory and
-multi-hop retrieval benchmarks using a simplified, unauthenticated search-core
-prototype: one Postgres record table, BM25, HNSW vectors, RRF, and structured
+multi-hop retrieval benchmarks using a simplified, prototype based on the same
+core approach: one Postgres record table, BM25, HNSW vectors, RRF, and structured
 filters—without knowledge graphs or fact-extraction pipelines.
 
 - **LoCoMo:** `F1=0.666` after search-tool refinement, compared with `F1=0.493`
@@ -187,7 +188,7 @@ applications built on it:
 - `searchgres-server` exposes one configured index over HTTP.
 - `searchgres` is a remote CLI for records, trees, import/export, and search.
 - `searchgres-mcp` exposes searchgres tools to MCP-compatible agents.
-- The Compose stack runs PostgreSQL, Ollama, provisioning, and the server for a
+- The Docker Compose stack runs PostgreSQL, Ollama, provisioning, and the server for a
   no-API-key local evaluation.
 
 Use them as reference implementations, an evaluation environment, or as-is for
