@@ -8,15 +8,16 @@ export function connect(): Sql {
   return connectToUrl(testDatabaseUrl());
 }
 
-export function connectToDatabase(database: string): Sql {
+export function connectToDatabase(database: string, max?: number): Sql {
   const url = new URL(testDatabaseUrl());
   url.pathname = `/${database}`;
-  return connectToUrl(url.toString());
+  return connectToUrl(url.toString(), max);
 }
 
-function connectToUrl(url: string): Sql {
+function connectToUrl(url: string, max?: number): Sql {
   return postgres(url, {
     onnotice: () => {},
+    ...(max === undefined ? {} : { max }),
   });
 }
 

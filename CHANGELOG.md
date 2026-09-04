@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `upsert` and `upsertMany` now work on the same `postgres.js` pool connection
+  that `createIndex` used to install `ltree` and `pgvector`. Batch arrays are
+  bound through the built-in `text[]` serializer and cast to their qualified
+  destination types, avoiding stale per-connection custom-array type maps while
+  preserving parameterization, nulls, and array escaping.
+
 ## [0.1.0] - 2026-09-03
 
 ### Added
