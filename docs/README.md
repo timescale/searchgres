@@ -43,12 +43,10 @@ provisioning, and the optional API server with no provider key.
 - **[Run in production](guides/production.md)** — pools, workers, observability,
   access control, backups, and reindexing.
 
-## Evaluation and design evidence
+## Evaluation and examples
 
 - **[Choosing searchgres](comparison.md)** — compare it with raw pgvector, vector
   databases, hosted search, RAG frameworks, and memory systems.
-- **[Benchmarks and evidence](benchmarks/README.md)** — results and lessons from
-  the search-core prototype that directly preceded searchgres.
 - **[Runnable examples](../examples/README.md)** — small core-library programs
   for basic search, RAG, document modeling, temporal search, and workers.
 

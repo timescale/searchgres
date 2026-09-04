@@ -164,9 +164,7 @@ filters—without knowledge graphs or fact-extraction pipelines.
   two-, three-, and four-hop questions.
 
 These are architecture experiments, not a current leaderboard claim; answering
-models, agent behavior, samples, and metrics also affect end-to-end scores. Read
-**[Benchmarks and evidence](https://github.com/timescale/searchgres/blob/main/docs/benchmarks/README.md)**
-for methodology, results, and qualifications.
+models, agent behavior, samples, and metrics also affect end-to-end scores.
 
 ## Requirements
 
@@ -223,7 +221,6 @@ or **[API server guide](https://github.com/timescale/searchgres/blob/main/docs/g
 
 - [Runnable examples](https://github.com/timescale/searchgres/tree/main/examples)
 - [Choosing searchgres](https://github.com/timescale/searchgres/blob/main/docs/comparison.md)
-- [Benchmarks and evidence](https://github.com/timescale/searchgres/blob/main/docs/benchmarks/README.md)
 - [Configure the API server](https://github.com/timescale/searchgres/blob/main/docs/guides/server.md)
 - [Evaluate with Docker Compose](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)
 - [Use the MCP server](https://github.com/timescale/searchgres/blob/main/docs/mcp/index.md)
