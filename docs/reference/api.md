@@ -199,6 +199,7 @@ type Filter =
 | `deleteTree(tree, options?)` | `{ count }` | Inclusive subtree. |
 | `countTree(selector, options?)` | `{ count, capped }` | Selector: one of `tree`/`lquery`/`ltxtquery`; `options.limit` caps. Malformed patterns throw `InvalidInputError`. |
 | `listTree(lquery)` | `readonly { tree, count }[]` | Descendant counts per node. A malformed `lquery` throws `InvalidInputError`. |
+| `treeView(tree?, options?)` | `readonly { tree, count }[]` | Inclusive display tree rooted at `tree` (default: the whole index), with per-node descendant counts. `options.levels` bounds relative depth; a negative or non-integer value throws `InvalidInputError`. |
 
 ### Embeddings
 

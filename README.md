@@ -154,7 +154,7 @@ and **[Choosing searchgres](https://github.com/timescale/searchgres/blob/main/do
 ## Evidence behind the design
 
 The architecture behind searchgres was evaluated on conversational-memory and
-multi-hop retrieval benchmarks using a simplified, prototype based on the same
+multi-hop retrieval benchmarks using a simplified prototype based on the same
 core approach: one Postgres record table, BM25, HNSW vectors, RRF, and structured
 filters—without knowledge graphs or fact-extraction pipelines.
 
