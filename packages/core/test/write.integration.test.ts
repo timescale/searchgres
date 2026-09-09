@@ -345,6 +345,54 @@ test("ignore resolves a concurrently committed named conflict", async () => {
   }
 });
 
+test("upsert and patch reject empty content", async () => {
+  const schema = randomTestSchema();
+  try {
+    await createIndex(sql, schema, { dimensions: 4 });
+    const index = await openIndex(sql, schema, { embedding: "mock-embedding" });
+
+    await assert.rejects(
+      () => index.upsert({ content: "" }),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidInputError);
+        // upsert delegates to upsertMany, so the position is always reported.
+        assert.deepEqual(error.issues[0]?.path, [0, "content"]);
+        assert.match(error.message, /content must not be empty/);
+        return true;
+      },
+    );
+    // In a batch the offending position is reported and nothing is written.
+    await assert.rejects(
+      () =>
+        index.upsertMany([
+          { content: "fine", tree: "docs" },
+          { content: "", tree: "docs" },
+        ]),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidInputError);
+        assert.deepEqual(error.issues[0]?.path, [1, "content"]);
+        return true;
+      },
+    );
+    const stats = await index.queueStats();
+    assert.equal(stats.pending, 0, "nothing was enqueued");
+
+    const created = await index.upsert({ content: "kept" });
+    const head = await index.get(created.id);
+    await assert.rejects(
+      () => index.patch(created.id, head.versionHash, { content: "" }),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidInputError);
+        assert.deepEqual(error.issues[0]?.path, ["content"]);
+        return true;
+      },
+    );
+    assert.equal((await index.get(created.id)).content, "kept");
+  } finally {
+    await dropTestSchema(sql, schema);
+  }
+});
+
 test("upsert validates temporal values, caps batches, and rejects wrong vector dimensions", async () => {
   const schema = randomTestSchema();
   try {

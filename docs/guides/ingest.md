@@ -41,7 +41,7 @@ your input and call again.
 
 ```ts
 type UpsertRecord = {
-  content: string;                    // required — the searchable text
+  content: string;                    // required, non-empty — the searchable text
   tree?: string;                      // dotted ltree path; defaults to root ""
   name?: string | null;               // optional leaf name, unique within a tree
   meta?: Record<string, unknown>;     // arbitrary JSON, filterable
@@ -53,6 +53,9 @@ type UpsertRecord = {
 };
 ```
 
+- **`content`** is the text that gets embedded and BM25-indexed. It must be
+  non-empty: providers reject empty input, so an empty record could never be
+  embedded and is refused with `InvalidInputError` instead.
 - **`tree`** is a raw dotted `ltree` path such as `docs.api.auth`. Each label is
   `[A-Za-z0-9_-]+`. The empty string `""` is the root. Use it to scope searches
   later (see [Search and filter](search.md)).

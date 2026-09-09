@@ -53,7 +53,7 @@ const idSchema = z.uuidv7();
 
 const patchSchema = z
   .object({
-    content: z.string().optional(),
+    content: z.string().min(1, "content must not be empty").optional(),
     meta: metaSchema.optional(),
     tree: z
       .string()

@@ -95,7 +95,7 @@ Obtain a handle from `openIndex()`. Read-only properties: `schema`,
 
 ```ts
 type UpsertRecord = {
-  content: string;
+  content: string;                     // non-empty
   tree?: string;
   name?: string | null;
   meta?: Record<string, unknown>;
@@ -140,7 +140,7 @@ type StoredRecord = {
 };
 
 type PatchInput = {
-  content?: string;
+  content?: string;                    // non-empty
   meta?: Record<string, unknown>;
   tree?: string;
   name?: string | null;
