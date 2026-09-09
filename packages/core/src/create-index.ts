@@ -2,6 +2,7 @@ import type postgres from "postgres";
 import { type IndexConfig, normalizeIndexConfig } from "./config.ts";
 import { ensureExtension } from "./db/extensions.ts";
 import { acquireAdvisoryLock, CREATE_INDEX_LOCK_KEY } from "./db/lock.ts";
+import { INDEX_SCHEMA_COMMENT_LITERAL } from "./db/marker.ts";
 import { ensurePostgresVersion } from "./db/preflight.ts";
 import { createBatchUpsertRoutine } from "./db/routines/batch-upsert.ts";
 import { createRecordRoutines } from "./db/routines/records.ts";
@@ -115,6 +116,18 @@ export async function createIndex(
       dbOperationName: "CREATE",
       namespace: indexSchema,
     });
+    // Stamp the schema so openIndex/dropIndex can tell a searchgres index from
+    // a caller schema that merely contains similarly named tables. COMMENT is a
+    // utility statement and cannot take bind parameters, so the fixed constant
+    // is inlined as a pre-quoted literal.
+    await runSql(
+      tx`comment on schema ${tx(indexSchema)} is ${tx.unsafe(INDEX_SCHEMA_COMMENT_LITERAL)}`,
+      {
+        spanName: "commentIndexSchema",
+        dbOperationName: "COMMENT",
+        namespace: indexSchema,
+      },
+    );
     // set local search path so certain extension-defined operators resolve
     await runSql(tx`set local search_path to pg_catalog, public, pg_temp`, {
       spanName: "setLocalSearchPath",

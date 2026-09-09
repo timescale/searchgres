@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex } from "../src/create-index.ts";
+import { INDEX_SCHEMA_COMMENT_LITERAL } from "../src/db/marker.ts";
+import { dropIndex } from "../src/drop-index.ts";
 import {
   ConflictError,
   DimensionMismatchError,
   InvalidConfigError,
+  InvalidIndexError,
   NotFoundError,
   StaleVersionError,
 } from "../src/errors.ts";
@@ -314,11 +317,14 @@ test("dropIndex removes the schema and rejects non-searchgres schemas", async ()
 
   await sql`create schema ${sql(plain)}`;
   try {
-    await assert.rejects(() =>
-      openIndex(sql, plain, {
-        embedding: mockEmbeddingModel({}),
-      }),
+    await assert.rejects(
+      () =>
+        openIndex(sql, plain, {
+          embedding: mockEmbeddingModel({}),
+        }),
+      InvalidIndexError,
     );
+    await assert.rejects(() => dropIndex(sql, plain), InvalidIndexError);
     // drop() on a real index succeeds
     await index.drop();
     const [row] = await sql<{ present: boolean }[]>`
@@ -329,6 +335,108 @@ test("dropIndex removes the schema and rejects non-searchgres schemas", async ()
   } finally {
     await dropTestSchema(sql, plain);
     await dropTestSchema(sql, schema);
+  }
+});
+
+test("dropIndex refuses look-alike schemas and leaves them intact", async () => {
+  // A caller schema that owns a `version` table (a common name) must never be
+  // mistaken for an index. Each decoy is missing exactly one marker component.
+  const decoys = {
+    tablesOnly: randomTestSchema(),
+    commentOnly: randomTestSchema(),
+    noRecordTable: randomTestSchema(),
+    noQueueTable: randomTestSchema(),
+    noVersionRow: randomTestSchema(),
+    twoVersionRows: randomTestSchema(),
+    wrongVersionColumn: randomTestSchema(),
+  } as const;
+
+  const comment = (schema: string) =>
+    sql.unsafe(
+      `comment on schema "${schema}" is ${INDEX_SCHEMA_COMMENT_LITERAL}`,
+    );
+  const versionTable = (schema: string) =>
+    sql`create table ${sql(schema)}.version (version text not null)`;
+  const recordTable = (schema: string) =>
+    sql`create table ${sql(schema)}.record (id int)`;
+  const queueTable = (schema: string) =>
+    sql`create table ${sql(schema)}.embedding_queue (id int)`;
+  const versionRow = (schema: string) =>
+    sql`insert into ${sql(schema)}.version (version) values ('1')`;
+
+  try {
+    for (const schema of Object.values(decoys)) {
+      await sql`create schema ${sql(schema)}`;
+      await sql`create table ${sql(schema)}.important (x int)`;
+    }
+
+    // all tables but no schema comment
+    await versionTable(decoys.tablesOnly);
+    await recordTable(decoys.tablesOnly);
+    await queueTable(decoys.tablesOnly);
+    await versionRow(decoys.tablesOnly);
+
+    // comment but none of the tables
+    await comment(decoys.commentOnly);
+
+    // comment + version + queue, no record table
+    await comment(decoys.noRecordTable);
+    await versionTable(decoys.noRecordTable);
+    await queueTable(decoys.noRecordTable);
+    await versionRow(decoys.noRecordTable);
+
+    // comment + version + record, no queue table
+    await comment(decoys.noQueueTable);
+    await versionTable(decoys.noQueueTable);
+    await recordTable(decoys.noQueueTable);
+    await versionRow(decoys.noQueueTable);
+
+    // everything except a version row
+    await comment(decoys.noVersionRow);
+    await versionTable(decoys.noVersionRow);
+    await recordTable(decoys.noVersionRow);
+    await queueTable(decoys.noVersionRow);
+
+    // everything, but two version rows
+    await comment(decoys.twoVersionRows);
+    await versionTable(decoys.twoVersionRows);
+    await recordTable(decoys.twoVersionRows);
+    await queueTable(decoys.twoVersionRows);
+    await versionRow(decoys.twoVersionRows);
+    await versionRow(decoys.twoVersionRows);
+
+    // everything, but the version table lacks a text `version` column
+    await comment(decoys.wrongVersionColumn);
+    await sql`create table ${sql(decoys.wrongVersionColumn)}.version (v int)`;
+    await recordTable(decoys.wrongVersionColumn);
+    await queueTable(decoys.wrongVersionColumn);
+
+    for (const [label, schema] of Object.entries(decoys)) {
+      await assert.rejects(
+        () => dropIndex(sql, schema),
+        (error: unknown) =>
+          error instanceof InvalidIndexError && error.schema === schema,
+        `decoy ${label} should be rejected`,
+      );
+      await assert.rejects(
+        () => openIndex(sql, schema, { embedding: mockEmbeddingModel({}) }),
+        InvalidIndexError,
+        `decoy ${label} should not open`,
+      );
+      const [row] = await sql<{ present: boolean }[]>`
+        select exists (
+          select 1
+          from pg_catalog.pg_class c
+          inner join pg_catalog.pg_namespace n on (n.oid = c.relnamespace)
+          where n.nspname = ${schema}
+          and c.relname = 'important'
+        ) as present`;
+      assert.equal(row?.present, true, `decoy ${label} should be untouched`);
+    }
+  } finally {
+    for (const schema of Object.values(decoys)) {
+      await dropTestSchema(sql, schema);
+    }
   }
 });
 
