@@ -9,6 +9,17 @@ export interface ExtensionRequirement {
   readonly minimumVersion: string;
 }
 
+/**
+ * The extensions every index depends on, with the oldest version whose behavior
+ * searchgres has verified. `createIndex` installs any that are missing;
+ * `openIndex` verifies presence, version, and `public` placement.
+ */
+export const REQUIRED_EXTENSIONS: readonly ExtensionRequirement[] = [
+  { name: "vector", minimumVersion: "0.8.0" },
+  { name: "pg_textsearch", minimumVersion: "1.4.0" },
+  { name: "ltree", minimumVersion: "1.3.0" },
+];
+
 export interface ExtensionInfo {
   readonly name: string;
   readonly version: string;

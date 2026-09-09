@@ -1,6 +1,6 @@
 import type postgres from "postgres";
 import { type IndexConfig, normalizeIndexConfig } from "./config.ts";
-import { ensureExtension } from "./db/extensions.ts";
+import { ensureExtension, REQUIRED_EXTENSIONS } from "./db/extensions.ts";
 import { acquireAdvisoryLock, CREATE_INDEX_LOCK_KEY } from "./db/lock.ts";
 import { INDEX_SCHEMA_COMMENT_LITERAL } from "./db/marker.ts";
 import { ensurePostgresVersion } from "./db/preflight.ts";
@@ -20,12 +20,6 @@ import { postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 
 export const SCHEMA_FORMAT_VERSION = "2";
-
-const INITIAL_EXTENSIONS = [
-  { name: "vector", minimumVersion: "0.8.0" },
-  { name: "pg_textsearch", minimumVersion: "1.4.0" },
-  { name: "ltree", minimumVersion: "1.3.0" },
-] as const;
 
 /**
  * Create a new immutable index schema. Rebuilding into a new schema is the
@@ -67,7 +61,7 @@ export async function createIndex(
 
     // searchgres is public-only: every required extension is installed in and
     // resolved from `public`, so all extension objects are qualified as such.
-    for (const requirement of INITIAL_EXTENSIONS) {
+    for (const requirement of REQUIRED_EXTENSIONS) {
       await ensureExtension(tx, requirement);
     }
 

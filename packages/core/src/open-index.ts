@@ -7,7 +7,7 @@ import {
   type QueueStats,
   queueStats,
 } from "./db/embedding-queue.ts";
-import { getExtensionInfo } from "./db/extensions.ts";
+import { getExtensionInfo, REQUIRED_EXTENSIONS } from "./db/extensions.ts";
 import { readIndexMarker } from "./db/marker.ts";
 import { dropIndex } from "./drop-index.ts";
 import {
@@ -58,12 +58,6 @@ import {
   type UpsertResult,
   upsertMany,
 } from "./write.ts";
-
-const REQUIRED_EXTENSIONS = [
-  { name: "vector", minimumVersion: "0.8.0" },
-  { name: "pg_textsearch", minimumVersion: "1.4.0" },
-  { name: "ltree", minimumVersion: "1.3.0" },
-] as const;
 
 /**
  * The subset of {@link Index} that is safe to compose inside one caller-owned

@@ -7,13 +7,13 @@ import {
   NotFoundError,
   SearchgresError,
   StaleVersionError,
-  type ValidationIssue,
 } from "./errors.ts";
 import { assertTreePath, isValidTreePath } from "./identifiers.ts";
 import type { Index } from "./open-index.ts";
 import { mapInputSqlError, postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 import { normalizeTemporalTuple, temporalTupleSchema } from "./temporal.ts";
+import { metaSchema, toValidationIssue } from "./validation.ts";
 
 /** A full record read back from the index. */
 export interface StoredRecord {
@@ -54,7 +54,7 @@ const idSchema = z.uuidv7();
 const patchSchema = z
   .object({
     content: z.string().optional(),
-    meta: z.record(z.string(), z.json()).optional(),
+    meta: metaSchema.optional(),
     tree: z
       .string()
       .refine(
@@ -272,14 +272,4 @@ function throwInvalidInput(error: z.ZodError): never {
     cause: error,
     issues,
   });
-}
-
-function toValidationIssue(issue: z.core.$ZodIssue): ValidationIssue {
-  return {
-    code: issue.code,
-    message: issue.message,
-    path: issue.path.map((component) =>
-      typeof component === "symbol" ? component.toString() : component,
-    ),
-  };
 }
