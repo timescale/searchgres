@@ -22,7 +22,13 @@ import { LIBRARY_VERSION } from "./version.ts";
 
 const tracer = trace.getTracer("searchgres", LIBRARY_VERSION);
 
-/** Guards against pathological ASTs from untrusted callers. */
+/**
+ * Guards against pathological ASTs from untrusted callers. Enforced twice: by
+ * {@link guardFilterShape} on the raw input before Zod sees it (Zod's recursive
+ * `z.lazy` would otherwise overflow the stack on a deep enough tree and
+ * surface an untyped RangeError), and again in {@link normalizeFilter} on the
+ * parsed tree, which is where the counts are authoritative.
+ */
 const MAX_FILTER_DEPTH = 16;
 const MAX_FILTER_NODES = 100;
 
@@ -217,6 +223,50 @@ interface FilterAnalysis {
   readonly unguarded: boolean;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Bound the depth and node count of a raw, not-yet-validated filter so that
+ * schema parsing never recurses past the caps. Only the combinator shape is
+ * inspected (`and`/`or` arrays, `not` objects); everything else counts as a
+ * leaf and is left for Zod to validate. Iterative, so the guard itself cannot
+ * overflow on the input it exists to reject.
+ */
+function guardFilterShape(root: unknown): void {
+  let nodes = 0;
+  const stack: { readonly node: unknown; readonly depth: number }[] = [
+    { node: root, depth: 1 },
+  ];
+  for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+    const { node, depth } = next;
+    if (depth > MAX_FILTER_DEPTH) {
+      throwInvalidFilter(
+        `filter nesting exceeds the maximum depth of ${MAX_FILTER_DEPTH}`,
+      );
+    }
+    if (++nodes > MAX_FILTER_NODES) {
+      throwInvalidFilter(
+        `filter exceeds the maximum of ${MAX_FILTER_NODES} nodes`,
+      );
+    }
+    if (!isRecord(node)) {
+      continue;
+    }
+    for (const key of ["and", "or"] as const) {
+      if (Array.isArray(node[key])) {
+        for (const child of node[key]) {
+          stack.push({ node: child, depth: depth + 1 });
+        }
+      }
+    }
+    if ("not" in node) {
+      stack.push({ node: node.not, depth: depth + 1 });
+    }
+  }
+}
+
 /**
  * Validate structural limits, normalize temporal leaves to canonical strings,
  * and enforce the regex-safety rule. `ranked` relaxes the rule because a
@@ -337,6 +387,9 @@ export async function search(
   index: Index,
   options: SearchOptions,
 ): Promise<readonly SearchResult[]> {
+  if (isRecord(options) && options.filter !== undefined) {
+    guardFilterShape(options.filter);
+  }
   const parsed = searchOptionsSchema.safeParse(options ?? {});
   if (!parsed.success) {
     throwInvalidOptions(parsed.error);
