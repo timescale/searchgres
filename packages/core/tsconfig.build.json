@@ -5,6 +5,9 @@
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
+    // Members tagged `@internal` (Index.sql, the Index constructor) are
+    // implementation plumbing, not API; keep them out of the published types.
+    "stripInternal": true,
     "declarationMap": true,
     "sourceMap": true,
     "tsBuildInfoFile": "tsconfig.build.tsbuildinfo"
