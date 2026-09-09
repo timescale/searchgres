@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex } from "../src/create-index.ts";
+import type { WorkerErrorContext } from "../src/embedding-worker.ts";
 import {
   DimensionMismatchError,
   InvalidInputError,
@@ -271,6 +272,114 @@ test("startEmbeddingWorker drains the queue, then stops gracefully", async () =>
       await worker.stop();
     }
 
+    assert.equal((await index.queueStats()).pending, 0);
+  });
+});
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error("timed out waiting for condition");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+test("startEmbeddingWorker reports repeated failures through onError with growing backoff", async () => {
+  await withIndex(async (index, model) => {
+    model.handler = () => {
+      throw new Error("db down");
+    };
+    await index.upsertMany([{ content: "e", tree: "docs" }]);
+    const seen: { error: unknown; context: WorkerErrorContext }[] = [];
+
+    const worker = index.startEmbeddingWorker({
+      intervalMs: 10,
+      leaseDurationMs: 0,
+      maxAttempts: 100,
+      onError: (error, context) => {
+        seen.push({ error, context });
+      },
+    });
+    try {
+      // An ordinary provider error is recorded per row, not thrown, so the pass
+      // itself succeeds; nothing reaches onError for that path.
+      await waitFor(() => model.batches.length >= 2);
+      assert.equal(seen.length, 0);
+
+      // A wrong-dimension model aborts the pass and must surface.
+      model.handler = (values) => values.map(() => [1, 0, 0]);
+      await waitFor(() => seen.length >= 2);
+    } finally {
+      await worker.stop();
+    }
+
+    const [first, second] = seen;
+    assert.ok(first?.error instanceof DimensionMismatchError);
+    assert.equal(first?.context.phase, "process");
+    assert.equal(first?.context.consecutiveErrors, 1);
+    assert.equal(first?.context.backoffMs, 10);
+    assert.ok(second?.error instanceof DimensionMismatchError);
+    assert.equal(second?.context.consecutiveErrors, 2);
+    assert.equal(second?.context.backoffMs, 20);
+  });
+});
+
+test("startEmbeddingWorker reports a rate limit with the provider's retry delay", async () => {
+  await withIndex(async (index, model) => {
+    model.handler = () => {
+      throw rateLimitError(30);
+    };
+    await index.upsertMany([{ content: "rl", tree: "docs" }]);
+    const seen: { error: unknown; context: WorkerErrorContext }[] = [];
+    const worker = index.startEmbeddingWorker({
+      intervalMs: 10,
+      onError: (error, context) => {
+        seen.push({ error, context });
+      },
+    });
+    try {
+      await waitFor(() => seen.length >= 1);
+    } finally {
+      await worker.stop();
+    }
+    assert.ok(seen[0]?.error instanceof RateLimitError);
+    assert.equal(seen[0]?.context.phase, "process");
+    assert.equal(seen[0]?.context.consecutiveErrors, 0);
+    assert.equal(seen[0]?.context.backoffMs, 30);
+  });
+});
+
+test("a throwing onError does not stop the worker", async () => {
+  await withIndex(async (index, model) => {
+    model.handler = (values) => values.map(() => [1, 0, 0]);
+    await index.upsertMany([{ content: "recover", tree: "docs" }]);
+    let calls = 0;
+    const worker = index.startEmbeddingWorker({
+      intervalMs: 10,
+      onError: () => {
+        calls++;
+        throw new Error("observer bug");
+      },
+    });
+    try {
+      await waitFor(() => calls >= 1);
+      // Fix the model; the worker must still be alive to drain the row.
+      model.handler = (values) => values.map(() => [0, 1, 0, 0]);
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if ((await index.queueStats()).pending === 0) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
+    } finally {
+      await worker.stop();
+    }
     assert.equal((await index.queueStats()).pending, 0);
   });
 });

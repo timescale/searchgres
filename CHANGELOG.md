@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `startEmbeddingWorker({ onError })`: a callback receiving each failed tick
+  with `{ phase, consecutiveErrors, backoffMs }`. Previously the worker
+  swallowed every failure (a misconfigured model, a revoked key, an unreachable
+  database) and retried with silent backoff; without an OTel SDK there was no
+  way to observe it. The server wires this to `console.error` by default and
+  accepts `startServer(config, { onWorkerError })` to redirect it.
+- The `embedding.process` span now records a thrown pass (`ERROR` status +
+  exception event) and emits an `embedding.batch_failed` event for provider
+  failures the pass absorbs into the queue.
+
 ### Changed
 
 - **Error taxonomy split.** `InvalidConfigError` (`INVALID_CONFIG`) now covers
