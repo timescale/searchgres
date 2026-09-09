@@ -22,7 +22,9 @@ const POSTGRES_TEXT_OID = 25;
 const recordSchema = z
   .object({
     id: z.uuidv7().optional(),
-    content: z.string(),
+    // Empty content can never be embedded (providers reject it), so it would
+    // only burn attempts and land in `failed`; reject it at the boundary.
+    content: z.string().min(1, "content must not be empty"),
     meta: metaSchema.default({}),
     tree: z
       .string()
