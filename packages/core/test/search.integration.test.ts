@@ -38,6 +38,22 @@ async function withIndex(
 const contents = (results: readonly { content: string }[]): string[] =>
   results.map((r) => r.content).sort();
 
+function planUsesIndex(plan: unknown, indexName: string): boolean {
+  if (Array.isArray(plan)) {
+    return plan.some((node) => planUsesIndex(node, indexName));
+  }
+  if (plan !== null && typeof plan === "object") {
+    const record = plan as Record<string, unknown>;
+    if (record["Index Name"] === indexName) {
+      return true;
+    }
+    return Object.values(record).some((value) =>
+      planUsesIndex(value, indexName),
+    );
+  }
+  return false;
+}
+
 test("filter-only search lists records by id with order and keyset paging", async () => {
   await withIndex(async (index) => {
     const [a, b, c] = await index.upsertMany([
@@ -211,6 +227,147 @@ test("semantic search with a precomputed vector ranks by cosine and honors thres
       thresholded.map((r) => r.content),
       ["near", "mid"],
     );
+  });
+});
+
+test("semantic search enables strict-order iterative HNSW scanning", async () => {
+  await withIndex(async (index) => {
+    await index.upsert({
+      content: "semantic target",
+      tree: "docs",
+      embedding: [1, 0, 0, 0],
+    });
+
+    await sql.begin(async (tx) => {
+      await tx`set local hnsw.iterative_scan = off`;
+      await tx`
+        select id
+        from ${tx(index.schema)}.search_records
+          (_vec => ${"[1,0,0,0]"}::public.halfvec, _limit => 10)
+      `;
+      const [setting] = await tx<{ readonly value: string }[]>`
+        select pg_catalog.current_setting('hnsw.iterative_scan') as value
+      `;
+      assert.equal(setting?.value, "strict_order");
+    });
+  });
+});
+
+test("hybrid search enables strict-order iterative HNSW scanning through its semantic arm", async () => {
+  await withIndex(async (index) => {
+    await index.upsert({
+      content: "dragonfruit hybrid target",
+      tree: "docs",
+      embedding: [1, 0, 0, 0],
+    });
+
+    await sql.begin(async (tx) => {
+      await tx`set local hnsw.iterative_scan = off`;
+      await tx`
+        select id
+        from ${tx(index.schema)}.hybrid_search_records
+          ( _fulltext => ${"dragonfruit"}
+          , _vec => ${"[1,0,0,0]"}::public.halfvec
+          , _limit => 10
+          )
+      `;
+      const [setting] = await tx<{ readonly value: string }[]>`
+        select pg_catalog.current_setting('hnsw.iterative_scan') as value
+      `;
+      assert.equal(setting?.value, "strict_order");
+    });
+  });
+});
+
+test("parameterized semantic and keyword query shapes retain HNSW and BM25 index plans", async () => {
+  await withIndex(async (index) => {
+    await index.upsertMany([
+      {
+        content: "dragonfruit semantic target",
+        tree: "docs",
+        embedding: [1, 0, 0, 0],
+      },
+      {
+        content: "dragonfruit second target",
+        tree: "docs",
+        embedding: [0.9, 0.1, 0, 0],
+      },
+      {
+        content: "unrelated",
+        tree: "docs",
+        embedding: [0, 1, 0, 0],
+      },
+    ]);
+
+    await sql.begin(async (tx) => {
+      // Small fixture tables naturally favor sequential scans. Disabling them
+      // here verifies that the bound-parameter query shapes remain eligible for
+      // the extension indexes rather than testing PostgreSQL's cost estimates.
+      await tx`set local enable_seqscan = off`;
+
+      const vectorPlan = await tx<{ readonly "QUERY PLAN": unknown }[]>`
+        explain (format json)
+        select m.id
+        from ${tx(index.schema)}.record m
+        where m.embedding is not null
+        order by m.embedding operator(public.<=>) ${"[1,0,0,0]"}::public.halfvec, m.id
+        limit 30
+      `;
+      assert.ok(
+        planUsesIndex(
+          vectorPlan[0]?.["QUERY PLAN"],
+          "record_embedding_hnsw_idx",
+        ),
+        "expected the parameterized semantic query to use the HNSW index",
+      );
+
+      const bm25PlanName = `${index.schema}_bm25_plan`;
+      await tx.unsafe(`
+        prepare ${bm25PlanName} (public.bm25query) as
+        select m.id
+        from "${index.schema}".record m
+        where (m.content operator(public.<@>) $1) < 0
+        order by m.content operator(public.<@>) $1, m.id
+        limit 30
+      `);
+      const keywordPlan = await tx<{ readonly "QUERY PLAN": unknown }[]>`
+        explain (format json) execute ${tx(bm25PlanName)}(
+          public.to_bm25query(
+            'dragonfruit',
+            ${tx.unsafe(`'${index.schema}.record_content_bm25_idx'`)}
+          )
+        )
+      `;
+      await tx`deallocate ${tx(bm25PlanName)}`;
+      assert.ok(
+        planUsesIndex(
+          keywordPlan[0]?.["QUERY PLAN"],
+          "record_content_bm25_idx",
+        ),
+        "expected the parameterized keyword query to use the BM25 index",
+      );
+    });
+  });
+});
+
+test("keyword search explicit limit overrides pg_textsearch.default_limit", async () => {
+  await withIndex(async (index) => {
+    await index.upsertMany(
+      Array.from({ length: 6 }, (_, position) => ({
+        content: `dragonfruit document ${position}`,
+        tree: "docs",
+      })),
+    );
+
+    await sql.begin(async (tx) => {
+      await tx`set local pg_textsearch.default_limit = 1`;
+      const hits = await tx<{ readonly id: string }[]>`
+        select id
+        from ${tx(index.schema)}.search_records
+          (_fulltext => ${"dragonfruit"}, _limit => 5)
+      `;
+      assert.equal(hits.length, 5);
+    });
   });
 });
 
