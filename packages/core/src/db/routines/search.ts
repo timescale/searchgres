@@ -121,7 +121,10 @@ export async function createSearchRoutines(
   // ------------------------------------------------------------------------
   // Returns {"g":guard,"r":has_regex,"u":unguarded}. Used only for a
   // filter-only search to enforce that a regex is never the sole scan driver
-  // and never appears under `not`.
+  // and never appears under `not`. Mirrors `analyzeFilter` in `src/search.ts`,
+  // which pre-validates library input; the two must implement identical rules
+  // (this body is part of the immutable schema format, so a rule change here
+  // needs a new format, while the TS copy can change freely).
   await runSql(
     tx`
         create function ${tx(indexSchema)}.analyze_filter

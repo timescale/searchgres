@@ -8,10 +8,12 @@ import {
   SearchgresError,
   type ValidationIssue,
 } from "./errors.ts";
+import { isValidTreePath } from "./identifiers.ts";
 import type { Index } from "./open-index.ts";
 import { mapInputSqlError, postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 import { normalizeTemporalTuple, temporalTupleSchema } from "./temporal.ts";
+import { metaSchema, toValidationIssue } from "./validation.ts";
 
 const MAX_UPSERT_BATCH_SIZE = 1000;
 /** Built-in PostgreSQL `text` OID, used as sql.array's element type. */
@@ -21,14 +23,12 @@ const recordSchema = z
   .object({
     id: z.uuidv7().optional(),
     content: z.string(),
-    meta: z.object({}).catchall(z.json()).default({}),
+    meta: metaSchema.default({}),
     tree: z
       .string()
       .refine(
-        (path) =>
-          path === "" ||
-          path.split(".").every((label) => /^[A-Za-z0-9_-]+$/.test(label)),
-        "expected dot-separated ltree labels matching [A-Za-z0-9_-]+ (or an empty string for the root)",
+        isValidTreePath,
+        "expected a dotted ltree path (or the empty root)",
       )
       .default(""),
     temporal: temporalTupleSchema.optional(),
@@ -255,16 +255,6 @@ function throwInvalidRecordInput(
     cause,
     issues,
   });
-}
-
-function toValidationIssue(issue: z.core.$ZodIssue): ValidationIssue {
-  return {
-    code: issue.code,
-    message: issue.message,
-    path: issue.path.map((component) =>
-      typeof component === "symbol" ? component.toString() : component,
-    ),
-  };
 }
 
 function duplicateKeyError(

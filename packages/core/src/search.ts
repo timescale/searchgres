@@ -6,7 +6,6 @@ import {
   DimensionMismatchError,
   InvalidInputError,
   SearchgresError,
-  type ValidationIssue,
 } from "./errors.ts";
 import { isValidTreePath } from "./identifiers.ts";
 import type { Index } from "./open-index.ts";
@@ -18,6 +17,7 @@ import {
   type Timestamp,
   timestampSchema,
 } from "./temporal.ts";
+import { toValidationIssue } from "./validation.ts";
 import { LIBRARY_VERSION } from "./version.ts";
 
 const tracer = trace.getTracer("searchgres", LIBRARY_VERSION);
@@ -275,7 +275,14 @@ function normalizeFilter(filter: FilterNode, ranked: boolean): CanonicalFilter {
   return canonical;
 }
 
-/** Two-pass helper: guard/regex analysis that also rejects regex under `not`. */
+/**
+ * Two-pass helper: guard/regex analysis that also rejects regex under `not`.
+ *
+ * Deliberately duplicated as `analyze_filter` in `db/routines/search.ts` so
+ * direct-SQL callers of `search_records` get the same protection; this copy
+ * gives library callers a typed error before any round trip. The two must
+ * implement identical rules — change both together.
+ */
 function analyzeFilter(node: FilterNode): FilterAnalysis {
   if ("and" in node) {
     const children = node.and.map(analyzeFilter);
@@ -507,14 +514,4 @@ function throwInvalidOptions(error: z.ZodError): never {
     cause: error,
     issues,
   });
-}
-
-function toValidationIssue(issue: z.core.$ZodIssue): ValidationIssue {
-  return {
-    code: issue.code,
-    message: issue.message,
-    path: issue.path.map((component) =>
-      typeof component === "symbol" ? component.toString() : component,
-    ),
-  };
 }
