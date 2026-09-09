@@ -79,6 +79,51 @@ test("rejects filter nesting past the depth cap", async () => {
   await rejects({ filter: node });
 });
 
+test("bounds pathological filters before schema parsing", async () => {
+  // Deep enough to overflow Zod's recursive parser if it ran first; the guard
+  // must turn it into the typed depth error, not a RangeError.
+  let deep: unknown = { tree: "docs" };
+  for (let i = 0; i < 50_000; i++) {
+    deep = { not: deep };
+  }
+  await assert.rejects(
+    () => fakeIndex().search({ filter: deep } as never),
+    (error: unknown) => {
+      assert.ok(error instanceof InvalidInputError);
+      assert.match(error.message, /maximum depth of 16/);
+      return true;
+    },
+  );
+
+  // Wide rather than deep: the node cap.
+  const wide = {
+    and: Array.from({ length: 101 }, (_, i) => ({ tree: `t${i}` })),
+  };
+  await assert.rejects(
+    () => fakeIndex().search({ filter: wide } as never),
+    (error: unknown) => {
+      assert.ok(error instanceof InvalidInputError);
+      assert.match(error.message, /maximum of 100 nodes/);
+      return true;
+    },
+  );
+
+  // Exactly at the depth cap the guard is silent; the malformed leaf is then
+  // reported by the schema, proving Zod still ran.
+  let atCap: unknown = { bogus: 1 };
+  for (let i = 0; i < 15; i++) {
+    atCap = { not: atCap };
+  }
+  await assert.rejects(
+    () => fakeIndex().search({ filter: atCap } as never),
+    (error: unknown) => {
+      assert.ok(error instanceof InvalidInputError);
+      assert.doesNotMatch(error.message, /maximum depth/);
+      return true;
+    },
+  );
+});
+
 test("rejects a regexp filter as the only criterion", async () => {
   await rejects({ filter: { regexp: "throttl" } });
 });
