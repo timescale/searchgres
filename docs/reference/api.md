@@ -100,7 +100,7 @@ type UpsertRecord = {
   name?: string | null;                // non-empty; null (default) = unnamed
   meta?: Record<string, unknown>;
   temporal?: readonly [Date | string] | readonly [Date | string, Date | string];
-  id?: string;
+  id?: string;                         // UUIDv7; generated when omitted
   embedding?: readonly number[];
 };
 
@@ -111,6 +111,12 @@ type UpsertResult = { id: string; status: "inserted" | "updated" | "skipped" };
 
 `upsertMany` accepts at most 1,000 records ([`BatchTooLargeError`](errors.md)
 above that).
+
+Record ids are UUIDv7 everywhere: generated ids are v7, a supplied `id` must be
+v7, and the table enforces it for direct SQL too. Every method that takes an
+`id` (including the `after`/`before` cursors) rejects any other UUID version
+with `InvalidInputError`. v7 keeps the primary key time-ordered, which is what
+makes the filter-only cursor a chronological walk.
 
 ### Reading
 
@@ -177,8 +183,8 @@ type SearchOptions = {
 
   // filter-only listing
   order?: "asc" | "desc";
-  after?: string;
-  before?: string;
+  after?: string;              // record id (UUIDv7) to continue past
+  before?: string;             // record id (UUIDv7) to stop before
 };
 
 type Filter =
