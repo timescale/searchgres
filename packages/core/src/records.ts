@@ -62,7 +62,11 @@ const patchSchema = z
         "expected a dotted ltree path (or the empty root)",
       )
       .optional(),
-    name: z.string().nullable().optional(),
+    name: z
+      .string()
+      .min(1, "name must not be empty; use null for an unnamed record")
+      .nullable()
+      .optional(),
     temporal: temporalTupleSchema.nullable().optional(),
     embedding: z.array(z.number().finite()).readonly().optional(),
   })

@@ -43,7 +43,7 @@ your input and call again.
 type UpsertRecord = {
   content: string;                    // required, non-empty — the searchable text
   tree?: string;                      // dotted ltree path; defaults to root ""
-  name?: string | null;               // optional leaf name, unique within a tree
+  name?: string | null;               // optional non-empty leaf name, unique within a tree
   meta?: Record<string, unknown>;     // arbitrary JSON, filterable
   temporal?:                          // a point in time, or a half-open interval
     | readonly [Date | string]
@@ -60,7 +60,8 @@ type UpsertRecord = {
   `[A-Za-z0-9_-]+`. The empty string `""` is the root. Use it to scope searches
   later (see [Search and filter](search.md)).
 - **`name`** makes a record addressable by `(tree, name)` and is its idempotency
-  key (see below). Set it to `null` (the default) for anonymous records.
+  key (see below). Set it to `null` (the default) for anonymous records; the
+  empty string is rejected rather than treated as a name.
 - **`meta`** is any JSON object; filter on it with containment or JSONPath.
 - **`temporal`** stores represented time. A one-element tuple is a point stored as
   `[t, t]`; a two-element tuple is stored as the half-open interval `[start, end)`

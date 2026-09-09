@@ -345,7 +345,7 @@ test("ignore resolves a concurrently committed named conflict", async () => {
   }
 });
 
-test("upsert and patch reject empty content", async () => {
+test("upsert and patch reject empty content and empty names", async () => {
   const schema = randomTestSchema();
   try {
     await createIndex(sql, schema, { dimensions: 4 });
@@ -388,6 +388,36 @@ test("upsert and patch reject empty content", async () => {
       },
     );
     assert.equal((await index.get(created.id)).content, "kept");
+
+    // An empty-string name is almost always a caller bug; null is the explicit
+    // "unnamed" spelling and keeps working.
+    await assert.rejects(
+      () => index.upsert({ content: "named", tree: "docs", name: "" }),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidInputError);
+        assert.deepEqual(error.issues[0]?.path, [0, "name"]);
+        assert.match(error.message, /use null for an unnamed record/);
+        return true;
+      },
+    );
+    const named = await index.upsert({
+      content: "named",
+      tree: "docs",
+      name: "n",
+    });
+    const namedHead = await index.get(named.id);
+    await assert.rejects(
+      () => index.patch(named.id, namedHead.versionHash, { name: "" }),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidInputError);
+        assert.deepEqual(error.issues[0]?.path, ["name"]);
+        return true;
+      },
+    );
+    const unnamed = await index.patch(named.id, namedHead.versionHash, {
+      name: null,
+    });
+    assert.equal(unnamed.name, null);
   } finally {
     await dropTestSchema(sql, schema);
   }
