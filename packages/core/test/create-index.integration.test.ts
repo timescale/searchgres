@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex, SCHEMA_FORMAT_VERSION } from "../src/create-index.ts";
+import { INDEX_SCHEMA_COMMENT } from "../src/db/marker.ts";
 import {
   ConflictError,
   InvalidConfigError,
@@ -39,6 +40,12 @@ test("creates an immutable index schema and singleton format marker", async () =
     await createIndex(sql, schema, { dimensions: 4 });
 
     assert.equal(await schemaExists(sql, schema), true);
+    const [comment] = await sql<{ readonly comment: string | null }[]>`
+      select pg_catalog.obj_description(oid, 'pg_namespace') as comment
+      from pg_catalog.pg_namespace
+      where nspname = ${schema}
+    `;
+    assert.equal(comment?.comment, INDEX_SCHEMA_COMMENT);
     const version = sql`${sql(schema)}.version`;
     const versions = await sql<
       { readonly version: string; readonly at: Date }[]

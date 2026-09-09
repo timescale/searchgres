@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `dropIndex` (and `Index.drop()`) no longer treats any schema containing a
+  table named `version` as a searchgres index. `createIndex` now stamps the
+  schema with a `COMMENT`, and `openIndex`/`dropIndex` require that comment,
+  the `version`/`record`/`embedding_queue` tables, and a single format-version
+  row before acting. Look-alike caller schemas raise `InvalidIndexError` and
+  are left untouched. Indexes provisioned by earlier 0.1.x releases lack the
+  comment and must be rebuilt (or stamped manually with
+  `COMMENT ON SCHEMA <schema> IS 'searchgres index'`).
+
 ## [0.1.2] - 2026-09-04
 
 ### Fixed

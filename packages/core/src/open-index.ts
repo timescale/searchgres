@@ -7,6 +7,7 @@ import {
   queueStats,
 } from "./db/embedding-queue.ts";
 import { getExtensionInfo } from "./db/extensions.ts";
+import { readIndexMarker } from "./db/marker.ts";
 import { dropIndex } from "./drop-index.ts";
 import {
   type EmbeddingWorker,
@@ -325,10 +326,6 @@ export class Index implements TransactionIndex {
   }
 }
 
-interface VersionRow {
-  readonly version: string;
-}
-
 interface EmbeddingColumnRow {
   readonly type_name: string;
   readonly type_schema: string;
@@ -348,7 +345,7 @@ export async function openIndex(
   options: OpenIndexOptions,
 ): Promise<Index> {
   const indexSchema = assertSchemaName(schema);
-  const version = await readSchemaVersion(sql, indexSchema);
+  const version = await readIndexMarker(sql, indexSchema);
   if (version !== SCHEMA_FORMAT_VERSION) {
     throw new SchemaVersionError(indexSchema, version, SCHEMA_FORMAT_VERSION);
   }
@@ -381,44 +378,6 @@ export async function openIndex(
     embedding: options.embedding,
     truncate: options.truncate ?? noTruncation,
   });
-}
-
-async function readSchemaVersion(
-  sql: postgres.Sql,
-  schema: string,
-): Promise<string> {
-  const [marker] = await runSql(
-    sql<{ readonly present: boolean }[]>`
-      select exists (
-        select 1
-        from pg_catalog.pg_class c
-        inner join pg_catalog.pg_namespace n on (n.oid = c.relnamespace)
-        where n.nspname = ${schema}
-        and c.relname = 'version'
-        and c.relkind = 'r'
-      ) as present
-    `,
-    { spanName: "readSchemaVersionMarker", dbOperationName: "SELECT" },
-  );
-  if (!marker?.present) {
-    throw new InvalidIndexError(schema);
-  }
-
-  const rows = await runSql(
-    sql<VersionRow[]>`
-      select version
-      from ${sql(schema)}.version
-    `,
-    {
-      spanName: "readSchemaVersion",
-      dbOperationName: "SELECT",
-      namespace: schema,
-    },
-  );
-  if (rows.length !== 1 || !rows[0]) {
-    throw new InvalidIndexError(schema);
-  }
-  return rows[0].version;
 }
 
 async function readEmbeddingColumn(
