@@ -34,7 +34,11 @@ const recordSchema = z
       )
       .default(""),
     temporal: temporalTupleSchema.optional(),
-    name: z.string().nullable().default(null),
+    name: z
+      .string()
+      .min(1, "name must not be empty; use null for an unnamed record")
+      .nullable()
+      .default(null),
     embedding: z.array(z.number().finite()).readonly().optional(),
   })
   .strict();

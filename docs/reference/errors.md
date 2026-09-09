@@ -44,7 +44,7 @@ conditions.
 ### `InvalidInputError` (`INVALID_INPUT`)
 
 Input to an operation on an open index is invalid: a malformed record (for
-example empty `content`), an invalid patch, a bad search option, a malformed filter, a bad tree selector, a
+example empty `content` or an empty-string `name`), an invalid patch, a bad search option, a malformed filter, a bad tree selector, a
 non-finite `retentionMs`, or a **pattern PostgreSQL rejected** — an `lquery`,
 `ltxtquery`, `regexp`, or JSONPath (`metaPredicate`) with a syntax error.
 

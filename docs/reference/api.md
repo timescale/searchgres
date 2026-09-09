@@ -97,7 +97,7 @@ Obtain a handle from `openIndex()`. Read-only properties: `schema`,
 type UpsertRecord = {
   content: string;                     // non-empty
   tree?: string;
-  name?: string | null;
+  name?: string | null;                // non-empty; null (default) = unnamed
   meta?: Record<string, unknown>;
   temporal?: readonly [Date | string] | readonly [Date | string, Date | string];
   id?: string;
@@ -143,7 +143,7 @@ type PatchInput = {
   content?: string;                    // non-empty
   meta?: Record<string, unknown>;
   tree?: string;
-  name?: string | null;
+  name?: string | null;                // non-empty; null clears the name
   temporal?: (readonly [Date | string] | readonly [Date | string, Date | string]) | null;
   embedding?: readonly number[];
 };
