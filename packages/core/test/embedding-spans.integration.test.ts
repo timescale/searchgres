@@ -91,3 +91,51 @@ test("processEmbeddings records pass failures and per-batch provider failures on
     await dropTestSchema(sql, schema);
   }
 });
+
+test("the worker skips the pending count that processEmbeddings reports as remaining", async () => {
+  const schema = randomTestSchema();
+  const model = controllableEmbeddingModel();
+  try {
+    await createIndex(sql, schema, { dimensions: 4 });
+    const index = await openIndex(sql, schema, { embedding: model });
+    await index.upsertMany([{ content: "s", tree: "docs" }]);
+
+    // The bounded pass counts what is left and reports it.
+    const result = await index.processEmbeddings();
+    assert.equal(result.embedded, 1);
+    assert.equal(result.remaining, 0);
+    await provider.forceFlush();
+    const passSpan = processSpans().at(-1);
+    assert.equal(passSpan?.attributes["searchgres.embedding.remaining"], 0);
+    const countBefore = exporter
+      .getFinishedSpans()
+      .filter((span) => span.name === "pendingEmbeddingCount").length;
+    assert.ok(countBefore >= 1, "processEmbeddings counted the queue");
+
+    // The continuous worker decides idleness from claimed/cancelled and must
+    // not count the queue on every tick.
+    exporter.reset();
+    const worker = index.startEmbeddingWorker({ intervalMs: 10 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await worker.stop();
+    await provider.forceFlush();
+    const ticks = processSpans();
+    assert.ok(
+      ticks.length >= 2,
+      `expected several idle ticks, saw ${ticks.length}`,
+    );
+    for (const tick of ticks) {
+      assert.equal(
+        tick.attributes["searchgres.embedding.remaining"],
+        undefined,
+        "worker tick reported remaining",
+      );
+    }
+    const counts = exporter
+      .getFinishedSpans()
+      .filter((span) => span.name === "pendingEmbeddingCount");
+    assert.equal(counts.length, 0, "worker tick counted the queue");
+  } finally {
+    await dropTestSchema(sql, schema);
+  }
+});

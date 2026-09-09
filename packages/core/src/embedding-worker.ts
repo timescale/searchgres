@@ -111,15 +111,48 @@ export async function processEmbeddings(
   options: ProcessEmbeddingsOptions = {},
 ): Promise<ProcessEmbeddingsResult> {
   assertEmbeddingAvailable(index, "process embeddings");
-  const leaseMs = options.leaseDurationMs ?? DEFAULT_LEASE_MS;
-  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  const batchSize = await resolveBatchSize(index, options.batchSize);
-  const maxBatches = options.maxBatches ?? Number.POSITIVE_INFINITY;
-  const deadline =
-    options.maxDurationMs === undefined
-      ? Number.POSITIVE_INFINITY
-      : Date.now() + options.maxDurationMs;
+  const pass = await drainPass(index, {
+    batchSize: await resolveBatchSize(index, options.batchSize),
+    leaseMs: options.leaseDurationMs ?? DEFAULT_LEASE_MS,
+    maxAttempts: options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+    maxBatches: options.maxBatches ?? Number.POSITIVE_INFINITY,
+    deadline:
+      options.maxDurationMs === undefined
+        ? Number.POSITIVE_INFINITY
+        : Date.now() + options.maxDurationMs,
+    ...(options.signal ? { signal: options.signal } : {}),
+    countRemaining: true,
+  });
+  return { ...pass, remaining: pass.remaining ?? 0 };
+}
 
+/** Fully resolved parameters for one drain pass. */
+interface DrainPassOptions {
+  readonly batchSize: number;
+  readonly leaseMs: number;
+  readonly maxAttempts: number;
+  readonly maxBatches: number;
+  readonly deadline: number;
+  readonly signal?: AbortSignal;
+  /**
+   * Whether to `count(*)` the pending queue after the pass. The public
+   * `processEmbeddings` reports it as `remaining`; the continuous worker
+   * decides idleness from `claimed`/`cancelled` alone and skips the count,
+   * which would otherwise run once per tick even on an idle queue.
+   */
+  readonly countRemaining: boolean;
+}
+
+type DrainPassResult = Omit<ProcessEmbeddingsResult, "remaining"> & {
+  readonly remaining?: number;
+};
+
+async function drainPass(
+  index: Index,
+  options: DrainPassOptions,
+): Promise<DrainPassResult> {
+  const { batchSize, leaseMs, maxAttempts, maxBatches, deadline, signal } =
+    options;
   return tracer.startActiveSpan("embedding.process", async (span) => {
     let claimed = 0;
     let embedded = 0;
@@ -127,7 +160,7 @@ export async function processEmbeddings(
     let cancelled = 0;
     try {
       for (let batch = 0; batch < maxBatches; batch++) {
-        if (options.signal?.aborted || Date.now() >= deadline) {
+        if (signal?.aborted || Date.now() >= deadline) {
           break;
         }
         const outcome = await runBatch(index, span, {
@@ -144,14 +177,17 @@ export async function processEmbeddings(
           break;
         }
       }
-      const remaining = await pendingCount(index.sql, index.schema);
       span.setAttributes({
         "searchgres.embedding.claimed": claimed,
         "searchgres.embedding.embedded": embedded,
         "searchgres.embedding.failed": failed,
         "searchgres.embedding.cancelled": cancelled,
-        "searchgres.embedding.remaining": remaining,
       });
+      if (!options.countRemaining) {
+        return { claimed, embedded, failed, cancelled };
+      }
+      const remaining = await pendingCount(index.sql, index.schema);
+      span.setAttribute("searchgres.embedding.remaining", remaining);
       return { claimed, embedded, failed, cancelled, remaining };
     } catch (error) {
       span.recordException(
@@ -301,23 +337,29 @@ export function startEmbeddingWorker(
     }
   };
 
+  const leaseMs = options.leaseDurationMs ?? DEFAULT_LEASE_MS;
+  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+
   const loop = (async () => {
     let consecutiveErrors = 0;
+    // The model's max-per-call is static, so resolve the clamp once per worker
+    // rather than once per tick. Resolved lazily inside the loop so a failing
+    // model surfaces through the same onError/backoff path as a failing batch.
+    let batchSize: number | undefined;
     while (!signal.aborted) {
       try {
+        batchSize ??= await resolveBatchSize(index, options.batchSize);
         // One batch per iteration; `signal` lets stop() land between batches.
-        const result = await processEmbeddings(index, {
+        // Idleness is decided from `claimed`/`cancelled`, so skip the pending
+        // count that processEmbeddings reports as `remaining`.
+        const result = await drainPass(index, {
+          batchSize,
+          leaseMs,
+          maxAttempts,
           maxBatches: 1,
+          deadline: Number.POSITIVE_INFINITY,
           signal,
-          ...(options.batchSize !== undefined
-            ? { batchSize: options.batchSize }
-            : {}),
-          ...(options.leaseDurationMs !== undefined
-            ? { leaseDurationMs: options.leaseDurationMs }
-            : {}),
-          ...(options.maxAttempts !== undefined
-            ? { maxAttempts: options.maxAttempts }
-            : {}),
+          countRemaining: false,
         });
         consecutiveErrors = 0;
         if (result.claimed > 0 || result.cancelled > 0) {
