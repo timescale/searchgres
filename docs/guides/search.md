@@ -83,6 +83,10 @@ Use a precomputed query vector instead of `semantic` to skip the embedding call:
 await index.search({ vector: precomputed, fulltext: "rate limit" });
 ```
 
+This is also the right form for a search inside a caller transaction
+(`index.with(tx)`), so the provider call does not run while the transaction is
+open — see [Compose in a transaction](records-and-trees.md#compose-in-a-transaction).
+
 ### Scope to part of the tree
 
 ```ts

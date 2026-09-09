@@ -292,7 +292,7 @@ claiming any queue row or running any query. Compare by identity:
 
 | Method | Returns | Notes |
 | --- | --- | --- |
-| `with(tx)` | `TransactionIndex` | Record/tree/search/write ops bound to a caller transaction. |
+| `with(tx)` | `TransactionIndex` | Record/tree/search/write ops bound to a caller transaction. Prefer `vector` over `semantic` for searches inside it — see the guide. |
 | `drop()` | `void` | `DROP SCHEMA ... CASCADE`. |
 
 `TransactionIndex` excludes the embedding and queue methods by design. See

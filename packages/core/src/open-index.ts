@@ -65,6 +65,11 @@ import {
  * maintenance are intentionally excluded — the worker owns multiple short
  * transactions around remote provider calls and must not run inside (or outlive)
  * a caller transaction. Obtained via {@link Index.with}.
+ *
+ * One method here can still leave the process: `search({ semantic })` embeds
+ * the query text through the index's model *inside* your transaction, holding
+ * its connection and any locks it has taken across the provider call. Prefer
+ * embedding first and passing `vector` unless the model is local.
  */
 export interface TransactionIndex {
   /** Insert one record, replacing a conflict by default. */
@@ -80,6 +85,10 @@ export interface TransactionIndex {
   insertMany(
     records: readonly UpsertRecord[],
   ): Promise<readonly UpsertResult[]>;
+  /**
+   * Search within the transaction. `semantic` embeds through the model while
+   * the transaction is open; prefer a precomputed `vector` here.
+   */
   search(options?: SearchOptions): Promise<readonly SearchResult[]>;
   get(id: string): Promise<StoredRecord>;
   getByName(tree: string, name: string): Promise<StoredRecord>;
@@ -316,7 +325,9 @@ export class Index implements TransactionIndex {
   /**
    * Bind record/tree operations to a caller-owned transaction so they compose
    * atomically. A no-I/O clone; the caller owns commit/rollback and the pool.
-   * Embedding-drain and queue methods are intentionally not exposed here.
+   * Embedding-drain and queue methods are intentionally not exposed here, and
+   * `search({ semantic })` on the returned handle calls the embedding model
+   * with the transaction open — embed first and pass `vector` instead.
    */
   with(tx: postgres.TransactionSql): TransactionIndex {
     return new Index({
