@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex } from "../src/create-index.ts";
+import { noEmbedding } from "../src/embedding.ts";
 import type { WorkerErrorContext } from "../src/embedding-worker.ts";
 import {
   DimensionMismatchError,
+  EmbeddingUnavailableError,
   InvalidInputError,
   RateLimitError,
 } from "../src/errors.ts";
@@ -115,6 +117,69 @@ test("embedding write-back preserves record version and updatedAt", async () => 
     assert.ok(changed.updatedAt);
     assert.ok(changed.updatedAt.getTime() > after.updatedAt.getTime());
   });
+});
+
+test("noEmbedding supports ingest, precomputed vectors, and lexical search but refuses to embed", async () => {
+  const schema = randomTestSchema();
+  try {
+    await createIndex(sql, schema, { dimensions: 4 });
+    const ingest = await openIndex(sql, schema, { embedding: noEmbedding });
+
+    // Everything that does not generate a vector works.
+    const queued = await ingest.upsert({ content: "queued later", tree: "a" });
+    const precomputed = await ingest.upsert({
+      content: "already embedded",
+      tree: "a",
+      embedding: [1, 0, 0, 0],
+    });
+    const byVector = await ingest.search({ vector: [1, 0, 0, 0], limit: 5 });
+    assert.deepEqual(
+      byVector.map((hit) => hit.id),
+      [precomputed.id],
+    );
+    const byKeyword = await ingest.search({ fulltext: "queued", limit: 5 });
+    assert.deepEqual(
+      byKeyword.map((hit) => hit.id),
+      [queued.id],
+    );
+    const listed = await ingest.search({ filter: { tree: "a" } });
+    assert.equal(listed.length, 2);
+    assert.equal((await ingest.queueStats()).pending, 1);
+    await ingest.pruneEmbeddingQueue({ retentionMs: 0 });
+
+    // Everything that needs a model throws before doing any work.
+    const unavailable = (operation: string) => (error: unknown) =>
+      error instanceof EmbeddingUnavailableError &&
+      error.operation === operation;
+    await assert.rejects(
+      () => ingest.search({ semantic: "queued" }),
+      unavailable("search by semantic text"),
+    );
+    await assert.rejects(
+      () => ingest.processEmbeddings(),
+      unavailable("process embeddings"),
+    );
+    assert.throws(
+      () => ingest.startEmbeddingWorker(),
+      unavailable("start the embedding worker"),
+    );
+    // The queue row was never claimed.
+    const [row] = await queueRows(schema);
+    assert.ok(row);
+    assert.equal(row.attempts, 0);
+    assert.equal(row.outcome, null);
+    assert.equal(row.visible_future, false);
+
+    // A handle with a real model drains the same queue.
+    const model = controllableEmbeddingModel();
+    model.handler = (values) => values.map(() => [0, 1, 0, 0]);
+    const worker = await openIndex(sql, schema, { embedding: model });
+    const result = await worker.processEmbeddings();
+    assert.equal(result.embedded, 1);
+    assert.equal((await worker.get(queued.id)).hasEmbedding, true);
+  } finally {
+    await dropTestSchema(sql, schema);
+  }
 });
 
 test("processEmbeddings embeds queued rows and writes vectors back", async () => {

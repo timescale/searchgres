@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `noEmbedding`: an `EmbeddingModel` for handles that never generate vectors
+  (ingest-only processes, precomputed-vector pipelines, keyword/filter-only
+  search). Writes still queue embedding work for a handle opened with a real
+  model; `search({ semantic })`, `processEmbeddings()`, and
+  `startEmbeddingWorker()` throw the new `EmbeddingUnavailableError`
+  (`EMBEDDING_UNAVAILABLE`) before claiming any queue row.
 - `startEmbeddingWorker({ onError })`: a callback receiving each failed tick
   with `{ phase, consecutiveErrors, backoffMs }`. Previously the worker
   swallowed every failure (a misconfigured model, a revoked key, an unreachable
@@ -21,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `openIndex` validates its `options` before any database access and throws
+  `InvalidConfigError` for a missing or malformed `embedding`, a non-function
+  `truncate`, or an unknown key. Previously `openIndex(sql, schema, {})`
+  succeeded and the first semantic search or drain failed inside the AI SDK.
 - **Schema format 2:** `updatedAt` now advances only when a versioned record
   field (`content`, `tree`, `name`, `meta`, or `temporal`) changes, matching
   `version` and `versionHash`. Embedding write-back still advances the internal

@@ -34,6 +34,9 @@ You can also supply a vector later, with no content change; searchgres keeps it
 and discards any queued work that referred to the old state, so a drainer can
 never overwrite it.
 
+If every vector comes from your own pipeline, the handle never needs a model:
+open it with `noEmbedding` (see [Credential separation](#credential-separation)).
+
 ## Drain on demand
 
 Run one bounded pass — ideal for a cron job, after a bulk import, or in a
@@ -158,8 +161,20 @@ You rarely need to think about it, but the guarantees are worth knowing:
 ## Credential separation
 
 Because the queue lives in the database, a process that only writes records needs
-no embedding credentials at all. A separate process — the one that opens the
-index with an embedding model — drains the queue. See
+no embedding credentials at all. Open it with `noEmbedding`:
+
+```ts
+import { noEmbedding, openIndex } from "searchgres";
+
+const ingest = await openIndex(sql, "docs_index", { embedding: noEmbedding });
+await ingest.upsertMany(records); // queues embedding work as usual
+```
+
+Such a handle can write, read, run keyword and filter search, search by a
+precomputed `vector`, and inspect the queue. Anything that would have to call a
+model — `search({ semantic })`, `processEmbeddings()`, `startEmbeddingWorker()`
+— throws `EmbeddingUnavailableError` without touching the queue. A separate
+process — the one that opens the index with an embedding model — drains it. See
 [Run in production](production.md).
 
 Next: [Search and filter](search.md).

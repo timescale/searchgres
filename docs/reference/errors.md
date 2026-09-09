@@ -33,8 +33,10 @@ response) and on the concrete class when the distinction matters.
 
 ### `InvalidConfigError` (`INVALID_CONFIG`)
 
-How an index is created or opened is invalid: a bad `createIndex` config, a
-malformed schema name, or a truncator constructed with a non-positive limit.
+How an index is created or opened is invalid: a bad `createIndex` config,
+missing or malformed `openIndex` options (no `embedding`, a non-function
+`truncate`, an unknown key), a malformed schema name, or a truncator
+constructed with a non-positive limit.
 
 **Recover:** fix the configuration. These are programming errors, not runtime
 conditions.
@@ -123,6 +125,16 @@ The embedding provider failed for a non-rate-limit reason. The original error is
 on `cause`.
 
 **Recover:** inspect `cause`; fix credentials/connectivity and retry.
+
+### `EmbeddingUnavailableError` (`EMBEDDING_UNAVAILABLE`)
+
+The handle was opened with `noEmbedding`, and the operation — `search` with
+`semantic` text, `processEmbeddings()`, or `startEmbeddingWorker()` — needs a
+model to generate a vector. Carries `operation`. Thrown before any queue row is
+claimed or any query runs, so queued work is untouched.
+
+**Recover:** open the index with a real `EmbeddingModel` for that operation, or
+search with `fulltext`, `filter`, or a precomputed `vector` instead.
 
 ## Provisioning and environment
 

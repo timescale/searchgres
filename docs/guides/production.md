@@ -32,9 +32,11 @@ transaction-scoped locks and leases.
 
 Because embedding work lives in a database queue, you can split responsibilities:
 
-- **Ingestion processes** write records and need no embedding credentials at all.
-- **An embedding process** opens the index with an `EmbeddingModel` and drains
-  the queue.
+- **Ingestion processes** write records and need no embedding credentials at all:
+  open the index with
+  [`noEmbedding`](embeddings.md#credential-separation).
+- **An embedding process** opens the index with a real `EmbeddingModel` and
+  drains the queue.
 
 This keeps provider keys off your write path and lets you scale embedding
 independently. Any number of drainers can run concurrently against one index

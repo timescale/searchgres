@@ -4,6 +4,7 @@ import {
   BatchTooLargeError,
   ConflictError,
   DimensionMismatchError,
+  EmbeddingUnavailableError,
   ExtensionError,
   InvalidConfigError,
   InvalidIndexError,
@@ -66,6 +67,15 @@ test("errors retain the fields callers need to recover", () => {
 
   const rateLimit = new RateLimitError("slow down", 2500);
   assert.equal(rateLimit.retryAfterMs, 2500);
+
+  const unavailable = new EmbeddingUnavailableError("process embeddings");
+  assert.equal(unavailable.code, "EMBEDDING_UNAVAILABLE");
+  assert.equal(unavailable.name, "EmbeddingUnavailableError");
+  assert.equal(unavailable.operation, "process embeddings");
+  assert.match(
+    unavailable.message,
+    /^Cannot process embeddings: .*noEmbedding/,
+  );
 
   const config = new InvalidConfigError("invalid", {
     issues: [{ code: "custom", message: "bad value", path: ["bm25", "k1"] }],
