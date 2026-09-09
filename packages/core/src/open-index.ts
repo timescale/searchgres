@@ -275,6 +275,11 @@ export class Index implements TransactionIndex {
     return listTree(this, lquery);
   }
 
+  /**
+   * Inclusive display tree rooted at `tree` (default: the whole index) with
+   * per-node descendant counts. Unlike `listTree`, the root itself is
+   * included; `options.levels` bounds the relative depth.
+   */
   async treeView(
     tree?: string,
     options?: TreeViewOptions,

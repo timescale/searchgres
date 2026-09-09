@@ -77,8 +77,8 @@ await index.pruneEmbeddingQueue({ retentionMs: 604_800_000 });
 ## Observability
 
 searchgres is instrumented with the OpenTelemetry API. If your app registers an
-OTel SDK you get traces and metrics automatically; if it doesn't, instrumentation
-is a no-op and costs nothing.
+OTel SDK you get traces automatically; if it doesn't, instrumentation is a
+no-op and costs nothing.
 
 Every SQL statement emits a child span with the query text and timing, nested
 under the operation that issued it, on a dedicated `searchgres/sql`

@@ -47,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InvalidInputError` or `ValidationError`.
 - `truncateCharacters`, `truncateBytes`, and `truncateTokens` throw
   `InvalidConfigError` instead of a bare `RangeError` for a non-positive limit.
+- Docs: the supported Bun version is 1.4 or newer everywhere (getting-started
+  said 1.2); `treeView` is documented in the API reference; the observability
+  guide no longer claims metrics (the core emits traces only).
 
 ### Fixed
 
