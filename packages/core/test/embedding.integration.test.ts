@@ -65,6 +65,58 @@ async function embeddingOf(schema: string, id: string): Promise<string | null> {
   return row?.embedding ?? null;
 }
 
+async function contentVersionOf(schema: string, id: string): Promise<number> {
+  const [row] = await sql<{ content_version: number }[]>`
+    select content_version from ${sql(schema)}.record where id = ${id}
+  `;
+  assert.ok(row);
+  return row.content_version;
+}
+
+test("embedding write-back preserves record version and updatedAt", async () => {
+  await withIndex(async (index) => {
+    const inserted = await index.upsert({
+      content: "versioned",
+      tree: "docs",
+    });
+    const created = await index.get(inserted.id);
+    const before = await index.patch(created.id, created.versionHash, {
+      meta: { lifecycle: "queued" },
+    });
+    assert.ok(before.updatedAt);
+    assert.equal(before.hasEmbedding, false);
+    const beforeContentVersion = await contentVersionOf(
+      index.schema,
+      created.id,
+    );
+
+    const result = await index.processEmbeddings();
+    assert.equal(result.embedded, 1);
+
+    const after = await index.get(created.id);
+    const afterContentVersion = await contentVersionOf(
+      index.schema,
+      created.id,
+    );
+    assert.equal(after.hasEmbedding, true);
+    assert.equal(after.version, before.version);
+    assert.equal(after.versionHash, before.versionHash);
+    assert.ok(after.updatedAt);
+    assert.equal(after.updatedAt.getTime(), before.updatedAt.getTime());
+    assert.equal(afterContentVersion, beforeContentVersion + 1);
+
+    // A versioned field still advances every public change signal.
+    await sql`select pg_catalog.pg_sleep(0.01)`;
+    const changed = await index.patch(after.id, after.versionHash, {
+      meta: { lifecycle: "ready" },
+    });
+    assert.equal(changed.version, "3");
+    assert.notEqual(changed.versionHash, after.versionHash);
+    assert.ok(changed.updatedAt);
+    assert.ok(changed.updatedAt.getTime() > after.updatedAt.getTime());
+  });
+});
+
 test("processEmbeddings embeds queued rows and writes vectors back", async () => {
   await withIndex(async (index, model) => {
     model.handler = (values) =>

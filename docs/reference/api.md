@@ -124,6 +124,8 @@ type StoredRecord = {
   version: string;
   versionHash: string;
   createdAt: Date;
+  // Last content/tree/name/meta/temporal change; null until the first update.
+  // Embedding-only maintenance does not advance it.
   updatedAt: Date | null;
 };
 

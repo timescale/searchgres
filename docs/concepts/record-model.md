@@ -23,6 +23,20 @@ conversation turn, or a generated summary.
 Search results also include version fields, timestamps, and whether an embedding
 is present.
 
+## Versions and timestamps
+
+`version`, `versionHash`, and `updatedAt` track the versioned record fields:
+`content`, `tree`, `name`, `meta`, and `temporal`. `version` starts at 1 and
+increments when any of those fields changes. `versionHash` is the corresponding
+optimistic-concurrency token. `updatedAt` is `null` until the first such update,
+then records the time of the most recent one. `createdAt` records insertion time.
+
+Embedding lifecycle state is independent. Installing, replacing, or clearing an
+embedding can change `hasEmbedding` and the internal embedding-input fence, but
+it does not change `version`, `versionHash`, or `updatedAt`. In particular, an
+async worker write-back is not a logical record update, so it does not create a
+phantom change for timestamp-based synchronization.
+
 ## One record is one chunk
 
 The core does not split documents. Choose boundaries that make each returned
@@ -95,8 +109,8 @@ needed in results.
 
 ## Temporal means represented time
 
-`createdAt` and `updatedAt` describe the database record. `temporal` describes
-what its content represents.
+`createdAt` and `updatedAt` describe when the versioned database record was
+inserted and last changed. `temporal` describes what its content represents.
 
 - `[time]` stores a point event.
 - `[start, end]` stores a half-open period `[start, end)`.

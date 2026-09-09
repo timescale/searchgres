@@ -107,7 +107,7 @@ test("rejects plain schemas and unsupported schema formats", async () => {
     await createIndex(sql, versionedSchema, { dimensions: 4 });
     await sql`
       update ${sql(versionedSchema)}.version
-      set version = '2'
+      set version = '1'
     `;
     await assert.rejects(
       () => openIndex(sql, versionedSchema, { embedding: "mock-embedding" }),

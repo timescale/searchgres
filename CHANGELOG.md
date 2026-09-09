@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Schema format 2:** `updatedAt` now advances only when a versioned record
+  field (`content`, `tree`, `name`, `meta`, or `temporal`) changes, matching
+  `version` and `versionHash`. Embedding write-back still advances the internal
+  staleness fence and can change `hasEmbedding`, but no longer produces a
+  phantom timestamp update. Existing format-1 indexes must be recreated and
+  reindexed; `openIndex` rejects them with `SchemaVersionError`.
 - **Error taxonomy split.** `InvalidConfigError` (`INVALID_CONFIG`) now covers
   only how an index is created or opened (`createIndex` config, schema names,
   truncator limits). Invalid input to an operation on an open index — a
