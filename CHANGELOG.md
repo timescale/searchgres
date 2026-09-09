@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `upsert`, `upsertMany`, and `patch` reject an empty `content` and an
+  empty-string `name` with `InvalidInputError`. Empty content could never be
+  embedded and only produced a terminal `failed` queue row; use `null` for an
+  unnamed record.
+- Filter depth and node limits are enforced on the raw input before schema
+  parsing, so an oversized filter from an untrusted caller raises
+  `InvalidInputError` instead of a stack-overflow `RangeError`.
 - `createIndex` accepts an optional fourth argument, `CreateIndexOptions`, with
   `lockTimeoutMs` (default 30 s) and `transactionTimeoutMs` (default 20 min)
   for the provisioning lock wait and transaction budget. Both were previously
