@@ -19,11 +19,11 @@ import {
 
 ## Factory functions
 
-### `createIndex(sql, schema, config)`
+### `createIndex(sql, schema, config, options?)`
 
 Creates a new index schema. Atomic; throws
 [`ConflictError`](errors.md) if the schema already exists and
-[`InvalidConfigError`](errors.md) for a bad config or schema name. See
+[`InvalidConfigError`](errors.md) for a bad config, schema name, or option. See
 [Create and manage indexes](../guides/indexes.md).
 
 ```ts
@@ -44,6 +44,14 @@ await createIndex(sql, "docs_index", {
 | `bm25.b` | `0.75` | 0–1. |
 | `hnsw.m` | `16` | 2–100. |
 | `hnsw.efConstruction` | `64` | 4–1000. |
+
+The optional fourth argument sets runtime budgets for the call itself. Nothing
+in it is persisted or affects the resulting index.
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `lockTimeoutMs` | `30000` | How long to wait for the database-wide lock that serializes concurrent `createIndex` calls before throwing [`LockTimeoutError`](errors.md#database-timeouts). `0` waits indefinitely. |
+| `transactionTimeoutMs` | `1200000` (20 min) | Budget for the whole provisioning transaction before throwing [`TransactionTimeoutError`](errors.md#database-timeouts). `0` disables the limit. |
 
 ### `openIndex(sql, schema, options) → Promise<Index>`
 
