@@ -1,7 +1,7 @@
 import { trace } from "@opentelemetry/api";
 import type postgres from "postgres";
 import { z } from "zod";
-import { embedQuery } from "./embedding.ts";
+import { assertEmbeddingAvailable, embedQuery } from "./embedding.ts";
 import {
   DimensionMismatchError,
   InvalidInputError,
@@ -367,6 +367,7 @@ export async function search(
         }
         vector = JSON.stringify(opts.vector);
       } else if (opts.semantic !== undefined) {
+        assertEmbeddingAvailable(index, "search by semantic text");
         vector = JSON.stringify(await embedQuery(index, opts.semantic));
       }
 

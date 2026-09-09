@@ -1,8 +1,9 @@
 import { trace } from "@opentelemetry/api";
-import { embed, embedMany } from "ai";
+import { type EmbeddingModel, embed, embedMany } from "ai";
 import {
   DimensionMismatchError,
   EmbeddingProviderError,
+  EmbeddingUnavailableError,
   RateLimitError,
 } from "./errors.ts";
 import type { Index } from "./open-index.ts";
@@ -14,6 +15,39 @@ const tracer = trace.getTracer("searchgres", LIBRARY_VERSION);
 const DEFAULT_BATCH_SIZE = 10;
 /** Cap on a stored `last_error` so a verbose provider payload can't bloat the row. */
 export const MAX_ERROR_LENGTH = 2048;
+
+/**
+ * An embedding model for handles that never generate vectors: ingest-only
+ * processes, precomputed-vector pipelines, or BM25/filter-only search.
+ *
+ * Writes with a null embedding still queue as usual; a handle opened with a
+ * real model drains them later. Operations that need a model — semantic text
+ * search, `processEmbeddings`, `startEmbeddingWorker` — throw
+ * `EmbeddingUnavailableError` before touching the queue or the database.
+ * Compare by identity: `index.embedding === noEmbedding`.
+ */
+export const noEmbedding: EmbeddingModel = Object.freeze({
+  specificationVersion: "v4" as const,
+  provider: "searchgres",
+  modelId: "none",
+  maxEmbeddingsPerCall: Number.POSITIVE_INFINITY,
+  supportsParallelCalls: false,
+  doEmbed(): never {
+    // Backstop only: searchgres guards its own entry points before reaching
+    // the AI SDK, but a caller may hand this object to `embed()` directly.
+    throw new EmbeddingUnavailableError("embed");
+  },
+});
+
+/** Throw before any queue or database work when the handle has no model. */
+export function assertEmbeddingAvailable(
+  index: Pick<Index, "embedding">,
+  operation: string,
+): void {
+  if (index.embedding === noEmbedding) {
+    throw new EmbeddingUnavailableError(operation);
+  }
+}
 
 /**
  * Embed one query string for search. Applies the index truncator, checks the

@@ -3,13 +3,15 @@ import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex, SCHEMA_FORMAT_VERSION } from "../src/create-index.ts";
 import { INDEX_SCHEMA_COMMENT } from "../src/db/marker.ts";
+import { noEmbedding } from "../src/embedding.ts";
 import {
   ConflictError,
   InvalidConfigError,
   InvalidIndexError,
   SchemaVersionError,
 } from "../src/errors.ts";
-import { openIndex } from "../src/open-index.ts";
+import { type OpenIndexOptions, openIndex } from "../src/open-index.ts";
+import { noTruncation } from "../src/truncate.ts";
 import { expectSqlState } from "./support/assert.ts";
 import {
   columnType,
@@ -89,6 +91,49 @@ test("opens an immutable index with catalog-derived vector shape", async () => {
     assert.equal(index.vectorType, "halfvec");
     assert.equal(index.dimensions, 4);
     assert.equal(index.embedding, "mock-embedding");
+  } finally {
+    await dropTestSchema(sql, schema);
+  }
+});
+
+test("openIndex validates its options before touching the database", async () => {
+  // The schema does not exist: an InvalidConfigError (not InvalidIndexError)
+  // proves the options were rejected before the first round-trip.
+  const missing = randomTestSchema();
+  const invalid: readonly [label: string, options: unknown][] = [
+    ["undefined", undefined],
+    ["empty object", {}],
+    ["null embedding", { embedding: null }],
+    ["empty model id", { embedding: "" }],
+    ["object without doEmbed", { embedding: { modelId: "x" } }],
+    ["non-function truncate", { embedding: "m", truncate: "24000" }],
+    ["unknown key", { embedding: "m", truncator: noTruncation }],
+  ];
+  for (const [label, options] of invalid) {
+    await assert.rejects(
+      () => openIndex(sql, missing, options as OpenIndexOptions),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidConfigError, label);
+        assert.ok(error.issues.length > 0, label);
+        assert.match(error.message, /^Invalid openIndex options: /, label);
+        return true;
+      },
+      label,
+    );
+  }
+
+  const schema = randomTestSchema();
+  try {
+    await createIndex(sql, schema, { dimensions: 4 });
+    const byId = await openIndex(sql, schema, { embedding: "mock-embedding" });
+    assert.equal(byId.embedding, "mock-embedding");
+    const withoutModel = await openIndex(sql, schema, {
+      embedding: noEmbedding,
+      truncate: noTruncation,
+    });
+    // Validation must hand back the same object so the identity guard works.
+    assert.equal(withoutModel.embedding, noEmbedding);
+    assert.equal(withoutModel.truncate, noTruncation);
   } finally {
     await dropTestSchema(sql, schema);
   }

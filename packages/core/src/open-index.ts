@@ -1,5 +1,6 @@
 import type { EmbeddingModel } from "ai";
 import type postgres from "postgres";
+import { z } from "zod";
 import { SCHEMA_FORMAT_VERSION } from "./create-index.ts";
 import {
   pruneQueue,
@@ -17,7 +18,11 @@ import {
   processEmbeddings,
   startEmbeddingWorker,
 } from "./embedding-worker.ts";
-import { InvalidIndexError, SchemaVersionError } from "./errors.ts";
+import {
+  InvalidConfigError,
+  InvalidIndexError,
+  SchemaVersionError,
+} from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
 import {
   deleteByName,
@@ -46,6 +51,7 @@ import {
   treeView,
 } from "./tree.ts";
 import { noTruncation, type Truncator } from "./truncate.ts";
+import { toValidationIssue } from "./validation.ts";
 import {
   type UpsertOptions,
   type UpsertRecord,
@@ -116,6 +122,11 @@ export interface TransactionIndex {
 }
 
 export interface OpenIndexOptions {
+  /**
+   * Any AI SDK `EmbeddingModel` (a provider model object or a registry model
+   * id string), or {@link noEmbedding} for a handle that never generates
+   * vectors.
+   */
   readonly embedding: EmbeddingModel;
   /**
    * Applied to record content (by the worker) and to `semantic` query text
@@ -338,6 +349,52 @@ interface HnswOpclassRow {
   readonly amname: string;
 }
 
+/**
+ * Shape check only. A string model id is resolved by the AI SDK's provider
+ * registry at embed time, and an object model is anything with `doEmbed` (the
+ * one member every `EmbeddingModelV*` spec shares). Model identity and
+ * dimensions are deliberately not probed here; the embedding column typmod is
+ * enforced at write-back (`DimensionMismatchError`).
+ */
+const openIndexOptionsSchema = z.strictObject({
+  embedding: z.union(
+    [
+      z.string().min(1),
+      z.custom<object>(
+        (value) =>
+          typeof value === "object" &&
+          value !== null &&
+          typeof (value as { doEmbed?: unknown }).doEmbed === "function",
+      ),
+    ],
+    {
+      error:
+        "expected an AI SDK EmbeddingModel (a model id string or an object with doEmbed), or noEmbedding",
+    },
+  ),
+  truncate: z
+    .custom<Truncator>((value) => typeof value === "function", {
+      error: "expected a Truncator function",
+    })
+    .optional(),
+});
+
+function normalizeOpenIndexOptions(input: unknown): OpenIndexOptions {
+  const result = openIndexOptionsSchema.safeParse(input);
+  if (!result.success) {
+    const issues = result.error.issues.map(toValidationIssue);
+    const first = issues[0];
+    const detail = first
+      ? `${first.path.join(".") || "options"}: ${first.message}`
+      : "validation failed";
+    throw new InvalidConfigError(`Invalid openIndex options: ${detail}`, {
+      cause: result.error,
+      issues,
+    });
+  }
+  return result.data as OpenIndexOptions;
+}
+
 /** Open and validate an immutable searchgres index without running DDL. */
 export async function openIndex(
   sql: postgres.Sql,
@@ -345,6 +402,7 @@ export async function openIndex(
   options: OpenIndexOptions,
 ): Promise<Index> {
   const indexSchema = assertSchemaName(schema);
+  const opts = normalizeOpenIndexOptions(options);
   const version = await readIndexMarker(sql, indexSchema);
   if (version !== SCHEMA_FORMAT_VERSION) {
     throw new SchemaVersionError(indexSchema, version, SCHEMA_FORMAT_VERSION);
@@ -375,8 +433,8 @@ export async function openIndex(
     schema: indexSchema,
     vectorType: vectorShape.vectorType,
     dimensions: vectorShape.dimensions,
-    embedding: options.embedding,
-    truncate: options.truncate ?? noTruncation,
+    embedding: opts.embedding,
+    truncate: opts.truncate ?? noTruncation,
   });
 }
 

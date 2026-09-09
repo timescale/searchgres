@@ -58,10 +58,12 @@ const index = await openIndex(sql, "docs_index", {
 
 | Option | Required | Notes |
 | --- | --- | --- |
-| `embedding` | yes | Any AI SDK `EmbeddingModel`. |
+| `embedding` | yes | Any AI SDK `EmbeddingModel`, or [`noEmbedding`](#noembedding) for a handle that never generates vectors. |
 | `truncate` | no | A `Truncator`; defaults to `noTruncation`. |
 
-Throws [`InvalidIndexError`](errors.md), [`SchemaVersionError`](errors.md), or
+Options are validated before any database access; an invalid or missing option
+throws [`InvalidConfigError`](errors.md). Unknown keys are rejected. Otherwise
+throws [`InvalidIndexError`](errors.md), [`SchemaVersionError`](errors.md), or
 [`ExtensionError`](errors.md).
 
 ### `dropIndex(sql, schema) → Promise<void>`
@@ -251,6 +253,26 @@ type QueueStats = {
 };
 ```
 
+#### `noEmbedding`
+
+An `EmbeddingModel` for handles that never generate vectors — an ingest-only
+process, a pipeline that supplies precomputed vectors, or an index used only
+with keyword and filter search.
+
+```ts
+import { noEmbedding, openIndex } from "searchgres";
+
+const ingest = await openIndex(sql, "docs_index", { embedding: noEmbedding });
+```
+
+Writes, reads, tree operations, `search` with `fulltext`, `filter`, or a
+precomputed `vector`, `queueStats()`, and `pruneEmbeddingQueue()` all work.
+Records written without a vector queue as usual and are drained by a handle
+opened with a real model. `search({ semantic })`, `processEmbeddings()`, and
+`startEmbeddingWorker()` throw [`EmbeddingUnavailableError`](errors.md) before
+claiming any queue row or running any query. Compare by identity:
+`index.embedding === noEmbedding`.
+
 ### Transactions and lifecycle
 
 | Method | Returns | Notes |
@@ -284,5 +306,6 @@ type TokenCodec = {
 
 All errors extend `SearchgresError`. Validation failures are
 `InvalidConfigError` (how an index is created/opened) or `InvalidInputError`
-(input to an open index); both extend `ValidationError` and carry `issues`. See
+(input to an open index); both extend `ValidationError` and carry `issues`.
+`EmbeddingUnavailableError` means the handle was opened with `noEmbedding`. See
 [Errors and recovery](errors.md).

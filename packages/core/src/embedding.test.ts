@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  assertEmbeddingAvailable,
   boundedError,
   isRateLimitError,
   MAX_ERROR_LENGTH,
+  noEmbedding,
   resolveBatchSize,
 } from "../src/embedding.ts";
-import { RateLimitError } from "../src/errors.ts";
+import { EmbeddingUnavailableError, RateLimitError } from "../src/errors.ts";
 import type { Index } from "../src/open-index.ts";
 
 function indexWithModel(embedding: unknown): Index {
@@ -50,4 +52,30 @@ test("boundedError truncates a verbose provider message", () => {
   assert.equal(short, "boom");
   const long = boundedError(new Error("x".repeat(MAX_ERROR_LENGTH + 500)));
   assert.equal(long.length, MAX_ERROR_LENGTH);
+});
+
+test("noEmbedding is a frozen AI SDK model that refuses to embed", () => {
+  assert.equal(Object.isFrozen(noEmbedding), true);
+  assert.equal(typeof noEmbedding, "object");
+  const model = noEmbedding as Exclude<typeof noEmbedding, string>;
+  assert.equal(model.specificationVersion, "v4");
+  assert.equal(typeof model.doEmbed, "function");
+  assert.throws(
+    () => model.doEmbed({ values: ["x"] }),
+    (error: unknown) =>
+      error instanceof EmbeddingUnavailableError && error.operation === "embed",
+  );
+});
+
+test("assertEmbeddingAvailable is an identity check on noEmbedding", () => {
+  const model = noEmbedding as Exclude<typeof noEmbedding, string>;
+  assert.throws(
+    () => assertEmbeddingAvailable(indexWithModel(noEmbedding), "do a thing"),
+    (error: unknown) =>
+      error instanceof EmbeddingUnavailableError &&
+      error.operation === "do a thing",
+  );
+  // A structurally identical copy is a different (real) model.
+  assertEmbeddingAvailable(indexWithModel({ ...model }), "do a thing");
+  assertEmbeddingAvailable(indexWithModel("registry-id"), "do a thing");
 });

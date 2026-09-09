@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { InvalidConfigError, type ValidationIssue } from "./errors.ts";
+import { InvalidConfigError } from "./errors.ts";
+import { toValidationIssue } from "./validation.ts";
 
 export const DEFAULT_VECTOR_TYPE = "halfvec" as const;
 export const DEFAULT_BM25_CONFIG = Object.freeze({
@@ -99,16 +100,6 @@ export function normalizeIndexConfig(
   }
 
   return deepFreeze(result.data);
-}
-
-function toValidationIssue(issue: z.core.$ZodIssue): ValidationIssue {
-  return {
-    code: issue.code,
-    message: issue.message,
-    path: issue.path.map((component) =>
-      typeof component === "symbol" ? component.toString() : component,
-    ),
-  };
 }
 
 function deepFreeze<T extends object>(value: T): T {

@@ -7,7 +7,12 @@ import {
   pruneQueue,
   releaseEmbedding,
 } from "./db/embedding-queue.ts";
-import { boundedError, embedTexts, resolveBatchSize } from "./embedding.ts";
+import {
+  assertEmbeddingAvailable,
+  boundedError,
+  embedTexts,
+  resolveBatchSize,
+} from "./embedding.ts";
 import { DimensionMismatchError, RateLimitError } from "./errors.ts";
 import type { Index } from "./open-index.ts";
 import { LIBRARY_VERSION } from "./version.ts";
@@ -105,6 +110,7 @@ export async function processEmbeddings(
   index: Index,
   options: ProcessEmbeddingsOptions = {},
 ): Promise<ProcessEmbeddingsResult> {
+  assertEmbeddingAvailable(index, "process embeddings");
   const leaseMs = options.leaseDurationMs ?? DEFAULT_LEASE_MS;
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const batchSize = await resolveBatchSize(index, options.batchSize);
@@ -281,6 +287,7 @@ export function startEmbeddingWorker(
   index: Index,
   options: EmbeddingWorkerOptions = {},
 ): EmbeddingWorker {
+  assertEmbeddingAvailable(index, "start the embedding worker");
   const intervalMs = options.intervalMs ?? DEFAULT_WORKER_INTERVAL_MS;
   const pruneRetentionMs =
     options.pruneRetentionMs ?? DEFAULT_PRUNE_RETENTION_MS;

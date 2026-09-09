@@ -4,6 +4,7 @@ export type SearchgresErrorCode =
   | "CONFLICT"
   | "DIMENSION_MISMATCH"
   | "EMBEDDING_PROVIDER"
+  | "EMBEDDING_UNAVAILABLE"
   | "EXTENSION"
   | "INVALID_CONFIG"
   | "INVALID_INDEX"
@@ -299,6 +300,25 @@ export class BatchTooLargeError extends SearchgresError {
 export class EmbeddingProviderError extends SearchgresError {
   constructor(message: string, options?: ErrorOptions) {
     super("EMBEDDING_PROVIDER", message, options);
+  }
+}
+
+/**
+ * The index handle was opened with `noEmbedding`, so it cannot generate
+ * vectors. Thrown before any queue row is claimed or any query is sent;
+ * queued work stays pending for a handle opened with a real model.
+ */
+export class EmbeddingUnavailableError extends SearchgresError {
+  /** The operation that needed an embedding model. */
+  readonly operation: string;
+
+  constructor(operation: string, options?: ErrorOptions) {
+    super(
+      "EMBEDDING_UNAVAILABLE",
+      `Cannot ${operation}: this index was opened with \`noEmbedding\`. Reopen it with an embedding model.`,
+      options,
+    );
+    this.operation = operation;
   }
 }
 
