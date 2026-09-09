@@ -19,7 +19,7 @@ import { assertSchemaName } from "./identifiers.ts";
 import { postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 
-export const SCHEMA_FORMAT_VERSION = "1";
+export const SCHEMA_FORMAT_VERSION = "2";
 
 const INITIAL_EXTENSIONS = [
   { name: "vector", minimumVersion: "0.8.0" },
@@ -368,8 +368,6 @@ export async function createIndex(
             new.content_version := 1;
             new.version := 1;
           else
-            new.updated_at := pg_catalog.now();
-
             -- If the content changed but the caller did NOT supply a matching
             -- replacement vector in the same statement, the stored vector no
             -- longer describes the text. Null it so the async pipeline
@@ -400,10 +398,10 @@ export async function createIndex(
               new.content_version := old.content_version;
             end if;
 
-            -- version/version_hash are optimistic-concurrency tokens over the
-            -- user-visible fields only. The embedding is not user-visible, so an
-            -- embedding-only change advances content_version (above) but NOT
-            -- version, and leaves the hash untouched.
+            -- version/version_hash/updated_at track the versioned record fields
+            -- only. Embedding lifecycle state is derived operational state, so
+            -- an embedding-only change advances content_version (above) but
+            -- leaves all three version signals untouched.
             if old.tree is distinct from new.tree
               or old.temporal is distinct from new.temporal
               or old.name is distinct from new.name
@@ -411,10 +409,12 @@ export async function createIndex(
               or old.content is distinct from new.content
             then
               new.version := old.version + 1;
+              new.updated_at := pg_catalog.now();
             else
-              -- nothing user-visible changed
+              -- no versioned record field changed
               new.version := old.version;
               new.version_hash := old.version_hash;
+              new.updated_at := old.updated_at;
               return new;
             end if;
           end if;
