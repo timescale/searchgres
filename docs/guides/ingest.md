@@ -119,7 +119,7 @@ await index.upsertMany(rows, { onConflict: "replace" });
 
 Duplicate ids within a batch, duplicate `(tree, name)` keys, or a batch where an
 id and a name resolve to the same existing record are rejected with
-[`InvalidConfigError`](../reference/errors.md) before anything is written.
+[`InvalidInputError`](../reference/errors.md) before anything is written.
 
 ## Index existing application data
 

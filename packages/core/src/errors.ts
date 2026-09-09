@@ -7,6 +7,7 @@ export type SearchgresErrorCode =
   | "EXTENSION"
   | "INVALID_CONFIG"
   | "INVALID_INDEX"
+  | "INVALID_INPUT"
   | "LOCK_TIMEOUT"
   | "NOT_FOUND"
   | "STATEMENT_TIMEOUT"
@@ -74,14 +75,20 @@ export class SchemaVersionError extends SearchgresError {
   }
 }
 
-export class InvalidConfigError extends SearchgresError {
+/**
+ * Common shape of the two validation errors. `InvalidConfigError` covers how
+ * an index is created or opened; `InvalidInputError` covers per-call input to
+ * an open index. Surfaces that only need `issues` can match on this base.
+ */
+export abstract class ValidationError extends SearchgresError {
   readonly issues: readonly ValidationIssue[];
 
   constructor(
+    code: "INVALID_CONFIG" | "INVALID_INPUT",
     message: string,
     options?: ErrorOptions & { readonly issues?: readonly ValidationIssue[] },
   ) {
-    super("INVALID_CONFIG", message, options);
+    super(code, message, options);
     this.issues = Object.freeze(
       (options?.issues ?? []).map((issue) =>
         Object.freeze({
@@ -91,6 +98,35 @@ export class InvalidConfigError extends SearchgresError {
         }),
       ),
     );
+  }
+}
+
+/**
+ * Invalid index configuration or handle setup: `createIndex` config, schema
+ * names, `openIndex` options, and truncator construction.
+ */
+export class InvalidConfigError extends ValidationError {
+  constructor(
+    message: string,
+    options?: ErrorOptions & { readonly issues?: readonly ValidationIssue[] },
+  ) {
+    super("INVALID_CONFIG", message, options);
+  }
+}
+
+/**
+ * Invalid input to an operation on an open index: a malformed record, patch,
+ * search option, filter, tree selector, or a pattern (`lquery`, `ltxtquery`,
+ * `regexp`, JSONPath) that PostgreSQL rejected. When PostgreSQL rejected the
+ * input, `cause` is the driver error and the single issue's `code` is its
+ * SQLSTATE.
+ */
+export class InvalidInputError extends ValidationError {
+  constructor(
+    message: string,
+    options?: ErrorOptions & { readonly issues?: readonly ValidationIssue[] },
+  ) {
+    super("INVALID_INPUT", message, options);
   }
 }
 

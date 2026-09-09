@@ -4,6 +4,8 @@
  * caller opts in at {@link openIndex}. A `Truncator` is applied to record content
  * (by the embedding worker) and to semantic query text (before embedding).
  */
+import { InvalidConfigError } from "./errors.ts";
+
 export type Truncator = (text: string) => string | Promise<string>;
 
 /** The default: return the text unchanged. */
@@ -75,6 +77,10 @@ function isLowSurrogate(code: number): boolean {
 
 function assertPositiveInteger(value: number, name: string): void {
   if (!Number.isInteger(value) || value <= 0) {
-    throw new RangeError(`${name} must be a positive integer`);
+    throw new InvalidConfigError(`${name} must be a positive integer`, {
+      issues: [
+        { code: "custom", message: "must be a positive integer", path: [name] },
+      ],
+    });
   }
 }

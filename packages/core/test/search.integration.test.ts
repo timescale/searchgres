@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex } from "../src/create-index.ts";
-import { InvalidConfigError } from "../src/errors.ts";
+import { InvalidInputError } from "../src/errors.ts";
 import { type Index, openIndex } from "../src/open-index.ts";
 import { truncateCharacters } from "../src/truncate.ts";
 import { expectSqlState } from "./support/assert.ts";
@@ -424,7 +424,82 @@ test("a regexp filter cannot be the sole criterion", async () => {
     await index.upsertMany([{ content: "throttled", tree: "docs" }]);
     await assert.rejects(
       () => index.search({ filter: { regexp: "throttl" } }),
-      InvalidConfigError,
+      InvalidInputError,
+    );
+  });
+});
+
+test("malformed patterns raise InvalidInputError, not a raw PostgresError", async () => {
+  await withIndex(async (index) => {
+    await index.upsertMany([
+      { content: "guarded", tree: "docs", meta: { k: 1 } },
+    ]);
+
+    const cases: readonly {
+      readonly label: string;
+      readonly options: Parameters<typeof index.search>[0];
+      readonly sqlstate: string;
+    }[] = [
+      {
+        label: "regexp",
+        options: { filter: { and: [{ tree: "docs" }, { regexp: "(" }] } },
+        sqlstate: "2201B",
+      },
+      {
+        label: "lquery",
+        options: { filter: { lquery: "docs.**{" } },
+        sqlstate: "42601",
+      },
+      {
+        label: "ltxtquery",
+        options: { filter: { ltxtquery: "docs &" } },
+        sqlstate: "42601",
+      },
+      {
+        label: "metaPredicate",
+        options: { filter: { metaPredicate: "$.k ==" } },
+        sqlstate: "42601",
+      },
+    ];
+    for (const { label, options, sqlstate } of cases) {
+      await assert.rejects(
+        () => index.search(options),
+        (error: unknown) => {
+          assert.ok(error instanceof InvalidInputError, label);
+          assert.equal(error.code, "INVALID_INPUT", label);
+          assert.match(error.message, /^Invalid search input: /, label);
+          assert.equal(
+            (error.cause as { code?: string } | undefined)?.code,
+            sqlstate,
+            label,
+          );
+          assert.equal(error.issues[0]?.code, sqlstate, label);
+          return true;
+        },
+        label,
+      );
+    }
+
+    // valid patterns of each kind still work, so the mapping is not over-eager
+    assert.equal(
+      (await index.search({ filter: { lquery: "docs.*" } })).length,
+      1,
+    );
+    assert.equal(
+      (await index.search({ filter: { ltxtquery: "docs" } })).length,
+      1,
+    );
+    assert.equal(
+      (await index.search({ filter: { metaPredicate: "$.k == 1" } })).length,
+      1,
+    );
+    assert.equal(
+      (
+        await index.search({
+          filter: { and: [{ tree: "docs" }, { regexp: "guard" }] },
+        })
+      ).length,
+      1,
     );
   });
 });

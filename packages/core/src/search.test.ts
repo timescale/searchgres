@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { InvalidConfigError } from "../src/errors.ts";
+import { InvalidInputError } from "../src/errors.ts";
 import { Index } from "../src/open-index.ts";
 import { noTruncation } from "../src/truncate.ts";
 
@@ -22,7 +22,7 @@ function fakeIndex(): Index {
 async function rejects(options: unknown): Promise<void> {
   await assert.rejects(
     () => fakeIndex().search(options as never),
-    InvalidConfigError,
+    InvalidInputError,
   );
 }
 

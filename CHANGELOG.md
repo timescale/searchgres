@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Error taxonomy split.** `InvalidConfigError` (`INVALID_CONFIG`) now covers
+  only how an index is created or opened (`createIndex` config, schema names,
+  truncator limits). Invalid input to an operation on an open index — a
+  malformed record, patch, search option, filter, or tree selector — raises the
+  new `InvalidInputError` (`INVALID_INPUT`). Both extend the new abstract
+  `ValidationError`, which carries `issues`. Code that caught
+  `InvalidConfigError` around `search`/`upsert`/`patch`/tree calls should catch
+  `InvalidInputError` or `ValidationError`.
+- `truncateCharacters`, `truncateBytes`, and `truncateTokens` throw
+  `InvalidConfigError` instead of a bare `RangeError` for a non-positive limit.
+
 ### Fixed
+
+- Malformed `lquery`, `ltxtquery`, `regexp`, and `metaPredicate` (JSONPath)
+  patterns in `search`, `listTree`, and `countTree` now raise
+  `InvalidInputError` instead of leaking the driver's `PostgresError`
+  (SQLSTATE `42601`/`2201B`). The driver error is kept as `cause` and the
+  SQLSTATE is the single issue's `code`.
+- `pruneEmbeddingQueue` rejects a negative or non-finite `retentionMs` with
+  `InvalidInputError` instead of failing inside PostgreSQL (or silently
+  pruning everything).
 
 - `dropIndex` (and `Index.drop()`) no longer treats any schema containing a
   table named `version` as a searchgres index. `createIndex` now stamps the
