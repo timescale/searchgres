@@ -1,4 +1,5 @@
 import type postgres from "postgres";
+import { z } from "zod";
 import { type IndexConfig, normalizeIndexConfig } from "./config.ts";
 import { ensureExtension, REQUIRED_EXTENSIONS } from "./db/extensions.ts";
 import { acquireAdvisoryLock, CREATE_INDEX_LOCK_KEY } from "./db/lock.ts";
@@ -18,8 +19,63 @@ import { ConflictError, InvalidConfigError } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
 import { postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
+import { toValidationIssue } from "./validation.ts";
 
 export const SCHEMA_FORMAT_VERSION = "2";
+
+/**
+ * Runtime budgets for one `createIndex` call. These shape how long the call
+ * may wait or run; nothing here is persisted or affects the resulting index.
+ */
+export interface CreateIndexOptions {
+  /**
+   * How long to wait for the database-wide provisioning lock that serializes
+   * concurrent `createIndex` calls (and the extension installs they may
+   * perform) before throwing {@link LockTimeoutError}. `0` waits indefinitely.
+   * Default: 30 000 (30 s).
+   */
+  readonly lockTimeoutMs?: number;
+  /**
+   * Wall-clock budget for the whole provisioning transaction — extension
+   * installs, DDL, routines — before throwing {@link TransactionTimeoutError}.
+   * `0` disables the limit. Default: 1 200 000 (20 min).
+   */
+  readonly transactionTimeoutMs?: number;
+}
+
+const createIndexOptionsSchema = z.strictObject({
+  lockTimeoutMs: z.int().nonnegative().optional(),
+  transactionTimeoutMs: z.int().nonnegative().optional(),
+});
+
+function normalizeCreateIndexOptions(input: unknown): {
+  readonly lockTimeout: string;
+  readonly transactionTimeout: string;
+} {
+  const result = createIndexOptionsSchema.safeParse(input ?? {});
+  if (!result.success) {
+    const issues = result.error.issues.map(toValidationIssue);
+    const first = issues[0];
+    const detail = first
+      ? `${first.path.join(".") || "options"}: ${first.message}`
+      : "validation failed";
+    throw new InvalidConfigError(`Invalid createIndex options: ${detail}`, {
+      cause: result.error,
+      issues,
+    });
+  }
+  const { lockTimeoutMs, transactionTimeoutMs } = result.data;
+  return {
+    lockTimeout:
+      lockTimeoutMs === undefined
+        ? DEFAULT_MIGRATION_LOCK_TIMEOUT
+        : `${lockTimeoutMs}ms`,
+    transactionTimeout:
+      transactionTimeoutMs === undefined
+        ? DEFAULT_MIGRATION_TIMEOUTS.transactionTimeout
+        : `${transactionTimeoutMs}ms`,
+  };
+}
 
 /**
  * Create a new immutable index schema. Rebuilding into a new schema is the
@@ -29,14 +85,17 @@ export async function createIndex(
   sql: postgres.Sql,
   schema: string,
   config: IndexConfig,
+  options?: CreateIndexOptions,
 ): Promise<void> {
   const indexSchema = assertSchemaName(schema);
   const creation = normalizeIndexConfig(config);
+  const budgets = normalizeCreateIndexOptions(options);
 
   await sql.begin(async (tx) => {
     await applySessionTimeouts(tx, {
       ...DEFAULT_MIGRATION_TIMEOUTS,
-      lockTimeout: DEFAULT_MIGRATION_LOCK_TIMEOUT,
+      lockTimeout: budgets.lockTimeout,
+      transactionTimeout: budgets.transactionTimeout,
     });
     await acquireAdvisoryLock(tx, CREATE_INDEX_LOCK_KEY);
     await setLockTimeout(tx, DEFAULT_MIGRATION_TIMEOUTS.lockTimeout);

@@ -69,7 +69,17 @@ The schema name must be a lowercase PostgreSQL identifier
 exists throws a [`ConflictError`](../reference/errors.md).
 
 `createIndex()` is atomic: it either creates the whole index or rolls back
-completely.
+completely. Concurrent calls (in any schema, on the same database) serialize on
+one advisory lock because they may install extensions; a call waits up to 30 s
+for it by default and the whole transaction is bounded at 20 min. Both budgets
+are adjustable through the optional fourth argument:
+
+```ts
+await createIndex(sql, "docs_index", { dimensions: 1536 }, {
+  lockTimeoutMs: 120_000,       // wait longer behind a slow sibling
+  transactionTimeoutMs: 0,      // no transaction budget
+});
+```
 
 ## Open an index
 

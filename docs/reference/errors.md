@@ -33,8 +33,8 @@ response) and on the concrete class when the distinction matters.
 
 ### `InvalidConfigError` (`INVALID_CONFIG`)
 
-How an index is created or opened is invalid: a bad `createIndex` config,
-missing or malformed `openIndex` options (no `embedding`, a non-function
+How an index is created or opened is invalid: a bad `createIndex` config or
+option, missing or malformed `openIndex` options (no `embedding`, a non-function
 `truncate`, an unknown key), a malformed schema name, or a truncator
 constructed with a non-positive limit.
 
@@ -179,4 +179,6 @@ Raised when a statement, lock wait, or transaction exceeds its timeout:
 - `TransactionTimeoutError` (`TRANSACTION_TIMEOUT`)
 
 **Recover:** retry, and investigate contention or long-running work if they
-persist.
+persist. `createIndex` waits up to 30 s for its provisioning lock and allows
+20 min for the transaction; both are adjustable through its `options`
+argument.

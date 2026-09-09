@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `createIndex` accepts an optional fourth argument, `CreateIndexOptions`, with
+  `lockTimeoutMs` (default 30 s) and `transactionTimeoutMs` (default 20 min)
+  for the provisioning lock wait and transaction budget. Both were previously
+  fixed. Invalid options throw `InvalidConfigError`.
 - `openIndex` validates its `options` before any database access and throws
   `InvalidConfigError` for a missing or malformed `embedding`, a non-function
   `truncate`, or an unknown key. Previously `openIndex(sql, schema, {})`

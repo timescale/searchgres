@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
-import { createIndex, SCHEMA_FORMAT_VERSION } from "../src/create-index.ts";
+import {
+  type CreateIndexOptions,
+  createIndex,
+  SCHEMA_FORMAT_VERSION,
+} from "../src/create-index.ts";
+import { acquireAdvisoryLock, CREATE_INDEX_LOCK_KEY } from "../src/db/lock.ts";
 import { INDEX_SCHEMA_COMMENT } from "../src/db/marker.ts";
 import { noEmbedding } from "../src/embedding.ts";
 import {
   ConflictError,
   InvalidConfigError,
   InvalidIndexError,
+  LockTimeoutError,
   SchemaVersionError,
 } from "../src/errors.ts";
 import { type OpenIndexOptions, openIndex } from "../src/open-index.ts";
@@ -134,6 +140,75 @@ test("openIndex validates its options before touching the database", async () =>
     // Validation must hand back the same object so the identity guard works.
     assert.equal(withoutModel.embedding, noEmbedding);
     assert.equal(withoutModel.truncate, noTruncation);
+  } finally {
+    await dropTestSchema(sql, schema);
+  }
+});
+
+test("createIndex validates its options and honors the lock budget", async () => {
+  const schema = randomTestSchema();
+  const invalid: readonly [label: string, options: unknown][] = [
+    ["negative lock timeout", { lockTimeoutMs: -1 }],
+    ["fractional transaction timeout", { transactionTimeoutMs: 1.5 }],
+    ["string timeout", { lockTimeoutMs: "30s" }],
+    ["unknown key", { statementTimeoutMs: 1000 }],
+  ];
+  for (const [label, options] of invalid) {
+    await assert.rejects(
+      () =>
+        createIndex(
+          sql,
+          schema,
+          { dimensions: 4 },
+          options as CreateIndexOptions,
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidConfigError, label);
+        assert.ok(error.issues.length > 0, label);
+        assert.match(error.message, /^Invalid createIndex options: /, label);
+        return true;
+      },
+      label,
+    );
+  }
+  assert.equal(await schemaExists(sql, schema), false);
+
+  // Hold the provisioning lock from another transaction: createIndex must
+  // give up within its lock budget and leave nothing behind.
+  let locked!: () => void;
+  let release!: () => void;
+  const lockHeld = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const releaseHolder = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const holder = sql.begin(async (tx) => {
+    await acquireAdvisoryLock(tx, CREATE_INDEX_LOCK_KEY);
+    locked();
+    await releaseHolder;
+  });
+  await lockHeld;
+  try {
+    await assert.rejects(
+      () => createIndex(sql, schema, { dimensions: 4 }, { lockTimeoutMs: 50 }),
+      LockTimeoutError,
+    );
+    assert.equal(await schemaExists(sql, schema), false);
+  } finally {
+    release();
+    await holder;
+  }
+
+  // With the lock free, an explicit budget provisions normally.
+  try {
+    await createIndex(
+      sql,
+      schema,
+      { dimensions: 4 },
+      { lockTimeoutMs: 5_000, transactionTimeoutMs: 60_000 },
+    );
+    assert.equal(await schemaExists(sql, schema), true);
   } finally {
     await dropTestSchema(sql, schema);
   }
