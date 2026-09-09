@@ -134,4 +134,26 @@ It deliberately excludes the embedding-drain and queue methods
 provider calls and must not be tied to — or outlive — your transaction. You own
 the commit, the rollback, and the pool.
 
+`search` is on the handle, but `search({ semantic })` has the same shape as the
+excluded methods: it calls the embedding model with your transaction open,
+pinning its connection — and any row locks you have taken — for the duration of
+a network round trip, and a provider failure aborts your transaction. Embed the
+query text before you begin and pass `vector` inside:
+
+```ts
+import { embed } from "ai";
+
+const { embedding } = await embed({ model, value: "rate limiting" });
+
+await sql.begin(async (tx) => {
+  const t = index.with(tx);
+  const hits = await t.search({ vector: embedding, filter: { tree: "docs" } });
+  // ...act on hits atomically with other writes
+});
+```
+
+`fulltext` and filter-only searches stay entirely in the database and are fine
+as-is. If your `EmbeddingModel` is local (in-process or on the same host), the
+concern shrinks to that model's latency and you may reasonably use `semantic`.
+
 Next: [Run in production](production.md).
