@@ -12,6 +12,7 @@ import postgres, { type Sql } from "postgres";
 import {
   type StoredRecord as CoreStoredRecord,
   type EmbeddingWorker,
+  type EmbeddingWorkerOptions,
   type Index,
   noTruncation,
   openIndex,
@@ -25,6 +26,7 @@ import {
   type UpsertRecord,
   type UpsertResult,
   ValidationError,
+  type WorkerErrorContext,
 } from "searchgres";
 import type { z } from "zod";
 import { readRequiredEnvironment, type ServerConfig } from "./config.ts";
@@ -42,6 +44,19 @@ export interface RunningServer {
 
 export interface StartServerOptions {
   readonly readOnly?: boolean;
+  /**
+   * Receives embedding-worker failures. Defaults to one `console.error` line
+   * per failure; pass a no-op to silence or a logger to redirect.
+   */
+  readonly onWorkerError?: EmbeddingWorkerOptions["onError"];
+}
+
+function logWorkerError(error: unknown, context: WorkerErrorContext): void {
+  const detail =
+    error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  console.error(
+    `searchgres embedding worker ${context.phase} failed (attempt ${context.consecutiveErrors}, retrying in ${context.backoffMs}ms): ${detail}`,
+  );
 }
 
 const MUTATING_METHODS = new Set<RpcMethod>([
@@ -87,6 +102,7 @@ export async function startServer(
       worker = workerIndex.startEmbeddingWorker({
         intervalMs: config.index.worker.interval,
         batchSize: config.index.worker.batchSize,
+        onError: options.onWorkerError ?? logWorkerError,
       });
     }
 

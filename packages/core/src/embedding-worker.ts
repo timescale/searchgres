@@ -1,4 +1,4 @@
-import { trace } from "@opentelemetry/api";
+import { type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   claimBatch,
   completeEmbedding,
@@ -58,6 +58,27 @@ export interface EmbeddingWorkerOptions extends DrainTuning {
   readonly intervalMs?: number;
   /** Retention for terminal rows the idle worker opportunistically prunes. */
   readonly pruneRetentionMs?: number;
+  /**
+   * Called when a tick fails. The worker keeps running and backs off
+   * regardless; this is the only channel by which a caller learns that a
+   * model is misconfigured, a key was revoked, or the database is unreachable.
+   * Without it the worker retries silently (OTel spans still record the
+   * failure). A throwing callback is ignored.
+   */
+  readonly onError?: (error: unknown, context: WorkerErrorContext) => void;
+}
+
+/** What the worker was doing when it failed, and how it is reacting. */
+export interface WorkerErrorContext {
+  /** `process`: a drain pass threw. `prune`: idle pruning of terminal rows. */
+  readonly phase: "process" | "prune";
+  /**
+   * Consecutive failed drain passes, including this one. A rate limit is not
+   * counted as a failure; `prune` reports 0.
+   */
+  readonly consecutiveErrors: number;
+  /** How long the worker will sleep before its next attempt. */
+  readonly backoffMs: number;
 }
 
 export interface EmbeddingWorker {
@@ -103,7 +124,7 @@ export async function processEmbeddings(
         if (options.signal?.aborted || Date.now() >= deadline) {
           break;
         }
-        const outcome = await runBatch(index, {
+        const outcome = await runBatch(index, span, {
           batchSize,
           leaseMs,
           maxAttempts,
@@ -126,6 +147,15 @@ export async function processEmbeddings(
         "searchgres.embedding.remaining": remaining,
       });
       return { claimed, embedded, failed, cancelled, remaining };
+    } catch (error) {
+      span.recordException(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     } finally {
       span.end();
     }
@@ -134,6 +164,7 @@ export async function processEmbeddings(
 
 async function runBatch(
   index: Index,
+  span: Span,
   tuning: {
     readonly batchSize: number;
     readonly leaseMs: number;
@@ -182,6 +213,12 @@ async function runBatch(
     // retry authority (they reappear after the lease and are terminally failed
     // once attempts are exhausted).
     const message = boundedError(error);
+    // The pass itself succeeds (the failure is recorded in the queue), so this
+    // is an event on the pass span rather than an error status.
+    span.addEvent("embedding.batch_failed", {
+      "searchgres.embedding.rows": rows.length,
+      "exception.message": message,
+    });
     for (const row of rows) {
       await failEmbedding(index.sql, index.schema, {
         queueId: row.queueId,
@@ -249,6 +286,13 @@ export function startEmbeddingWorker(
     options.pruneRetentionMs ?? DEFAULT_PRUNE_RETENTION_MS;
   const controller = new AbortController();
   const { signal } = controller;
+  const report = (error: unknown, context: WorkerErrorContext) => {
+    try {
+      options.onError?.(error, context);
+    } catch {
+      // A failing observer must never take the worker down.
+    }
+  };
 
   const loop = (async () => {
     let consecutiveErrors = 0;
@@ -275,13 +319,20 @@ export function startEmbeddingWorker(
         // Idle: prune terminal rows opportunistically, then wait.
         try {
           await pruneQueue(index.sql, index.schema, pruneRetentionMs);
-        } catch {
+        } catch (error) {
           // Best-effort; pruning never blocks the drain path.
+          report(error, {
+            phase: "prune",
+            consecutiveErrors: 0,
+            backoffMs: intervalMs,
+          });
         }
         await sleep(intervalMs, signal);
       } catch (error) {
         if (error instanceof RateLimitError) {
-          await sleep(rateLimitBackoffMs(error.retryAfterMs), signal);
+          const backoffMs = rateLimitBackoffMs(error.retryAfterMs);
+          report(error, { phase: "process", consecutiveErrors, backoffMs });
+          await sleep(backoffMs, signal);
           continue;
         }
         // Bounded exponential backoff on repeated errors so a persistent
@@ -291,6 +342,7 @@ export function startEmbeddingWorker(
           intervalMs * 2 ** (consecutiveErrors - 1),
           MAX_ERROR_BACKOFF_MS,
         );
+        report(error, { phase: "process", consecutiveErrors, backoffMs });
         await sleep(backoffMs, signal);
       }
     }

@@ -61,6 +61,11 @@ Track [`queueStats()`](embeddings.md#monitor-the-queue) and alert on:
 const { pending, failed, oldestPendingAt } = await index.queueStats();
 ```
 
+If you run `startEmbeddingWorker()`, pass
+[`onError`](embeddings.md#run-a-continuous-worker): the worker retries a
+failing pass silently otherwise, so a revoked key or wrong-dimension model
+shows up only as `pending` climbing.
+
 Prune terminal rows periodically if you don't run the worker's idle prune:
 
 ```ts
@@ -77,6 +82,12 @@ Every SQL statement emits a child span with the query text and timing, nested
 under the operation that issued it, on a dedicated `searchgres/sql`
 instrumentation scope — so you can filter those spans out in your SDK if they're
 too chatty. Parameter values (including vectors) are never attached to spans.
+
+Each drain pass (`processEmbeddings`, or one worker tick) is an
+`embedding.process` span. A pass that throws gets `ERROR` status with the
+exception recorded; an ordinary provider failure that the pass absorbs (rows
+marked failed and left to retry) is an `embedding.batch_failed` event on an
+otherwise successful span.
 
 ## Access control
 

@@ -77,6 +77,9 @@ const worker = index.startEmbeddingWorker({
   intervalMs: 1_000,             // poll delay when idle
   batchSize: 50,
   pruneRetentionMs: 604_800_000, // prune terminal rows when idle (7 days)
+  onError(error, { phase, consecutiveErrors, backoffMs }) {
+    logger.error({ error, phase, consecutiveErrors, backoffMs }, "embedding worker");
+  },
 });
 
 // on shutdown — finishes the in-flight batch, then stops.
@@ -86,6 +89,21 @@ await worker.stop();
 The worker processes a batch, immediately continues while work exists, and
 sleeps `intervalMs` when idle. `stop()` is graceful: it interrupts the idle wait,
 lets any in-flight batch finish, and never closes your pool.
+
+**Always pass `onError`.** The worker never dies: when a pass throws — a
+misconfigured model (`DimensionMismatchError`), a revoked key
+(`EmbeddingProviderError`), an unreachable database — it backs off
+exponentially (up to 60s) and retries. `onError` is how you find out. It
+receives the error plus `phase` (`process` for a drain pass, `prune` for idle
+pruning), `consecutiveErrors`, and the `backoffMs` it is about to sleep. A
+`RateLimitError` is reported too, with the provider's retry delay as
+`backoffMs`, and does not count toward `consecutiveErrors`. Call `worker.stop()`
+from inside it if you would rather give up than retry. A throwing callback is
+ignored.
+
+Ordinary per-row provider failures do not reach `onError`: they are recorded on
+the queue row (`last_error`), retried up to `maxAttempts`, and show up in
+[`queueStats().failed`](#monitor-the-queue).
 
 It is concurrency-safe: run as many workers or processes against one index as you
 like — claims use `FOR UPDATE SKIP LOCKED`, so they never double-embed a row.

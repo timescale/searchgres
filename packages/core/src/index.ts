@@ -15,6 +15,7 @@ export type {
   EmbeddingWorkerOptions,
   ProcessEmbeddingsOptions,
   ProcessEmbeddingsResult,
+  WorkerErrorContext,
 } from "./embedding-worker.ts";
 export * from "./errors.ts";
 export * from "./identifiers.ts";

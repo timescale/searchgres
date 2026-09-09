@@ -229,6 +229,13 @@ type EmbeddingWorkerOptions = {
   leaseDurationMs?: number;   // default 300000
   maxAttempts?: number;       // default 3
   pruneRetentionMs?: number;  // default 604800000
+  onError?: (error: unknown, context: WorkerErrorContext) => void;
+};
+
+type WorkerErrorContext = {
+  phase: "process" | "prune";
+  consecutiveErrors: number;  // failed passes in a row; rate limits excluded
+  backoffMs: number;          // sleep before the next attempt
 };
 
 type EmbeddingWorker = { stop(): Promise<void> };
