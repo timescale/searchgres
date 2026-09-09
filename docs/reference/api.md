@@ -22,7 +22,8 @@ import {
 ### `createIndex(sql, schema, config)`
 
 Creates a new index schema. Atomic; throws
-[`ConflictError`](errors.md) if the schema already exists. See
+[`ConflictError`](errors.md) if the schema already exists and
+[`InvalidConfigError`](errors.md) for a bad config or schema name. See
 [Create and manage indexes](../guides/indexes.md).
 
 ```ts
@@ -141,7 +142,9 @@ See [Manage records and trees](../guides/records-and-trees.md).
 ### Searching
 
 `search(options?) → Promise<readonly SearchResult[]>`. See
-[Search and filter](../guides/search.md).
+[Search and filter](../guides/search.md). Throws
+[`InvalidInputError`](errors.md) for bad options or filters, including an
+`lquery`/`ltxtquery`/`regexp`/`metaPredicate` pattern PostgreSQL rejects.
 
 ```ts
 type SearchOptions = {
@@ -190,8 +193,8 @@ type Filter =
 | `moveTree(source, destination, options?)` | `{ count }` | `options.dryRun` previews. |
 | `copyTree(source, destination, options?)` | `{ count }` | Fresh ids; conflicts throw `ConflictError`. |
 | `deleteTree(tree, options?)` | `{ count }` | Inclusive subtree. |
-| `countTree(selector, options?)` | `{ count, capped }` | Selector: one of `tree`/`lquery`/`ltxtquery`; `options.limit` caps. |
-| `listTree(lquery)` | `readonly { tree, count }[]` | Descendant counts per node. |
+| `countTree(selector, options?)` | `{ count, capped }` | Selector: one of `tree`/`lquery`/`ltxtquery`; `options.limit` caps. Malformed patterns throw `InvalidInputError`. |
+| `listTree(lquery)` | `readonly { tree, count }[]` | Descendant counts per node. A malformed `lquery` throws `InvalidInputError`. |
 
 ### Embeddings
 
@@ -270,4 +273,7 @@ type TokenCodec = {
 
 ## Errors
 
-All errors extend `SearchgresError`. See [Errors and recovery](errors.md).
+All errors extend `SearchgresError`. Validation failures are
+`InvalidConfigError` (how an index is created/opened) or `InvalidInputError`
+(input to an open index); both extend `ValidationError` and carry `issues`. See
+[Errors and recovery](errors.md).

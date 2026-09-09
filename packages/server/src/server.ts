@@ -13,7 +13,6 @@ import {
   type StoredRecord as CoreStoredRecord,
   type EmbeddingWorker,
   type Index,
-  InvalidConfigError,
   noTruncation,
   openIndex,
   type PatchInput,
@@ -25,6 +24,7 @@ import {
   truncateCharacters,
   type UpsertRecord,
   type UpsertResult,
+  ValidationError,
 } from "searchgres";
 import type { z } from "zod";
 import { readRequiredEnvironment, type ServerConfig } from "./config.ts";
@@ -278,9 +278,7 @@ async function dispatch(
       return rpcError(id, SEARCHGRES_FAILURE_CODE, error.message, {
         searchgresCode: error.code,
         type: error.name,
-        ...(error instanceof InvalidConfigError
-          ? { issues: error.issues }
-          : {}),
+        ...(error instanceof ValidationError ? { issues: error.issues } : {}),
       });
     }
     return rpcError(id, -32603, "Internal error");

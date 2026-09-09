@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   ConflictError,
   DimensionMismatchError,
-  InvalidConfigError,
+  InvalidInputError,
   NotFoundError,
   SearchgresError,
   StaleVersionError,
@@ -11,7 +11,7 @@ import {
 } from "./errors.ts";
 import { assertTreePath, isValidTreePath } from "./identifiers.ts";
 import type { Index } from "./open-index.ts";
-import { postgresErrorCode } from "./sql/errors.ts";
+import { mapInputSqlError, postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 import { normalizeTemporalTuple, temporalTupleSchema } from "./temporal.ts";
 
@@ -231,10 +231,7 @@ async function runRecordSql<T extends readonly unknown[]>(
         cause: error,
       });
     }
-    if (code === "22023") {
-      throw new InvalidConfigError("Invalid patch input", { cause: error });
-    }
-    throw error;
+    throw mapInputSqlError(error, "patch input") ?? error;
   }
 }
 
@@ -257,7 +254,7 @@ function mapRecord(row: RecordRow): StoredRecord {
 function parseId(id: string): string {
   const result = idSchema.safeParse(id);
   if (!result.success) {
-    throw new InvalidConfigError(
+    throw new InvalidInputError(
       `Invalid record id ${JSON.stringify(id)}: expected a UUIDv7`,
       { cause: result.error },
     );
@@ -271,7 +268,7 @@ function throwInvalidInput(error: z.ZodError): never {
   const detail = first
     ? `${first.path.join(".") || "patch"}: ${first.message}`
     : "validation failed";
-  throw new InvalidConfigError(`Invalid patch: ${detail}`, {
+  throw new InvalidInputError(`Invalid patch: ${detail}`, {
     cause: error,
     issues,
   });

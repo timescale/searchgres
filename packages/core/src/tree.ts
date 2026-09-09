@@ -1,12 +1,8 @@
 import type postgres from "postgres";
-import {
-  ConflictError,
-  InvalidConfigError,
-  SearchgresError,
-} from "./errors.ts";
+import { ConflictError, InvalidInputError, SearchgresError } from "./errors.ts";
 import { assertTreePath } from "./identifiers.ts";
 import type { Index } from "./open-index.ts";
-import { postgresErrorCode } from "./sql/errors.ts";
+import { mapInputSqlError, postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 
 /** Options for the destructive/relocating tree operations. */
@@ -111,7 +107,7 @@ export async function countTree(
 ): Promise<TreeCountResult> {
   const limit = options?.limit;
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
-    throw new InvalidConfigError("countTree limit must be a positive integer");
+    throw new InvalidInputError("countTree limit must be a positive integer");
   }
   // Ask for one past the limit so an exact count is distinguishable from a cap.
   const max = limit === undefined ? null : limit + 1;
@@ -142,7 +138,7 @@ export async function treeView(
   const path = assertTreePath(tree);
   const levels = options?.levels;
   if (levels !== undefined && (!Number.isInteger(levels) || levels < 0)) {
-    throw new InvalidConfigError(
+    throw new InvalidInputError(
       "treeView levels must be a nonnegative integer",
     );
   }
@@ -163,7 +159,7 @@ export async function listTree(
   lquery: string,
 ): Promise<readonly TreeListEntry[]> {
   if (lquery.length === 0) {
-    throw new InvalidConfigError("listTree requires a non-empty lquery");
+    throw new InvalidInputError("listTree requires a non-empty lquery");
   }
   const { sql } = index;
   const rows = await runTreeSql(
@@ -183,7 +179,7 @@ function resolveSelector(selector: TreeCountSelector): {
 } {
   const keys = Object.keys(selector);
   if (keys.length !== 1) {
-    throw new InvalidConfigError(
+    throw new InvalidInputError(
       "countTree selector must have exactly one of tree, lquery, or ltxtquery",
     );
   }
@@ -199,16 +195,14 @@ function resolveSelector(selector: TreeCountSelector): {
       value: nonEmpty(selector.ltxtquery, "ltxtquery"),
     };
   }
-  throw new InvalidConfigError(
+  throw new InvalidInputError(
     "countTree selector must have exactly one of tree, lquery, or ltxtquery",
   );
 }
 
 function nonEmpty(value: string, name: string): string {
   if (typeof value !== "string" || value.length === 0) {
-    throw new InvalidConfigError(
-      `countTree ${name} must be a non-empty string`,
-    );
+    throw new InvalidInputError(`countTree ${name} must be a non-empty string`);
   }
   return value;
 }
@@ -243,6 +237,6 @@ async function runTreeSql<T extends readonly unknown[]>(
         cause: error,
       });
     }
-    throw error;
+    throw mapInputSqlError(error, `${spanName} input`) ?? error;
   }
 }

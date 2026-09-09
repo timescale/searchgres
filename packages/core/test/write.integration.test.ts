@@ -6,7 +6,7 @@ import {
   BatchTooLargeError,
   ConflictError,
   DimensionMismatchError,
-  InvalidConfigError,
+  InvalidInputError,
 } from "../src/errors.ts";
 import { openIndex } from "../src/open-index.ts";
 import { expectSqlState } from "./support/assert.ts";
@@ -140,7 +140,7 @@ test("insert conflicts roll back the full batch and ignore reports skipped input
           { id: existing.id, content: "id alias" },
           { content: "name alias", tree: "docs", name: "same" },
         ]),
-      InvalidConfigError,
+      InvalidInputError,
     );
 
     await assert.rejects(
@@ -357,7 +357,7 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
           content: "invalid interval",
           temporal: ["2026-01-02T00:00:00Z", "2026-01-01T00:00:00Z"],
         }),
-      InvalidConfigError,
+      InvalidInputError,
     );
     await assert.rejects(
       () =>
@@ -365,7 +365,7 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
           id: "00000000-0000-4000-8000-000000000005",
           content: "uuid v4 is rejected",
         }),
-      InvalidConfigError,
+      InvalidInputError,
     );
     await assert.rejects(
       () =>
@@ -383,7 +383,7 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
             name: "two",
           },
         ]),
-      InvalidConfigError,
+      InvalidInputError,
     );
     const record = sql`${sql(schema)}.record`;
     await expectSqlState(
@@ -401,7 +401,7 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
           { content: "named duplicate two", tree: "docs", name: "duplicate" },
         ]),
       (error: unknown) => {
-        assert.ok(error instanceof InvalidConfigError);
+        assert.ok(error instanceof InvalidInputError);
         assert.deepEqual(error.issues[0]?.path, [1]);
         return true;
       },
@@ -412,7 +412,7 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
           content: "missing timezone",
           temporal: ["2026-01-01T00:00:00"],
         }),
-      InvalidConfigError,
+      InvalidInputError,
     );
     await assert.rejects(
       () => index.upsert({ content: "wrong vector", embedding: [1, 0, 0] }),
@@ -451,7 +451,7 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
           },
         ]),
       (error: unknown) => {
-        assert.ok(error instanceof InvalidConfigError);
+        assert.ok(error instanceof InvalidInputError);
         assert.deepEqual(error.issues[0]?.path, [1]);
         return true;
       },
@@ -470,7 +470,7 @@ test("upsert validates temporal values, caps batches, and rejects wrong vector d
           },
         ]),
       (error: unknown) => {
-        assert.ok(error instanceof InvalidConfigError);
+        assert.ok(error instanceof InvalidInputError);
         assert.deepEqual(error.issues[0]?.path, [1]);
         assert.match(error.message, /duplicate explicit id/);
         return true;

@@ -4,13 +4,13 @@ import { z } from "zod";
 import { embedQuery } from "./embedding.ts";
 import {
   DimensionMismatchError,
-  InvalidConfigError,
+  InvalidInputError,
   SearchgresError,
   type ValidationIssue,
 } from "./errors.ts";
 import { isValidTreePath } from "./identifiers.ts";
 import type { Index } from "./open-index.ts";
-import { postgresErrorCode } from "./sql/errors.ts";
+import { mapInputSqlError } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 import {
   normalizeRangeLiteral,
@@ -469,10 +469,7 @@ async function runSearch(
     if (error instanceof SearchgresError) {
       throw error;
     }
-    if (postgresErrorCode(error) === "22023") {
-      throw new InvalidConfigError("Invalid search input", { cause: error });
-    }
-    throw error;
+    throw mapInputSqlError(error, "search input") ?? error;
   }
 }
 
@@ -494,7 +491,7 @@ function mapRow(row: SearchRow): SearchResult {
 }
 
 function throwInvalidFilter(message: string): never {
-  throw new InvalidConfigError(`Invalid search filter: ${message}`, {
+  throw new InvalidInputError(`Invalid search filter: ${message}`, {
     issues: [{ code: "custom", message, path: ["filter"] }],
   });
 }
@@ -505,7 +502,7 @@ function throwInvalidOptions(error: z.ZodError): never {
   const detail = first
     ? `${first.path.join(".") || "options"}: ${first.message}`
     : "validation failed";
-  throw new InvalidConfigError(`Invalid search options: ${detail}`, {
+  throw new InvalidInputError(`Invalid search options: ${detail}`, {
     cause: error,
     issues,
   });

@@ -1,8 +1,9 @@
 # Errors and recovery
 
-Every error searchgres raises extends `SearchgresError` and carries a stable
-`code`. Catch the base class to detect any searchgres error, or a specific
-subclass to handle one case:
+Every error searchgres raises for a caller-facing condition — bad input, bad
+configuration, a missing record, a conflict, a timeout, a provider failure —
+extends `SearchgresError` and carries a stable `code`. Catch the base class to
+detect any searchgres error, or a specific subclass to handle one case:
 
 ```ts
 import { SearchgresError, StaleVersionError } from "searchgres";
@@ -25,22 +26,43 @@ where useful, extra fields described below.
 
 ## Input and configuration
 
+Both validation errors extend the abstract `ValidationError`, which carries
+`issues`: a list of structured `{ code, message, path }` problems. Match on
+`ValidationError` when you only need the issues (for example to build a 400
+response) and on the concrete class when the distinction matters.
+
 ### `InvalidConfigError` (`INVALID_CONFIG`)
 
-Invalid input to a public function — a bad index config, a malformed record, an
-invalid patch, or a bad search option. Carries `issues`, a list of structured
-validation problems.
+How an index is created or opened is invalid: a bad `createIndex` config, a
+malformed schema name, or a truncator constructed with a non-positive limit.
 
-**Recover:** fix the input. These are programming errors, not runtime
+**Recover:** fix the configuration. These are programming errors, not runtime
 conditions.
+
+### `InvalidInputError` (`INVALID_INPUT`)
+
+Input to an operation on an open index is invalid: a malformed record, an
+invalid patch, a bad search option, a malformed filter, a bad tree selector, a
+non-finite `retentionMs`, or a **pattern PostgreSQL rejected** — an `lquery`,
+`ltxtquery`, `regexp`, or JSONPath (`metaPredicate`) with a syntax error.
+
+Most input is validated in TypeScript before any SQL runs, and `issues` then
+mirrors the validator's output. Pattern syntax is validated by PostgreSQL
+itself; in that case `cause` is the driver's `PostgresError`, the message
+carries PostgreSQL's explanation, and the single issue's `code` is the SQLSTATE
+(`42601` syntax error, `2201B` invalid regular expression, `22023` invalid
+parameter value, `22P02` invalid text representation).
+
+**Recover:** fix the input. When a pattern comes from an end user, surface the
+message; it names the problem in the pattern.
 
 ### `TreePathError` (`TREE_PATH`)
 
 A concrete tree path is not a valid dotted `ltree` (each label must be
 `[A-Za-z0-9_-]+`). Carries `path`.
 
-**Recover:** correct the path. Note that `lquery`/`ltxtquery` **patterns** are
-not validated this way — they pass through to PostgreSQL.
+**Recover:** correct the path. `lquery`/`ltxtquery` **patterns** are validated
+by PostgreSQL instead; a malformed pattern raises `InvalidInputError`.
 
 ### `DimensionMismatchError` (`DIMENSION_MISMATCH`)
 

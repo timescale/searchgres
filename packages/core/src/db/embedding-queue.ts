@@ -1,5 +1,6 @@
 import type postgres from "postgres";
 import type { VectorType } from "../config.ts";
+import { InvalidInputError } from "../errors.ts";
 import { runSql } from "../sql/exec.ts";
 
 /**
@@ -298,6 +299,20 @@ export async function pruneQueue(
   schema: string,
   retentionMs: number,
 ): Promise<number> {
+  if (!Number.isFinite(retentionMs) || retentionMs < 0) {
+    throw new InvalidInputError(
+      "pruneEmbeddingQueue retentionMs must be a finite, nonnegative number of milliseconds",
+      {
+        issues: [
+          {
+            code: "custom",
+            message: "must be a finite, nonnegative number",
+            path: ["retentionMs"],
+          },
+        ],
+      },
+    );
+  }
   const queue = sql`${sql(schema)}.embedding_queue`;
   const [row] = await runSql(
     sql<{ pruned: string }[]>`

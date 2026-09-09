@@ -7,8 +7,8 @@ import { dropIndex } from "../src/drop-index.ts";
 import {
   ConflictError,
   DimensionMismatchError,
-  InvalidConfigError,
   InvalidIndexError,
+  InvalidInputError,
   NotFoundError,
   StaleVersionError,
 } from "../src/errors.ts";
@@ -71,7 +71,7 @@ test("get and getByName return the full record or throw NotFound", async () => {
       () => index.getByName("docs.api", "missing"),
       NotFoundError,
     );
-    await assert.rejects(() => index.get("not-a-uuid"), InvalidConfigError);
+    await assert.rejects(() => index.get("not-a-uuid"), InvalidInputError);
   });
 });
 
@@ -109,10 +109,10 @@ test("patch updates fields, returns the record, and enforces optimistic concurre
         ),
       NotFoundError,
     );
-    // empty patch → InvalidConfigError
+    // empty patch → InvalidInputError
     await assert.rejects(
       () => index.patch(created.id, updated.versionHash, {}),
-      InvalidConfigError,
+      InvalidInputError,
     );
   });
 });
@@ -237,6 +237,37 @@ test("deleteTree removes the inclusive subtree and cascades queue rows", async (
   });
 });
 
+test("malformed tree patterns raise InvalidInputError", async () => {
+  await withIndex(async (index) => {
+    await index.upsertMany([{ content: "x", tree: "docs.api" }]);
+    const expectInput =
+      (sqlstate: string) =>
+      (error: unknown): boolean => {
+        assert.ok(error instanceof InvalidInputError);
+        assert.equal(
+          (error.cause as { code?: string } | undefined)?.code,
+          sqlstate,
+        );
+        return true;
+      };
+    await assert.rejects(
+      () => index.listTree("docs.**{"),
+      expectInput("42601"),
+    );
+    await assert.rejects(
+      () => index.countTree({ lquery: "docs.**{" }),
+      expectInput("42601"),
+    );
+    await assert.rejects(
+      () => index.countTree({ ltxtquery: "docs &" }),
+      expectInput("42601"),
+    );
+    // valid patterns still work (listTree reports docs and docs.api)
+    assert.equal((await index.listTree("docs.*")).length, 2);
+    assert.equal((await index.countTree({ lquery: "docs.*" })).count, 1);
+  });
+});
+
 test("countTree supports each filter kind and reports capping", async () => {
   await withIndex(async (index) => {
     await index.upsertMany([
@@ -255,10 +286,7 @@ test("countTree supports each filter kind and reports capping", async () => {
     const exact = await index.countTree({ tree: "docs" }, { limit: 3 });
     assert.deepEqual(exact, { count: 3, capped: false });
 
-    await assert.rejects(
-      () => index.countTree({} as never),
-      InvalidConfigError,
-    );
+    await assert.rejects(() => index.countTree({} as never), InvalidInputError);
   });
 });
 

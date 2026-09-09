@@ -7,11 +7,13 @@ import {
   ExtensionError,
   InvalidConfigError,
   InvalidIndexError,
+  InvalidInputError,
   LockTimeoutError,
   RateLimitError,
   SchemaVersionError,
   SearchgresError,
   UnsupportedServerError,
+  ValidationError,
 } from "./errors.ts";
 
 test("all typed errors retain a stable code, class name, and cause", () => {
@@ -73,4 +75,24 @@ test("errors retain the fields callers need to recover", () => {
   ]);
   assert.equal(Object.isFrozen(config.issues), true);
   assert.equal(Object.isFrozen(config.issues[0]?.path), true);
+});
+
+test("config and input validation errors share a base but distinct codes", () => {
+  const config = new InvalidConfigError("bad config");
+  const input = new InvalidInputError("bad input", {
+    issues: [{ code: "42601", message: "syntax error", path: [] }],
+  });
+  assert.ok(config instanceof ValidationError);
+  assert.ok(input instanceof ValidationError);
+  assert.ok(config instanceof SearchgresError);
+  assert.ok(input instanceof SearchgresError);
+  assert.equal(config.code, "INVALID_CONFIG");
+  assert.equal(input.code, "INVALID_INPUT");
+  assert.equal(config.name, "InvalidConfigError");
+  assert.equal(input.name, "InvalidInputError");
+  assert.ok(!(input instanceof InvalidConfigError));
+  assert.ok(!(config instanceof InvalidInputError));
+  assert.deepEqual(input.issues, [
+    { code: "42601", message: "syntax error", path: [] },
+  ]);
 });

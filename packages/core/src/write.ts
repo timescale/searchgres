@@ -4,12 +4,12 @@ import {
   BatchTooLargeError,
   ConflictError,
   DimensionMismatchError,
-  InvalidConfigError,
+  InvalidInputError,
   SearchgresError,
   type ValidationIssue,
 } from "./errors.ts";
 import type { Index } from "./open-index.ts";
-import { postgresErrorCode } from "./sql/errors.ts";
+import { mapInputSqlError, postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 import { normalizeTemporalTuple, temporalTupleSchema } from "./temporal.ts";
 
@@ -225,10 +225,7 @@ async function runBatchUpsert(
         { cause: error },
       );
     }
-    if (code === "22023") {
-      throw new InvalidConfigError("Invalid record input", { cause: error });
-    }
-    throw error;
+    throw mapInputSqlError(error, "record input") ?? error;
   }
 }
 
@@ -254,7 +251,7 @@ function throwInvalidRecordInput(
   const detail = first
     ? `${first.path.join(".") || "record"}: ${first.message}`
     : "validation failed";
-  throw new InvalidConfigError(`Invalid record input: ${detail}`, {
+  throw new InvalidInputError(`Invalid record input: ${detail}`, {
     cause,
     issues,
   });
@@ -273,8 +270,8 @@ function toValidationIssue(issue: z.core.$ZodIssue): ValidationIssue {
 function duplicateKeyError(
   message: string,
   position: number,
-): InvalidConfigError {
-  return new InvalidConfigError(
+): InvalidInputError {
+  return new InvalidInputError(
     `Invalid record input: ${position}: ${message}`,
     {
       issues: [{ code: "custom", message, path: [position] }],

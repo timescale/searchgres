@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Sql } from "postgres";
 import { createIndex } from "../src/create-index.ts";
-import { DimensionMismatchError, RateLimitError } from "../src/errors.ts";
+import {
+  DimensionMismatchError,
+  InvalidInputError,
+  RateLimitError,
+} from "../src/errors.ts";
 import { type Index, openIndex } from "../src/open-index.ts";
 import { connect, dropTestSchema, randomTestSchema } from "./support/db.ts";
 import {
@@ -279,5 +283,17 @@ test("pruneEmbeddingQueue removes terminal rows", async () => {
     const pruned = await index.pruneEmbeddingQueue({ retentionMs: 0 });
     assert.equal(pruned, 1);
     assert.equal((await queueRows(index.schema)).length, 0);
+  });
+});
+
+test("pruneEmbeddingQueue rejects a non-finite or negative retention", async () => {
+  await withIndex(async (index) => {
+    for (const retentionMs of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await assert.rejects(
+        () => index.pruneEmbeddingQueue({ retentionMs }),
+        InvalidInputError,
+        String(retentionMs),
+      );
+    }
   });
 });
