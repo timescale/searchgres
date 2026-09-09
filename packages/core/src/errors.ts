@@ -175,7 +175,9 @@ export class UnsupportedServerError extends SearchgresError {
   ) {
     super(
       "UNSUPPORTED_SERVER",
-      `PostgreSQL ${minimumVersionNum} or newer is required; server reports ${serverVersionNum}`,
+      Number.isFinite(serverVersionNum)
+        ? `PostgreSQL ${minimumVersionNum} or newer is required; server reports ${serverVersionNum}`
+        : `PostgreSQL ${minimumVersionNum} or newer is required; the server did not report a parseable server_version_num`,
       options,
     );
     this.serverVersionNum = serverVersionNum;
