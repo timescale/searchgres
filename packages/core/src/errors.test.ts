@@ -51,6 +51,11 @@ test("errors retain the fields callers need to recover", () => {
   const server = new UnsupportedServerError(170_000, 180_000);
   assert.equal(server.serverVersionNum, 170_000);
   assert.equal(server.minimumVersionNum, 180_000);
+  assert.match(server.message, /server reports 170000/);
+  const unparseable = new UnsupportedServerError(Number.NaN, 180_000);
+  assert.ok(Number.isNaN(unparseable.serverVersionNum));
+  assert.match(unparseable.message, /did not report a parseable/);
+  assert.doesNotMatch(unparseable.message, /NaN/);
 
   const extension = new ExtensionError("vector", "0.8.0", "too_old", {
     foundVersion: "0.7.4",
