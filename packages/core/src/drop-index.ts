@@ -13,7 +13,7 @@ import { runSql } from "./sql/exec.ts";
  * remain removable. The caller owns the pool; this never calls `sql.end()`.
  */
 export async function dropIndex(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
 ): Promise<void> {
   const indexSchema = assertSchemaName(schema);

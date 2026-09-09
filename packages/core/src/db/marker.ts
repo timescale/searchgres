@@ -38,7 +38,7 @@ interface VersionRow {
  * able to remove obsolete indexes).
  */
 export async function readIndexMarker(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
 ): Promise<string> {
   const [marker] = await runSql(

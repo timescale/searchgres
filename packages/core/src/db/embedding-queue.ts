@@ -71,7 +71,7 @@ interface CandidateRow {
  * behind the record's.
  */
 export async function claimBatch(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
   options: {
     readonly batchSize: number;
@@ -192,7 +192,7 @@ export async function claimBatch(
  * avoiding "tuple already modified" from double-updating it in one statement.
  */
 export async function completeEmbedding(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
   vectorType: VectorType,
   input: {
@@ -250,7 +250,7 @@ export async function completeEmbedding(
  * deleted with its record.
  */
 export async function failEmbedding(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
   input: { readonly queueId: string; readonly error: string },
 ): Promise<void> {
@@ -272,7 +272,7 @@ export async function failEmbedding(
  * re-triggering the throttle.
  */
 export async function releaseEmbedding(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
   input: { readonly queueId: string; readonly backoffMs: number },
 ): Promise<void> {
@@ -295,7 +295,7 @@ export async function releaseEmbedding(
 
 /** Delete terminal rows older than the retention window. Returns rows removed. */
 export async function pruneQueue(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
   retentionMs: number,
 ): Promise<number> {
@@ -335,7 +335,7 @@ export async function pruneQueue(
 
 /** Count of `outcome is null` rows after a bounded pass (used for `remaining`). */
 export async function pendingCount(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
 ): Promise<number> {
   const queue = sql`${sql(schema)}.embedding_queue`;
@@ -354,7 +354,7 @@ export async function pendingCount(
 
 /** Aggregate queue snapshot for operational visibility. */
 export async function queueStats(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
 ): Promise<QueueStats> {
   const queue = sql`${sql(schema)}.embedding_queue`;

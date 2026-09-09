@@ -138,10 +138,11 @@ export class Index implements TransactionIndex {
   readonly truncate: Truncator;
 
   /** @internal Caller-owned pool or transaction used by every method. */
-  readonly sql: postgres.Sql;
+  readonly sql: postgres.ISql;
 
+  /** @internal Constructed by {@link openIndex} and {@link Index.with} only. */
   constructor(options: {
-    sql: postgres.Sql;
+    sql: postgres.ISql;
     schema: string;
     vectorType: "vector" | "halfvec";
     dimensions: number;
@@ -319,9 +320,7 @@ export class Index implements TransactionIndex {
    */
   with(tx: postgres.TransactionSql): TransactionIndex {
     return new Index({
-      // A TransactionSql is a query runner just like Sql (minus pool lifecycle,
-      // which the handle never calls); the cast keeps the field type simple.
-      sql: tx as unknown as postgres.Sql,
+      sql: tx,
       schema: this.schema,
       vectorType: this.vectorType,
       dimensions: this.dimensions,
@@ -438,7 +437,7 @@ export async function openIndex(
 }
 
 async function readEmbeddingColumn(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
 ): Promise<EmbeddingColumnRow> {
   const [row] = await runSql(
@@ -487,7 +486,7 @@ function parseVectorShape(
 }
 
 async function readHnswOpclass(
-  sql: postgres.Sql,
+  sql: postgres.ISql,
   schema: string,
 ): Promise<HnswOpclassRow> {
   const [row] = await runSql(
