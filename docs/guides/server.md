@@ -1,14 +1,33 @@
-# Configure and run the API server
+# Configure and run the reference API server
+
+`searchgres-server` is a maintained reference implementation showing one way to
+host the core library for a single index. It is optional and does not define how
+applications must expose searchgres.
+
+## Security boundary
+
+> **Warning:** the reference server has no built-in authentication,
+> authorization, TLS termination, or rate limiting. Keep it bound to loopback,
+> or place it behind an application or trusted proxy that supplies those
+> controls. Do not expose it directly to an untrusted network.
+
+Anyone who can reach a writable server can mutate its configured index. Anyone
+who can reach a read-only server can query its records and can trigger
+embedding-provider calls through semantic search. `--read-only` reduces
+capabilities; it is not authentication. Likewise, `--allow-public-listen` only
+acknowledges an unauthenticated non-loopback binding—it does not secure it.
+
+The server is a privileged *process* because it owns the PostgreSQL connection,
+embedding-provider configuration, index provisioning, background embedding
+worker, and HTTP API. That does not make it an authenticated privilege boundary.
+The reference `searchgres` CLI, internal client workspace, and `searchgres-mcp`
+binary never read these credentials or this config, but they do not add network
+authentication either.
 
 > Looking for a no-API-key local demo? The checked-in
 > [Docker Compose evaluation stack](docker-compose.md) configures PostgreSQL,
 > Ollama, provisioning, and this server automatically. This guide covers
 > managing your own server configuration and provider.
-
-`searchgres-server` is the privileged Searchgres process. It owns the PostgreSQL
-connection, embedding-provider configuration, index provisioning, background
-embedding worker, and HTTP API. The `searchgres` and `searchgres-mcp` clients never read these
-credentials or this config.
 
 ## 1. Generate configuration offline
 
@@ -115,6 +134,31 @@ searchgres-server serve --config searchgres.yaml --read-only
 
 Read-only mode rejects mutating RPC methods and does not drain record embedding
 work. Semantic queries can still call the configured embedding provider.
+
+### HTTP endpoints
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /rpc` | JSON-RPC 2.0 requests for the reference search API. |
+| `GET /openrpc.json` | Generated OpenRPC description of every RPC method and schema. |
+| `GET /healthz` | Process liveness after the HTTP listener has started. |
+| `GET /readyz` | Listener readiness after configuration and index opening succeeded. |
+
+The generated OpenRPC document is the authoritative wire-method reference. Read
+it directly or request the same document through `rpc.discover`:
+
+```sh
+curl http://127.0.0.1:3000/openrpc.json
+
+curl http://127.0.0.1:3000/rpc \
+  --header 'content-type: application/json' \
+  --data '{"jsonrpc":"2.0","id":"1","method":"rpc.discover"}'
+```
+
+For the reference CLI's available operations and flags, run
+`searchgres --help` and `searchgres <command> --help`. For component roles and
+packaging boundaries, see
+[Reference implementations and evaluation tools](../reference-applications.md).
 
 ## 5. Environment-file precedence
 

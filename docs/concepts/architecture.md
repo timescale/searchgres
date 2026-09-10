@@ -81,8 +81,11 @@ A hosted or internal search API typically owns:
 - rate limits and network policy;
 - response projection and optional reranking.
 
-The included `searchgres-server` is one implementation, not a requirement. An
+The included `searchgres-server` is a reference implementation, not a
+requirement. It demonstrates the pool, model, worker, and RPC mechanics but
+deliberately omits authentication and other production perimeter controls. An
 application can expose its own REST, GraphQL, RPC, job, or in-process interface.
+See [Reference implementations and evaluation tools](../reference-applications.md).
 
 ## Access control with composable filters
 

@@ -1,8 +1,16 @@
-# Searchgres MCP server
+# Searchgres MCP reference server
 
-`searchgres-mcp` exposes one Searchgres API server as twelve MCP tools over stdio. It is
-an unprivileged remote client: it never reads server config, dotenv, database or
-embedding credentials, or arbitrary import/export files.
+`searchgres-mcp` is a maintained reference implementation that adapts one
+Searchgres API server into twelve MCP tools over stdio. It is an unprivileged
+remote client: it never reads server config, dotenv, database or embedding
+credentials, or arbitrary import/export files. You do not need it to use the
+core library.
+
+The MCP process does not authenticate or secure the HTTP server it calls. Keep
+the API on loopback or behind a trusted security boundary as described in the
+[API server warning](../guides/server.md#security-boundary). MCP `--read-only`
+omits mutating tools from the agent, but is capability reduction rather than
+authentication; backend read-only mode remains authoritative.
 
 ## Run
 
