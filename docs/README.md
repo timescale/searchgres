@@ -22,7 +22,7 @@ policy, and retrieval pipeline.
 
 Want to evaluate it without writing an application? Use the
 **[Docker Compose stack](guides/docker-compose.md)** to run PostgreSQL, Ollama,
-provisioning, and the optional API server with no provider key.
+provisioning, and the reference API server with no provider key.
 
 ## Core library guides
 
@@ -50,16 +50,19 @@ provisioning, and the optional API server with no provider key.
 - **[Runnable examples](../examples/README.md)** — small core-library programs
   for basic search, RAG, document modeling, temporal search, and workers.
 
-## Optional applications
+## Reference implementations and evaluation
 
-The core library is the primary product. These applications are built on top of
-it and can be used as reference implementations or as-is:
+The core library is the primary product. The repository's server, client, CLI,
+MCP server, and Compose stack are maintained examples of how an application can
+be built around it; they are not required layers or co-equal library APIs.
 
-- **[API server](guides/server.md)** — expose one configured index over HTTP.
-- **[Docker Compose evaluation](guides/docker-compose.md)** — try the server and
-  search engine locally without an API key.
-- **[MCP server](mcp/index.md)** — give MCP-compatible agents read and write
-  tools over the API server.
+- **[Component overview and boundaries](reference-applications.md)** — understand
+  what each reference component demonstrates and what is privately packaged.
+- **[Docker Compose evaluation](guides/docker-compose.md)** — try the complete
+  reference stack locally without an API key.
+- **[API server](guides/server.md)** — study or run the single-index HTTP
+  reference implementation.
+- **[MCP server](mcp/index.md)** — adapt the reference API to agent tools.
 
 ## Reference
 

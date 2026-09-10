@@ -2,9 +2,11 @@
 
 The repository's root `compose.yaml` is a one-command **evaluation and local-demo
 stack**, not a production deployment. It runs PostgreSQL, a local embedding
-model, automatic model download and index provisioning, and the Searchgres API.
-No provider account, API key, generated config, or locally installed Searchgres
-binary is required.
+model, automatic model download and index provisioning, and the reference
+Searchgres API server. No provider account, API key, generated config, or
+locally installed Searchgres binary is required. See
+[Reference implementations and evaluation tools](../reference-applications.md)
+for the role of each non-core component.
 
 ## Requirements
 
@@ -150,9 +152,12 @@ The evaluation stack deliberately trades hardening for a reliable first run:
 
 The API is loopback-bound to reduce accidental exposure, but this is not a
 production security architecture. Production operators should provide managed
-credentials, TLS and network policy, backups, resource controls, observability,
-and an independently managed embedding provider. Ollama is an evaluation choice,
-not a Searchgres core or server requirement.
+credentials, authentication, authorization, TLS and network policy, rate
+limiting, backups, resource controls, observability, and an independently
+managed embedding provider. Read the reference server's
+[security boundary](server.md#security-boundary) before changing its bind
+address. Ollama is an evaluation choice, not a Searchgres core or server
+requirement.
 
 ## Full smoke test
 

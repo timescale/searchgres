@@ -178,19 +178,16 @@ models, agent behavior, samples, and metrics also affect end-to-end scores.
 necessary privileges. The repository includes a PostgreSQL Dockerfile with the
 extensions configured. See **[Install searchgres](https://github.com/timescale/searchgres/blob/main/docs/installation.md)**.
 
-## Want a ready-made application?
+## Reference implementations
 
-The core library is the primary product. This repository also includes optional
-applications built on it:
+The core library is the primary product. This repository also contains
+maintained reference implementations showing one way to compose a network
+server, typed client, CLI, and MCP tools around it. They are optional: you do not
+need them to use the library, and their interfaces do not constrain an
+application built directly on core.
 
-- `searchgres-server` exposes one configured index over HTTP.
-- `searchgres` is a remote CLI for records, trees, import/export, and search.
-- `searchgres-mcp` exposes searchgres tools to MCP-compatible agents.
-- The Docker Compose stack runs PostgreSQL, Ollama, provisioning, and the server for a
-  no-API-key local evaluation.
-
-Use them as reference implementations, an evaluation environment, or as-is for
-remote and agentic search. Start the local evaluation with:
+The Docker Compose stack combines the reference server with PostgreSQL and a
+local Ollama model for a no-API-key evaluation:
 
 ```bash
 git clone https://github.com/timescale/searchgres.git
@@ -198,8 +195,11 @@ cd searchgres
 docker compose up --build
 ```
 
-See the **[Docker Compose evaluation guide](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)**
-or **[API server guide](https://github.com/timescale/searchgres/blob/main/docs/guides/server.md)**.
+See **[Reference implementations and evaluation tools](https://github.com/timescale/searchgres/blob/main/docs/reference-applications.md)**
+for component roles and support boundaries, or start with the
+**[Docker Compose evaluation guide](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)**.
+The reference server has no built-in authentication and must not be exposed
+directly to an untrusted network.
 
 ## Documentation
 
@@ -217,13 +217,12 @@ or **[API server guide](https://github.com/timescale/searchgres/blob/main/docs/g
 - [Manage records and trees](https://github.com/timescale/searchgres/blob/main/docs/guides/records-and-trees.md)
 - [Run in production](https://github.com/timescale/searchgres/blob/main/docs/guides/production.md)
 
-### Evaluate and integrate
+### Examples and evaluation
 
-- [Runnable examples](https://github.com/timescale/searchgres/tree/main/examples)
+- [Runnable core-library examples](https://github.com/timescale/searchgres/tree/main/examples)
 - [Choosing searchgres](https://github.com/timescale/searchgres/blob/main/docs/comparison.md)
-- [Configure the API server](https://github.com/timescale/searchgres/blob/main/docs/guides/server.md)
+- [Reference implementations and evaluation tools](https://github.com/timescale/searchgres/blob/main/docs/reference-applications.md)
 - [Evaluate with Docker Compose](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)
-- [Use the MCP server](https://github.com/timescale/searchgres/blob/main/docs/mcp/index.md)
 
 ### Reference
 

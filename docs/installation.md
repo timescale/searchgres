@@ -150,10 +150,10 @@ requirement for the core library. See
 performance expectations, persistence, and its evaluation-only security
 boundary.
 
-## Optional compiled applications
+## Reference binaries
 
-Install the latest `searchgres` CLI, `searchgres-server`, and `searchgres-mcp`
-executables:
+The releases include compiled `searchgres` CLI, `searchgres-server`, and
+`searchgres-mcp` reference executables. Install the latest versions with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | sh
@@ -171,7 +171,11 @@ curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.s
   SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=v0.1.0 sh
 ```
 
-These applications are optional layers over the same core. Use them as reference
-implementations or as-is for remote and agentic search.
+These binaries are maintained examples and evaluation tools over the same core,
+not required layers or co-equal products. See
+[Reference implementations and evaluation tools](reference-applications.md) for
+their roles and packaging boundaries. The server has no built-in authentication;
+read its [security warning](guides/server.md#security-boundary) before changing
+the default loopback binding.
 
 Next: [Get started](getting-started.md).
