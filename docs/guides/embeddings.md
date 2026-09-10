@@ -93,10 +93,12 @@ The worker processes a batch, immediately continues while work exists, and
 sleeps `intervalMs` when idle. `stop()` is graceful: it interrupts the idle wait,
 lets any in-flight batch finish, and never closes your pool.
 
-**Always pass `onError`.** The worker never dies: when a pass throws — a
+**Always pass `onError`.** The worker catches failures from individual drain or
+prune ticks and keeps its polling loop running: when a pass throws — a
 misconfigured model (`DimensionMismatchError`), a revoked key
 (`EmbeddingProviderError`), an unreachable database — it backs off
-exponentially (up to 60s) and retries. `onError` is how you find out. It
+exponentially (up to 60s) and retries. Process termination and fatal failures
+outside that guarded loop still stop the worker. `onError` is how you find out. It
 receives the error plus `phase` (`process` for a drain pass, `prune` for idle
 pruning), `consecutiveErrors`, and the `backoffMs` it is about to sleep. A
 `RateLimitError` is reported too, with the provider's retry delay as

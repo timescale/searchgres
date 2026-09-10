@@ -32,43 +32,46 @@ import { createIndex, openIndex } from "searchgres";
 
 const sql = postgres(process.env.DATABASE_URL);
 
-// Run once. An index is a Postgres schema managed by searchgres.
-await createIndex(sql, "docs_index", { dimensions: 1536 });
+try {
+  // Run once. An index is a Postgres schema managed by searchgres.
+  await createIndex(sql, "docs_index", { dimensions: 1536 });
 
-const index = await openIndex(sql, "docs_index", {
-  embedding: openai.embedding("text-embedding-3-small"),
-});
+  const index = await openIndex(sql, "docs_index", {
+    embedding: openai.embedding("text-embedding-3-small"),
+  });
 
-await index.upsertMany([
-  {
-    content: "Auth tokens rotate every 24 hours.",
-    tree: "docs.auth",
-    meta: { audience: "operators" },
-  },
-  {
-    content: "Rate limits are 100 requests per minute for each API key.",
-    tree: "docs.api",
-    meta: { audience: "developers" },
-  },
-]);
+  await index.upsertMany([
+    {
+      content: "Auth tokens rotate every 24 hours.",
+      tree: "docs.auth",
+      meta: { audience: "operators" },
+    },
+    {
+      content: "Rate limits are 100 requests per minute for each API key.",
+      tree: "docs.api",
+      meta: { audience: "developers" },
+    },
+  ]);
 
-// New records already work with BM25 and filters. Drain before semantic search.
-await index.processEmbeddings();
+  // New records work with BM25 and filters. Drain before semantic search.
+  await index.processEmbeddings();
 
-const hits = await index.search({
-  semantic: "how are request limits enforced?",
-  fulltext: "rate limit",
-  filter: {
-    and: [
-      { tree: "docs.api" },
-      { meta: { audience: "developers" } },
-    ],
-  },
-  limit: 5,
-});
+  const hits = await index.search({
+    semantic: "how are request limits enforced?",
+    fulltext: "rate limit",
+    filter: {
+      and: [
+        { tree: "docs.api" },
+        { meta: { audience: "developers" } },
+      ],
+    },
+    limit: 5,
+  });
 
-for (const hit of hits) console.log(hit.score, hit.tree, hit.content);
-await sql.end(); // you own the pool
+  for (const hit of hits) console.log(hit.score, hit.tree, hit.content);
+} finally {
+  await sql.end(); // searchgres never closes the caller-owned connection
+}
 ```
 
 See **[Get started](https://github.com/timescale/searchgres/blob/main/docs/getting-started.md)**

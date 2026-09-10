@@ -23,8 +23,8 @@ embedding writes fail with a `DimensionMismatchError`.
 
 | Type | Storage | When to use |
 | --- | --- | --- |
-| `halfvec` (default) | 16-bit floats | Almost always. Half the storage, negligible recall loss for normalized embeddings. |
-| `vector` | 32-bit floats | You need full fp32 precision. |
+| `halfvec` (default) | 16-bit floats | Half the storage; often a small recall impact for normalized embeddings. Evaluate it with your model and corpus. |
+| `vector` | 32-bit floats | Use when evaluation shows you need full fp32 precision. |
 
 HNSW caps the dimensions per type: up to **4000** for `halfvec`, **2000** for
 `vector`.
@@ -98,8 +98,9 @@ index.vectorType; // "halfvec"
 index.dimensions; // 1536
 ```
 
-The embedding model is always required, even if a particular call only uses
-filters or keyword search — the handle owns it for whenever it's needed.
+The `embedding` option is always required. Pass a real model when this handle
+will generate vectors, or the supported [`noEmbedding`](embeddings.md#credential-separation)
+sentinel for ingest-only, precomputed-vector, keyword, or filter-only handles.
 searchgres reads the vector shape from the database, not from what you pass, and
 never compares or stores your model's identity.
 
