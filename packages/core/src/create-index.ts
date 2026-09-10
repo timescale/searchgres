@@ -17,6 +17,7 @@ import {
 } from "./db/session.ts";
 import { ConflictError, InvalidConfigError } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
+import { runOperation } from "./operation.ts";
 import { postgresErrorCode } from "./sql/errors.ts";
 import { runSql } from "./sql/exec.ts";
 import { toValidationIssue } from "./validation.ts";
@@ -87,10 +88,25 @@ export async function createIndex(
   config: IndexConfig,
   options?: CreateIndexOptions,
 ): Promise<void> {
-  const indexSchema = assertSchemaName(schema);
-  const creation = normalizeIndexConfig(config);
-  const budgets = normalizeCreateIndexOptions(options);
+  return runOperation("searchgres.index.create", { schema }, async (span) => {
+    const indexSchema = assertSchemaName(schema);
+    const creation = normalizeIndexConfig(config);
+    const budgets = normalizeCreateIndexOptions(options);
+    span.setAttributes({
+      "searchgres.index.vector_type": creation.vectorType,
+      "searchgres.index.dimensions": creation.dimensions,
+    });
 
+    await createIndexSchema(sql, indexSchema, creation, budgets);
+  });
+}
+
+async function createIndexSchema(
+  sql: postgres.Sql,
+  indexSchema: string,
+  creation: ReturnType<typeof normalizeIndexConfig>,
+  budgets: ReturnType<typeof normalizeCreateIndexOptions>,
+): Promise<void> {
   await sql.begin(async (tx) => {
     await applySessionTimeouts(tx, {
       ...DEFAULT_MIGRATION_TIMEOUTS,

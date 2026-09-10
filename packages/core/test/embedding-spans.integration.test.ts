@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { SpanStatusCode, trace } from "@opentelemetry/api";
+import { context, SpanStatusCode, trace } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -19,12 +20,15 @@ let sql: Sql;
 let createIndex: typeof import("../src/create-index.ts").createIndex;
 let openIndex: typeof import("../src/open-index.ts").openIndex;
 const exporter = new InMemorySpanExporter();
+const contextManager = new AsyncLocalStorageContextManager();
 const provider = new BasicTracerProvider({
   spanProcessors: [new SimpleSpanProcessor(exporter)],
 });
 
 before(async () => {
   trace.disable();
+  context.disable();
+  context.setGlobalContextManager(contextManager.enable());
   trace.setGlobalTracerProvider(provider);
   ({ createIndex } = await import("../src/create-index.ts"));
   ({ openIndex } = await import("../src/open-index.ts"));
@@ -34,6 +38,8 @@ before(async () => {
 after(async () => {
   await sql.end();
   await provider.shutdown();
+  contextManager.disable();
+  context.disable();
   trace.disable();
 });
 
@@ -43,7 +49,7 @@ function processSpans() {
     .filter(
       (span) =>
         span.instrumentationScope.name === "searchgres" &&
-        span.name === "embedding.process",
+        span.name === "searchgres.embedding.process",
     );
 }
 
@@ -115,11 +121,40 @@ test("the worker skips the pending count that processEmbeddings reports as remai
     // The continuous worker decides idleness from claimed/cancelled and must
     // not count the queue on every tick.
     exporter.reset();
-    const worker = index.startEmbeddingWorker({ intervalMs: 10 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    await worker.stop();
+    const appTracer = trace.getTracer("test/application");
+    await appTracer.startActiveSpan("application.startup", async (parent) => {
+      try {
+        const worker = index.startEmbeddingWorker({ intervalMs: 10 });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await worker.stop();
+      } finally {
+        parent.end();
+      }
+    });
     await provider.forceFlush();
+    const finished = exporter.getFinishedSpans();
+    const parent = finished.find((span) => span.name === "application.startup");
+    const started = finished.find(
+      (span) => span.name === "searchgres.embedding.worker.start",
+    );
+    const stopped = finished.find(
+      (span) => span.name === "searchgres.embedding.worker.stop",
+    );
+    assert.ok(parent);
+    assert.equal(
+      started?.parentSpanContext?.spanId,
+      parent.spanContext().spanId,
+    );
+    assert.equal(
+      stopped?.parentSpanContext?.spanId,
+      parent.spanContext().spanId,
+    );
+
     const ticks = processSpans();
+    assert.ok(
+      ticks.every((tick) => tick.parentSpanContext === undefined),
+      "worker ticks inherited the startup context",
+    );
     assert.ok(
       ticks.length >= 2,
       `expected several idle ticks, saw ${ticks.length}`,
@@ -131,9 +166,9 @@ test("the worker skips the pending count that processEmbeddings reports as remai
         "worker tick reported remaining",
       );
     }
-    const counts = exporter
-      .getFinishedSpans()
-      .filter((span) => span.name === "pendingEmbeddingCount");
+    const counts = finished.filter(
+      (span) => span.name === "pendingEmbeddingCount",
+    );
     assert.equal(counts.length, 0, "worker tick counted the queue");
   } finally {
     await dropTestSchema(sql, schema);

@@ -1,4 +1,4 @@
-import { SpanStatusCode, trace } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import { LIBRARY_VERSION } from "../version.ts";
 import { mapSqlError } from "./errors.ts";
 
@@ -33,6 +33,7 @@ export async function runSql<T extends QueryResult>(
   return tracer.startActiveSpan(
     operation.spanName,
     {
+      kind: SpanKind.CLIENT,
       attributes: {
         "db.system": "postgresql",
         "db.namespace": operation.namespace ?? "",

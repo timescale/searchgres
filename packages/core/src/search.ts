@@ -1,4 +1,4 @@
-import { trace } from "@opentelemetry/api";
+import type { Span } from "@opentelemetry/api";
 import type postgres from "postgres";
 import { z } from "zod";
 import { assertEmbeddingAvailable, embedQuery } from "./embedding.ts";
@@ -18,9 +18,6 @@ import {
   timestampSchema,
 } from "./temporal.ts";
 import { toValidationIssue } from "./validation.ts";
-import { LIBRARY_VERSION } from "./version.ts";
-
-const tracer = trace.getTracer("searchgres", LIBRARY_VERSION);
 
 /**
  * Guards against pathological ASTs from untrusted callers. Enforced twice: by
@@ -386,6 +383,7 @@ function rangeLiteral(range: TemporalRange): string {
 export async function search(
   index: Index,
   options: SearchOptions,
+  span: Span,
 ): Promise<readonly SearchResult[]> {
   if (isRecord(options) && options.filter !== undefined) {
     guardFilterShape(options.filter);
@@ -401,47 +399,38 @@ export async function search(
   const ranked = hasSemantic || hasFulltext;
   const hybrid = hasSemantic && hasFulltext;
 
-  return tracer.startActiveSpan("search", async (span) => {
-    try {
-      span.setAttributes({
-        "searchgres.search.mode": hybrid
-          ? "hybrid"
-          : hasSemantic
-            ? "semantic"
-            : hasFulltext
-              ? "keyword"
-              : "filter",
-        "searchgres.search.has_filter": opts.filter !== undefined,
-      });
-
-      const filterJson =
-        opts.filter === undefined ? null : normalizeFilter(opts.filter, ranked);
-
-      let vector: string | null = null;
-      if (opts.vector !== undefined) {
-        if (opts.vector.length !== index.dimensions) {
-          throw new DimensionMismatchError(
-            index.dimensions,
-            opts.vector.length,
-          );
-        }
-        vector = JSON.stringify(opts.vector);
-      } else if (opts.semantic !== undefined) {
-        assertEmbeddingAvailable(index, "search by semantic text");
-        vector = JSON.stringify(await embedQuery(index, opts.semantic));
-      }
-
-      const rows = hybrid
-        ? await runHybrid(index, opts, filterJson, vector as string)
-        : await runSingle(index, opts, filterJson, vector, ranked);
-
-      const results = rows.map(mapRow);
-      span.setAttribute("searchgres.search.results", results.length);
-      return results;
-    } finally {
-      span.end();
-    }
+  span.setAttributes({
+    "searchgres.search.mode": hybrid
+      ? "hybrid"
+      : hasSemantic
+        ? "semantic"
+        : hasFulltext
+          ? "keyword"
+          : "filter",
+    "searchgres.search.has_filter": opts.filter !== undefined,
   });
+
+  const filterJson =
+    opts.filter === undefined ? null : normalizeFilter(opts.filter, ranked);
+
+  let vector: string | null = null;
+  if (opts.vector !== undefined) {
+    if (opts.vector.length !== index.dimensions) {
+      throw new DimensionMismatchError(index.dimensions, opts.vector.length);
+    }
+    vector = JSON.stringify(opts.vector);
+  } else if (opts.semantic !== undefined) {
+    assertEmbeddingAvailable(index, "search by semantic text");
+    vector = JSON.stringify(await embedQuery(index, opts.semantic));
+  }
+
+  const rows = hybrid
+    ? await runHybrid(index, opts, filterJson, vector as string)
+    : await runSingle(index, opts, filterJson, vector, ranked);
+
+  const results = rows.map(mapRow);
+  span.setAttribute("searchgres.result.count", results.length);
+  return results;
 }
 
 async function runSingle(

@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 import { readIndexMarker } from "./db/marker.ts";
 import { assertSchemaName } from "./identifiers.ts";
+import { runOperation } from "./operation.ts";
 import { runSql } from "./sql/exec.ts";
 
 /**
@@ -13,6 +14,16 @@ import { runSql } from "./sql/exec.ts";
  * remain removable. The caller owns the pool; this never calls `sql.end()`.
  */
 export async function dropIndex(
+  sql: postgres.ISql,
+  schema: string,
+): Promise<void> {
+  return runOperation("searchgres.index.drop", { schema }, () =>
+    dropIndexSchema(sql, schema),
+  );
+}
+
+/** @internal Drop implementation used by `Index.drop` without a nested span. */
+export async function dropIndexSchema(
   sql: postgres.ISql,
   schema: string,
 ): Promise<void> {

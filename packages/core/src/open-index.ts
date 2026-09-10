@@ -1,3 +1,4 @@
+import type { Attributes, Span } from "@opentelemetry/api";
 import type { EmbeddingModel } from "ai";
 import type postgres from "postgres";
 import { z } from "zod";
@@ -15,7 +16,7 @@ import {
 } from "./db/embedding-queue.ts";
 import { getExtensionInfo, REQUIRED_EXTENSIONS } from "./db/extensions.ts";
 import { readIndexMarker } from "./db/marker.ts";
-import { dropIndex } from "./drop-index.ts";
+import { dropIndexSchema } from "./drop-index.ts";
 import {
   type EmbeddingWorker,
   type EmbeddingWorkerOptions,
@@ -30,6 +31,7 @@ import {
   SchemaVersionError,
 } from "./errors.ts";
 import { assertSchemaName } from "./identifiers.ts";
+import { runOperation } from "./operation.ts";
 import {
   deleteByName,
   deleteRecord,
@@ -177,11 +179,25 @@ export class Index implements TransactionIndex {
     record: UpsertRecord,
     options?: UpsertOptions,
   ): Promise<UpsertResult> {
-    const [result] = await this.upsertMany([record], options);
-    if (!result) {
-      throw new Error("Upsert result invariant failed: expected one record");
-    }
-    return result;
+    return runIndexOperation(
+      this,
+      "searchgres.record.upsert",
+      async (span) => {
+        setRecordIdAttribute(span, record);
+        const [result] = await upsertMany(this, [record], options);
+        if (!result) {
+          throw new Error(
+            "Upsert result invariant failed: expected one record",
+          );
+        }
+        span.setAttributes({
+          "searchgres.record.id": result.id,
+          "searchgres.result.count": 1,
+        });
+        return result;
+      },
+      { "searchgres.batch.size": 1 },
+    );
   }
 
   /** Insert or replace up to 1,000 records in one bulk SQL statement. */
@@ -189,19 +205,59 @@ export class Index implements TransactionIndex {
     records: readonly UpsertRecord[],
     options?: UpsertOptions,
   ): Promise<readonly UpsertResult[]> {
-    return upsertMany(this, records, options);
+    return runIndexOperation(
+      this,
+      "searchgres.record.upsert_many",
+      async (span) => {
+        const results = await upsertMany(this, records, options);
+        span.setAttribute("searchgres.result.count", results.length);
+        return results;
+      },
+      { "searchgres.batch.size": arrayLength(records) },
+    );
   }
 
   /** Insert one record and throw {@link ConflictError} if it already exists. */
   async insert(record: UpsertRecord): Promise<UpsertResult> {
-    return this.upsert(record, { onConflict: "error" });
+    return runIndexOperation(
+      this,
+      "searchgres.record.insert",
+      async (span) => {
+        setRecordIdAttribute(span, record);
+        const [result] = await upsertMany(this, [record], {
+          onConflict: "error",
+        });
+        if (!result) {
+          throw new Error(
+            "Insert result invariant failed: expected one record",
+          );
+        }
+        span.setAttributes({
+          "searchgres.record.id": result.id,
+          "searchgres.result.count": 1,
+        });
+        return result;
+      },
+      { "searchgres.batch.size": 1 },
+    );
   }
 
   /** Insert records and throw {@link ConflictError} if any already exist. */
   async insertMany(
     records: readonly UpsertRecord[],
   ): Promise<readonly UpsertResult[]> {
-    return this.upsertMany(records, { onConflict: "error" });
+    return runIndexOperation(
+      this,
+      "searchgres.record.insert_many",
+      async (span) => {
+        const results = await upsertMany(this, records, {
+          onConflict: "error",
+        });
+        span.setAttribute("searchgres.result.count", results.length);
+        return results;
+      },
+      { "searchgres.batch.size": arrayLength(records) },
+    );
   }
 
   /**
@@ -210,17 +266,42 @@ export class Index implements TransactionIndex {
    * (filter-only listing).
    */
   async search(options?: SearchOptions): Promise<readonly SearchResult[]> {
-    return search(this, options ?? {});
+    return runIndexOperation(this, "searchgres.search", (span) =>
+      search(this, options ?? {}, span),
+    );
   }
 
   /** Read one record by id. Throws `NotFoundError` when it does not exist. */
   async get(id: string): Promise<StoredRecord> {
-    return get(this, id);
+    return runIndexOperation(
+      this,
+      "searchgres.record.get",
+      async (span) => {
+        const record = await get(this, id);
+        span.setAttributes({
+          "searchgres.record.id": record.id,
+          "searchgres.result.count": 1,
+        });
+        return record;
+      },
+      validRecordIdAttribute(id),
+    );
   }
 
   /** Read one record by its `(tree, name)` address. Throws `NotFoundError`. */
   async getByName(tree: string, name: string): Promise<StoredRecord> {
-    return getByName(this, tree, name);
+    return runIndexOperation(
+      this,
+      "searchgres.record.get_by_name",
+      async (span) => {
+        const record = await getByName(this, tree, name);
+        span.setAttributes({
+          "searchgres.record.id": record.id,
+          "searchgres.result.count": 1,
+        });
+        return record;
+      },
+    );
   }
 
   /**
@@ -233,17 +314,39 @@ export class Index implements TransactionIndex {
     priorVersionHash: string,
     input: PatchInput,
   ): Promise<StoredRecord> {
-    return patch(this, id, priorVersionHash, input);
+    return runIndexOperation(
+      this,
+      "searchgres.record.patch",
+      async (span) => {
+        const record = await patch(this, id, priorVersionHash, input);
+        span.setAttributes({
+          "searchgres.record.id": record.id,
+          "searchgres.result.count": 1,
+        });
+        return record;
+      },
+      validRecordIdAttribute(id),
+    );
   }
 
   /** Delete one record by id. Throws `NotFoundError` when it does not exist. */
   async delete(id: string): Promise<void> {
-    return deleteRecord(this, id);
+    return runIndexOperation(
+      this,
+      "searchgres.record.delete",
+      async (span) => {
+        await deleteRecord(this, id);
+        span.setAttribute("searchgres.record.id", id);
+      },
+      validRecordIdAttribute(id),
+    );
   }
 
   /** Delete one record by its `(tree, name)` address. Throws `NotFoundError`. */
   async deleteByName(tree: string, name: string): Promise<void> {
-    return deleteByName(this, tree, name);
+    return runIndexOperation(this, "searchgres.record.delete_by_name", () =>
+      deleteByName(this, tree, name),
+    );
   }
 
   /** Move a subtree: rewrite the `source` prefix to `destination`. */
@@ -252,7 +355,9 @@ export class Index implements TransactionIndex {
     destination: string,
     options?: TreeMutationOptions,
   ): Promise<TreeMutationResult> {
-    return moveTree(this, source, destination, options);
+    return runTreeOperation(this, "searchgres.tree.move", options, () =>
+      moveTree(this, source, destination, options),
+    );
   }
 
   /** Copy a subtree under `destination` as fresh records. */
@@ -261,7 +366,9 @@ export class Index implements TransactionIndex {
     destination: string,
     options?: TreeMutationOptions,
   ): Promise<TreeMutationResult> {
-    return copyTree(this, source, destination, options);
+    return runTreeOperation(this, "searchgres.tree.copy", options, () =>
+      copyTree(this, source, destination, options),
+    );
   }
 
   /** Delete an inclusive subtree. */
@@ -269,7 +376,9 @@ export class Index implements TransactionIndex {
     tree: string,
     options?: TreeMutationOptions,
   ): Promise<TreeMutationResult> {
-    return deleteTree(this, tree, options);
+    return runTreeOperation(this, "searchgres.tree.delete", options, () =>
+      deleteTree(this, tree, options),
+    );
   }
 
   /** Count records matching one explicit tree filter kind. */
@@ -277,12 +386,20 @@ export class Index implements TransactionIndex {
     selector: TreeCountSelector,
     options?: TreeCountOptions,
   ): Promise<TreeCountResult> {
-    return countTree(this, selector, options);
+    return runIndexOperation(this, "searchgres.tree.count", async (span) => {
+      const result = await countTree(this, selector, options);
+      span.setAttribute("searchgres.result.count", result.count);
+      return result;
+    });
   }
 
   /** List the tree nodes matching an lquery with per-node descendant counts. */
   async listTree(lquery: string): Promise<readonly TreeListEntry[]> {
-    return listTree(this, lquery);
+    return runIndexOperation(this, "searchgres.tree.list", async (span) => {
+      const results = await listTree(this, lquery);
+      span.setAttribute("searchgres.result.count", results.length);
+      return results;
+    });
   }
 
   /**
@@ -294,7 +411,11 @@ export class Index implements TransactionIndex {
     tree?: string,
     options?: TreeViewOptions,
   ): Promise<readonly TreeListEntry[]> {
-    return treeView(this, tree, options);
+    return runIndexOperation(this, "searchgres.tree.view", async (span) => {
+      const results = await treeView(this, tree, options);
+      span.setAttribute("searchgres.result.count", results.length);
+      return results;
+    });
   }
 
   /**
@@ -305,7 +426,9 @@ export class Index implements TransactionIndex {
   async processEmbeddings(
     options?: ProcessEmbeddingsOptions,
   ): Promise<ProcessEmbeddingsResult> {
-    return processEmbeddings(this, options);
+    return runIndexOperation(this, "searchgres.embedding.process", (span) =>
+      processEmbeddings(this, options, span),
+    );
   }
 
   /**
@@ -318,28 +441,84 @@ export class Index implements TransactionIndex {
 
   /** Aggregate embedding-queue snapshot for operational visibility. */
   async queueStats(): Promise<QueueStats> {
-    return queueStats(this.sql, this.schema);
+    return runIndexOperation(
+      this,
+      "searchgres.embedding.queue.stats",
+      async (span) => {
+        const stats = await queueStats(this.sql, this.schema);
+        span.setAttributes({
+          "searchgres.embedding.pending": stats.pending,
+          "searchgres.embedding.in_flight": stats.inFlight,
+          "searchgres.embedding.waiting": stats.waiting,
+          "searchgres.embedding.failed": stats.failed,
+        });
+        return stats;
+      },
+    );
   }
 
   /** List current unresolved terminal embedding failures by ascending queue id. */
   async listEmbeddingFailures(
     options?: ListEmbeddingFailuresOptions,
   ): Promise<readonly EmbeddingFailure[]> {
-    return listEmbeddingFailures(this.sql, this.schema, options);
+    return runIndexOperation(
+      this,
+      "searchgres.embedding.failure.list",
+      async (span) => {
+        const failures = await listEmbeddingFailures(
+          this.sql,
+          this.schema,
+          options,
+        );
+        span.setAttribute("searchgres.result.count", failures.length);
+        return failures;
+      },
+    );
   }
 
   /** Reset selected current terminal failures to immediately pending work. */
   async retryEmbeddingFailures(
     options: RetryEmbeddingFailuresOptions,
   ): Promise<RetryEmbeddingFailuresResult> {
-    return retryEmbeddingFailures(this.sql, this.schema, options);
+    return runIndexOperation(
+      this,
+      "searchgres.embedding.failure.retry",
+      async (span) => {
+        span.setAttribute(
+          "searchgres.batch.size",
+          Array.isArray(options?.queueIds) ? options.queueIds.length : 0,
+        );
+        const result = await retryEmbeddingFailures(
+          this.sql,
+          this.schema,
+          options,
+        );
+        span.setAttributes({
+          "searchgres.embedding.retried": result.retried,
+          "searchgres.embedding.skipped": result.skipped,
+        });
+        return result;
+      },
+    );
   }
 
   /** Delete terminal queue rows older than `retentionMs`. Returns rows removed. */
   async pruneEmbeddingQueue(options: {
     readonly retentionMs: number;
   }): Promise<number> {
-    return pruneQueue(this.sql, this.schema, options.retentionMs);
+    return runIndexOperation(
+      this,
+      "searchgres.embedding.queue.prune",
+      async (span) => {
+        const count = await pruneQueue(
+          this.sql,
+          this.schema,
+          options.retentionMs,
+        );
+        span.setAttribute("searchgres.result.count", count);
+        return count;
+      },
+    );
   }
 
   /**
@@ -362,8 +541,62 @@ export class Index implements TransactionIndex {
 
   /** Drop this index's schema and everything in it (`drop schema … cascade`). */
   async drop(): Promise<void> {
-    return dropIndex(this.sql, this.schema);
+    return runIndexOperation(this, "searchgres.index.drop", () =>
+      dropIndexSchema(this.sql, this.schema),
+    );
   }
+}
+
+function runIndexOperation<T>(
+  index: Pick<Index, "schema">,
+  name: string,
+  callback: (span: Span) => Promise<T>,
+  attributes?: Attributes,
+): Promise<T> {
+  return runOperation(
+    name,
+    {
+      schema: index.schema,
+      ...(attributes === undefined ? {} : { attributes }),
+    },
+    callback,
+  );
+}
+
+function arrayLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function setRecordIdAttribute(span: Span, record: unknown): void {
+  if (typeof record !== "object" || record === null || !("id" in record)) {
+    return;
+  }
+  span.setAttributes(
+    validRecordIdAttribute((record as { readonly id?: unknown }).id),
+  );
+}
+
+function validRecordIdAttribute(id: unknown): Attributes {
+  return typeof id === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      id,
+    )
+    ? { "searchgres.record.id": id }
+    : {};
+}
+
+function runTreeOperation(
+  index: Index,
+  name: string,
+  options: TreeMutationOptions | undefined,
+  callback: () => Promise<TreeMutationResult>,
+): Promise<TreeMutationResult> {
+  return runIndexOperation(index, name, async (span) => {
+    span.setAttribute("searchgres.tree.dry_run", options?.dryRun ?? false);
+    const result = await callback();
+    span.setAttribute("searchgres.result.count", result.count);
+    return result;
+  });
 }
 
 interface EmbeddingColumnRow {
@@ -426,6 +659,21 @@ function normalizeOpenIndexOptions(input: unknown): OpenIndexOptions {
 
 /** Open and validate an immutable searchgres index without running DDL. */
 export async function openIndex(
+  sql: postgres.Sql,
+  schema: string,
+  options: OpenIndexOptions,
+): Promise<Index> {
+  return runOperation("searchgres.index.open", { schema }, async (span) => {
+    const index = await openIndexHandle(sql, schema, options);
+    span.setAttributes({
+      "searchgres.index.vector_type": index.vectorType,
+      "searchgres.index.dimensions": index.dimensions,
+    });
+    return index;
+  });
+}
+
+async function openIndexHandle(
   sql: postgres.Sql,
   schema: string,
   options: OpenIndexOptions,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { SpanStatusCode, trace } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -63,6 +63,7 @@ test("records parameterized SQL text and errors without parameter values", async
   const successful = spans.find((span) =>
     String(span.attributes["db.query.text"]).includes("select 42 as answer"),
   );
+  assert.equal(successful?.kind, SpanKind.CLIENT);
   assert.equal(successful?.attributes["searchgres.sql"], true);
   assert.equal(successful?.name, "testSqlQuery");
   assert.equal(successful?.attributes["db.operation.name"], "SELECT");
