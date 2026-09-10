@@ -80,6 +80,27 @@ describe("server config", () => {
     });
   });
 
+  test("requires dotenv-compatible environment variable names", () => {
+    expect(() =>
+      parseServerConfig({
+        ...minimalConfig,
+        database: { urlEnv: "DATABASE-URL" },
+      }),
+    ).toThrow(/environment variable name/);
+    expect(() =>
+      parseServerConfig({
+        ...minimalConfig,
+        index: {
+          ...minimalConfig.index,
+          embedding: {
+            ...minimalConfig.index.embedding,
+            apiKeyEnv: "123_KEY",
+          },
+        },
+      }),
+    ).toThrow(/environment variable name/);
+  });
+
   test("rejects unknown keys and raw provider credentials", () => {
     expect(() =>
       parseServerConfig({

@@ -7,7 +7,12 @@ import {
   type RpcTransport,
   SearchgresTransportError,
 } from "@searchgres/client";
-import { createMcpServer, READ_TOOL_NAMES, TOOL_NAMES } from "./server.ts";
+import {
+  createMcpServer,
+  MCP_DOCS_URL,
+  READ_TOOL_NAMES,
+  TOOL_NAMES,
+} from "./server.ts";
 
 const id = "01900000-0000-7000-8000-000000000001";
 const record = {
@@ -128,7 +133,7 @@ test("registers twelve tools by default and only reads in read-only mode", async
       const names = tools.map((tool) => tool.name);
       expect(names).toEqual([...(readOnly ? READ_TOOL_NAMES : TOOL_NAMES)]);
       for (const tool of tools) {
-        expect(tool.description).toContain(`/docs/mcp/${tool.name}.md`);
+        expect(tool.description).toContain(MCP_DOCS_URL);
         expect(tool.annotations?.openWorldHint).toBe(true);
         expect(tool.outputSchema).toBeUndefined();
       }

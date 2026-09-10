@@ -1,14 +1,20 @@
+import { randomUUID } from "node:crypto";
 import { openai } from "@ai-sdk/openai";
 import postgres from "postgres";
-import { createIndex, openIndex } from "searchgres";
+import { createIndex, dropIndex, openIndex } from "searchgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
 const sql = postgres(databaseUrl);
+// Use a per-run schema so this example is safe to repeat or run concurrently.
+// `created` ensures cleanup touches only the schema this process provisioned.
+const schema = `example_documents_${randomUUID().replaceAll("-", "")}`;
+let created = false;
 
 try {
-  await createIndex(sql, "example_documents", { dimensions: 1536 });
-  const index = await openIndex(sql, "example_documents", {
+  await createIndex(sql, schema, { dimensions: 1536 });
+  created = true;
+  const index = await openIndex(sql, schema, {
     embedding: openai.embedding("text-embedding-3-small"),
   });
 
@@ -50,5 +56,10 @@ try {
     rawEvidence.map(({ tree, name, content }) => ({ tree, name, content })),
   );
 } finally {
-  await sql.end();
+  try {
+    // Drop temporary state on success and on failures after provisioning.
+    if (created) await dropIndex(sql, schema);
+  } finally {
+    await sql.end();
+  }
 }
