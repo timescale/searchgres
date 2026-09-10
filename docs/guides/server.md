@@ -59,10 +59,16 @@ Use `--base-url` for an OpenAI-compatible endpoint. `--dry-run` prints the
 rendered config without creating any files. Existing config files are never
 overwritten implicitly.
 
-The config records both the model's expected dimensions and PostgreSQL vector
-storage type because they are needed to initialize a fresh database:
+### Complete minimal config
+
+This is the smallest practical OpenAI configuration. Omitted settings take the
+defaults listed in the full reference below.
 
 ```yaml
+version: 1
+server: {}
+database:
+  urlEnv: SEARCHGRES_DATABASE_URL
 index:
   schema: docs
   dimensions: 1536
@@ -73,9 +79,95 @@ index:
     apiKeyEnv: SEARCHGRES_EMBEDDING_API_KEY
 ```
 
-PostgreSQL remains authoritative once the index exists. The server checks that
-its configured dimensions and vector type match the database catalog whenever
-it opens the index.
+### Full annotated config reference
+
+The parser rejects unknown fields. Durations are nonnegative integers followed
+by `ms`, `s`, `m`, `h`, or `d`; for example, `30s` or `5m`.
+
+```yaml
+version: 1                         # required config-file format
+
+server:
+  listen:
+    host: 127.0.0.1               # default; see the security warning above
+    port: 3000                    # default; 1..65535
+  maxRequestBodyBytes: 1048576    # default; positive integer
+
+database:
+  urlEnv: SEARCHGRES_DATABASE_URL # required; PostgreSQL URL is read from here
+  api:                            # request-serving postgres.js connections
+    pool:
+      max: 20                     # default; at least 1
+      idleReap: 5m                # default idle-connection timeout
+      maxLifetime: 0s             # default; 0 disables lifetime expiry
+      connectTimeout: 30s         # default connection timeout
+    session:
+      statementTimeout: 30s       # PostgreSQL statement_timeout
+      lockTimeout: 5s             # PostgreSQL lock_timeout
+      transactionTimeout: 35s     # PostgreSQL 18 transaction_timeout
+      idleInTransactionSessionTimeout: 35s
+  worker:                         # separate embedding-worker connections
+    pool:
+      max: 2
+      idleReap: 5m
+      maxLifetime: 0s
+      connectTimeout: 30s
+    session:
+      statementTimeout: 25s
+      lockTimeout: 5s
+      transactionTimeout: 30s
+      idleInTransactionSessionTimeout: 30s
+
+index:
+  schema: docs                    # literal Searchgres PostgreSQL schema
+  dimensions: 1536                # 1..2000 vector; 1..4000 halfvec
+  vectorType: halfvec             # vector or halfvec
+  embedding:
+    provider: openai-compatible   # only supported reference-server provider
+    model: text-embedding-3-small # provider model identifier
+    baseUrl: https://api.openai.com/v1 # optional absolute URL
+    apiKeyEnv: SEARCHGRES_EMBEDDING_API_KEY # optional for keyless local APIs
+  truncate:
+    kind: none                    # default; alternatives are described below
+  worker:
+    interval: 1s                  # default delay between drain passes
+    batchSize: 100                # default; integer 1..1000
+```
+
+`index.truncate` accepts exactly one of these shapes:
+
+| Policy | Configuration |
+| --- | --- |
+| No truncation (default) | `{ kind: none }` |
+| Unicode characters | `{ kind: characters, max: <positive integer> }` |
+| UTF-8 bytes | `{ kind: bytes, max: <positive integer> }` |
+| Exact token budget | `{ kind: tokens, tokenizer: <preset>, maxTokens: <positive integer>, threads?: 0..64 }` |
+
+Token presets are `openai-cl100k-base`, `nomic-embed-text-v1.5`, and
+`nomic-modernbert-embed-base`. `threads: 0` runs tokenization inline; omitting it
+uses the tokenizer pool's default concurrency.
+
+Environment references must match `[A-Za-z_][A-Za-z0-9_]*`. The names are
+caller-selected—`SEARCHGRES_DATABASE_URL` and
+`SEARCHGRES_EMBEDDING_API_KEY` are conventions, not magic variables. The config
+stores only those names. `database.urlEnv` is required by all database commands;
+`index.embedding.apiKeyEnv` is read only while serving and may be omitted for a
+keyless OpenAI-compatible endpoint.
+
+### Creation settings and runtime settings
+
+| Fields | How the server uses them |
+| --- | --- |
+| `version` | Selects the server-config parser. It is separate from the immutable database schema format. |
+| `index.schema`, `index.dimensions`, `index.vectorType` | `init` uses them to create the index. Once created, PostgreSQL is authoritative; `init --if-not-exists` and `serve` reject schema-format or vector-shape mismatches. |
+| `index.embedding` | Runtime provider construction. Model identity is not persisted in PostgreSQL or compared on open; changing it requires re-embedding existing records. `init` does not call the provider or read its API key. |
+| `index.truncate` | Runtime policy applied before provider calls. It is not persisted. |
+| `index.worker` | Runtime continuous-worker tuning; ignored by `serve --read-only`. |
+| `server.*` | HTTP listener and request-body behavior for `serve`; not used by provisioning. |
+| `database.api`, `database.worker` | Runtime pool/session behavior for `serve`. Provisioning and destruction use a single short-lived connection. |
+
+The server owns one configured index. To serve another index or database, run a
+separate server configuration and process.
 
 ## 2. Review credentials
 

@@ -1,8 +1,9 @@
 # RAG retriever
 
-Shows a small application-owned RAG retrieval stage. It creates `example_rag`,
-ingests stable chunks, applies a trusted tenant and visibility scope, and formats
-full records as model context.
+Shows a small application-owned RAG retrieval stage. It creates a temporary
+`example_rag_<random>` index, ingests stable chunks, applies a trusted tenant and
+visibility scope, and formats full records as model context. The temporary index
+is removed in `finally`, including after a failed run.
 
 The example prints context rather than calling a generation model so retrieval
 can be inspected independently.

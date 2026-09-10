@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL spans now use `SpanKind.CLIENT`; caller-level operation spans use
   `SpanKind.INTERNAL`. SQL remains independently identifiable through the
   `searchgres/sql` instrumentation scope and `searchgres.sql=true` attribute.
+- Runnable create-and-search examples now use ownership-fenced temporary schemas
+  and clean them up in `finally`, so repeated, concurrent, and failed runs do not
+  conflict or remove pre-existing schemas.
+- The MCP reference documentation is consolidated into one compact tool guide;
+  MCP discovery remains the source of truth for strict input schemas.
+- Server config environment references must use portable dotenv-compatible
+  names (`[A-Za-z_][A-Za-z0-9_]*`) instead of arbitrary nonempty strings.
 - `upsert`, `upsertMany`, and `patch` reject an empty `content` and an
   empty-string `name` with `InvalidInputError`. Empty content could never be
   embedded and only produced a terminal `failed` queue row; use `null` for an

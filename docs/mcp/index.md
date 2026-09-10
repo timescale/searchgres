@@ -43,26 +43,37 @@ Options:
 All twelve tools are registered by default. Backend read-only mode remains
 authoritative even when write tools are visible.
 
-## Read tools
+## Tools
 
-- [`searchgres_info`](./searchgres_info.md)
-- [`searchgres_search`](./searchgres_search.md)
-- [`searchgres_get`](./searchgres_get.md)
-- [`searchgres_tree`](./searchgres_tree.md)
-- [`searchgres_count`](./searchgres_count.md)
+The MCP host receives each tool's strict input schema during discovery. These
+short descriptions document intent and important safety behavior without
+maintaining a second copy of those generated schemas.
 
-## Write tools
+### Read tools
 
-- [`searchgres_create`](./searchgres_create.md)
-- [`searchgres_create_many`](./searchgres_create_many.md)
-- [`searchgres_update`](./searchgres_update.md)
-- [`searchgres_delete`](./searchgres_delete.md)
-- [`searchgres_move_tree`](./searchgres_move_tree.md)
-- [`searchgres_copy_tree`](./searchgres_copy_tree.md)
-- [`searchgres_delete_tree`](./searchgres_delete_tree.md)
+| Tool | Purpose |
+| --- | --- |
+| `searchgres_info` | Report API/server versions, capabilities, request-size limit, and backend read-only status. |
+| `searchgres_search` | Run semantic, full-text, hybrid, or filter-only search. Supports the structured recursive filter and local `select` projection. |
+| `searchgres_get` | Get one record by UUIDv7 `id` or by explicit `tree` and `name`, with optional local `select` projection. |
+| `searchgres_tree` | View hierarchy nodes and descendant counts below an optional raw dotted tree path and level bound. |
+| `searchgres_count` | Count records using exactly one `tree`, `lquery`, or `ltxtquery` selector; a capped result means at least the returned count. |
 
-Tree mutations require an explicit `dryRun` Boolean. Passing false executes the
-operation; it is not an interactive confirmation mechanism.
+### Write tools
+
+| Tool | Purpose |
+| --- | --- |
+| `searchgres_create` | Insert one record, failing rather than replacing on conflict. The server generates missing embeddings. |
+| `searchgres_create_many` | Atomically insert 1–1,000 records; any conflict fails the whole call without chunking or retry. |
+| `searchgres_update` | Optimistically patch one record using its latest `priorVersionHash`; metadata is replaced, not merged. |
+| `searchgres_delete` | Permanently delete exactly one record by `id` or by explicit `tree` and `name`; never deletes a subtree. |
+| `searchgres_move_tree` | Move an inclusive subtree while preserving relative structure. |
+| `searchgres_copy_tree` | Copy an inclusive subtree with fresh record IDs while preserving relative structure. |
+| `searchgres_delete_tree` | Permanently delete an inclusive subtree. |
+
+Tree mutations require an explicit `dryRun` Boolean. Passing `false` executes
+the operation; it is not an interactive confirmation mechanism. Record delete
+and update are also destructive operations and do not prompt interactively.
 
 ## Search and local selection
 

@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { openai } from "@ai-sdk/openai";
 import postgres from "postgres";
 import {
   createIndex,
+  dropIndex,
   type Filter,
   type Index,
   openIndex,
@@ -35,10 +37,15 @@ function formatContext(hits: readonly SearchResult[]): string {
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
 const sql = postgres(databaseUrl);
+// Isolate each run in a unique schema instead of reusing or replacing caller
+// data. Cleanup is ownership-fenced by the successful `createIndex` call.
+const schema = `example_rag_${randomUUID().replaceAll("-", "")}`;
+let created = false;
 
 try {
-  await createIndex(sql, "example_rag", { dimensions: 1536 });
-  const index = await openIndex(sql, "example_rag", {
+  await createIndex(sql, schema, { dimensions: 1536 });
+  created = true;
+  const index = await openIndex(sql, schema, {
     embedding: openai.embedding("text-embedding-3-small"),
   });
 
@@ -69,5 +76,10 @@ try {
   );
   console.log(formatContext(hits));
 } finally {
-  await sql.end();
+  try {
+    // This also cleans up when embedding or retrieval throws.
+    if (created) await dropIndex(sql, schema);
+  } finally {
+    await sql.end();
+  }
 }

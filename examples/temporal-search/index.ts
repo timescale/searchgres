@@ -1,14 +1,20 @@
+import { randomUUID } from "node:crypto";
 import { openai } from "@ai-sdk/openai";
 import postgres from "postgres";
-import { createIndex, openIndex } from "searchgres";
+import { createIndex, dropIndex, openIndex } from "searchgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
 const sql = postgres(databaseUrl);
+// A unique schema avoids conflicts between repeat or concurrent runs. Cleanup
+// is guarded so the example can never remove a pre-existing caller schema.
+const schema = `example_temporal_${randomUUID().replaceAll("-", "")}`;
+let created = false;
 
 try {
-  await createIndex(sql, "example_temporal", { dimensions: 1536 });
-  const index = await openIndex(sql, "example_temporal", {
+  await createIndex(sql, schema, { dimensions: 1536 });
+  created = true;
+  const index = await openIndex(sql, schema, {
     embedding: openai.embedding("text-embedding-3-small"),
   });
 
@@ -47,5 +53,10 @@ try {
 
   console.log({ duringIncident, marchEvents });
 } finally {
-  await sql.end();
+  try {
+    // Remove this run's temporary index even if a query fails.
+    if (created) await dropIndex(sql, schema);
+  } finally {
+    await sql.end();
+  }
 }

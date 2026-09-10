@@ -1,14 +1,20 @@
+import { randomUUID } from "node:crypto";
 import { openai } from "@ai-sdk/openai";
 import postgres from "postgres";
-import { createIndex, openIndex } from "searchgres";
+import { createIndex, dropIndex, openIndex } from "searchgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
 const sql = postgres(databaseUrl);
+// A unique schema makes concurrent and repeated example runs independent. Track
+// ownership so cleanup never drops a schema that existed before this process.
+const schema = `example_basic_${randomUUID().replaceAll("-", "")}`;
+let created = false;
 
 try {
-  await createIndex(sql, "example_basic", { dimensions: 1536 });
-  const index = await openIndex(sql, "example_basic", {
+  await createIndex(sql, schema, { dimensions: 1536 });
+  created = true;
+  const index = await openIndex(sql, schema, {
     embedding: openai.embedding("text-embedding-3-small"),
   });
 
@@ -41,8 +47,11 @@ try {
   for (const hit of hits) {
     console.log(hit.score.toFixed(4), hit.tree, hit.content);
   }
-
-  await index.drop();
 } finally {
-  await sql.end();
+  try {
+    // Keep the runnable example repeatable even if ingestion or search fails.
+    if (created) await dropIndex(sql, schema);
+  } finally {
+    await sql.end();
+  }
 }

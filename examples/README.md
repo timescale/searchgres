@@ -29,5 +29,8 @@ node index.ts
 Running TypeScript directly requires Node 22.18 or newer. Alternatively use Bun,
 Deno, or your application's TypeScript build.
 
-The programs create fixed example schemas and are intended for local databases.
-Drop those schemas when finished or change the names before use.
+The four create-and-search programs use a unique temporary schema for each run
+and drop it in `finally`, including when a later operation fails. They are safe
+to repeat and run concurrently. The worker example is intentionally different:
+it opens the existing `application_search` index owned by the application and
+never creates or drops it.

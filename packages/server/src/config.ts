@@ -2,6 +2,11 @@ import { JSON5, YAML } from "bun";
 import { z } from "zod";
 
 const durationPattern = /^(\d+)(ms|s|m|h|d)$/;
+// These names must work both in process.env and in the deliberately small
+// dotenv dialect used by generated `.env.example` files.
+const environmentNameSchema = z
+  .string()
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "expected an environment variable name");
 const maximumDimensions = { vector: 2_000, halfvec: 4_000 } as const;
 
 function durationToMilliseconds(value: string): number {
@@ -91,7 +96,7 @@ export const serverConfigSchema = z.strictObject({
       .prefault(1024 * 1024),
   }),
   database: z.strictObject({
-    urlEnv: z.string().min(1),
+    urlEnv: environmentNameSchema,
     api: databaseRoleSchema.prefault({}),
     worker: workerDatabaseRoleSchema.prefault({}),
   }),
@@ -104,7 +109,7 @@ export const serverConfigSchema = z.strictObject({
         provider: z.literal("openai-compatible"),
         model: z.string().min(1),
         baseUrl: z.url().optional(),
-        apiKeyEnv: z.string().min(1).optional(),
+        apiKeyEnv: environmentNameSchema.optional(),
       }),
       truncate: truncationSchema.prefault({ kind: "none" }),
       worker: z

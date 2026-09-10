@@ -21,8 +21,8 @@ import {
 import { z } from "zod";
 
 export const MCP_VERSION = "0.0.0";
-export const MCP_DOCS_BASE =
-  "https://github.com/timescale/searchgres/blob/main/docs/mcp";
+export const MCP_DOCS_URL =
+  "https://github.com/timescale/searchgres/blob/main/docs/mcp/index.md#tools";
 
 export const READ_TOOL_NAMES = [
   "searchgres_info",
@@ -121,8 +121,10 @@ type Runtime = {
 
 type Extra = { readonly signal: AbortSignal };
 
-function doc(name: string): string {
-  return `${MCP_DOCS_BASE}/${name}.md`;
+function doc(_name: string): string {
+  // Tool schemas are already delivered to hosts by MCP discovery. Keep one
+  // compact human guide instead of maintaining twelve duplicative schema pages.
+  return MCP_DOCS_URL;
 }
 
 function textResult(value: unknown): CallToolResult {
