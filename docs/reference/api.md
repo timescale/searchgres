@@ -14,6 +14,7 @@ import {
   truncateBytes,
   truncateTokens,
   noTruncation,
+  noEmbedding,
 } from "searchgres";
 ```
 
@@ -204,6 +205,26 @@ type Filter =
   | { regexp: string };
 ```
 
+Search option contracts:
+
+| Option | Contract |
+| --- | --- |
+| `semantic` | Non-empty text. Mutually exclusive with `vector`; requires a real embedding model. |
+| `vector` | Exactly `index.dimensions` finite numbers. Mutually exclusive with `semantic`. A wrong length throws [`DimensionMismatchError`](errors.md). |
+| `fulltext` | Non-empty text. |
+| `limit` | Integer from 1 to 1,000; default 10. |
+| `semanticThreshold` | Finite number from 0 to 1; requires a `semantic` or `vector` arm. |
+| `k` | Nonnegative finite number; hybrid only; default 60. |
+| `candidateLimit` | Integer from 1 to 1,000; hybrid only; default 30. The effective value is raised to at least `limit`. |
+| `fulltextWeight`, `semanticWeight` | Finite numbers from 0 to 1; hybrid only; each defaults to 1. |
+| `order` | `"asc"` or `"desc"`; filter-only; default `"desc"`. |
+| `after`, `before` | UUIDv7 cursors for filter-only listing. They are mutually exclusive. |
+
+Supplying a mode-specific option outside its applicable mode, an unknown key, or
+an out-of-range value throws [`InvalidInputError`](errors.md). A semantic
+provider failure, unavailable model, or wrong vector dimension retains its more
+specific embedding error class.
+
 ### Tree operations
 
 | Method | Returns | Notes |
@@ -294,6 +315,26 @@ type RetryEmbeddingFailuresResult = {
   skipped: number; // stale, resolved, pruned, already retried, or unknown
 };
 ```
+
+Numeric worker tuning is not currently runtime-validated as a group. Use finite
+values with the following constraints; invalid tuning is not guaranteed to
+produce `InvalidInputError` and may instead result in a no-op or a database or
+runtime error.
+
+| Option | Used by | Default and caller constraint |
+| --- | --- | --- |
+| `batchSize` | pass, worker | Model limit, or 10 if unavailable; use a positive integer. A requested value is capped at the model's finite `maxEmbeddingsPerCall`. |
+| `maxBatches` | pass | Unlimited; use a nonnegative integer. `0` performs no claims. |
+| `maxDurationMs` | pass | Unlimited; use a nonnegative duration. Checked between batches; `0` performs no claims. |
+| `leaseDurationMs` | pass, worker | 300,000 ms; use a positive duration. |
+| `maxAttempts` | pass, worker | 3; use a positive integer. |
+| `intervalMs` | worker | 1,000 ms; use a nonnegative duration. |
+| `pruneRetentionMs` | worker | 604,800,000 ms (7 days); use a nonnegative duration. |
+
+`signal` is checked before each claim. Time and cancellation bounds are
+cooperative: an in-flight provider call and write-back finish before the pass
+returns. Worker `onError` callback behavior is described in the
+[embedding guide](../guides/embeddings.md#run-a-continuous-worker).
 
 #### `noEmbedding`
 

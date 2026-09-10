@@ -66,7 +66,7 @@ trigger fires for any writer, including direct `INSERT`s into the record table.
 ## Patching and deleting
 
 ```sql
-select found, updated, *
+select *
 from docs_index.patch_record(
   '019ce89d-...'::uuid,        -- id
   '<prior version_hash>',      -- optimistic-concurrency guard
@@ -140,6 +140,8 @@ from a process that has your embedding credentials. See
 
 ## Stability
 
-These routine signatures are part of the index's on-disk format for a given
-searchgres version. Treat them as a versioned contract: a future format may
-change them, and moving to it means creating a new index and reindexing.
+These routine signatures are part of the index's immutable schema format, not
+the npm package version. Multiple package releases may support the same format.
+A future schema format may change the routines; moving to an incompatible format
+means creating a new index and reindexing rather than upgrading the schema in
+place.

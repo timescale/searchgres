@@ -3,30 +3,22 @@
 searchgres is a library over a database you operate. This guide covers the
 operational concerns that go beyond a single process.
 
-## Connections and shutdown
+## Shutdown
 
-You create and own the `postgres.js` pool. searchgres never opens, closes, or
-persistently reconfigures it.
+searchgres never closes the caller-owned database connection. Close it after
+application work finishes:
 
-- Size the pool for your workload and share one pool across index handles on the
-  same database.
-- Close it on shutdown, after your work finishes:
+```ts
+await sql.end();
+```
 
-  ```ts
-  await sql.end();
-  ```
+If you run a background embedding worker, stop it first so its in-flight batch
+can finish:
 
-- If you run a background embedding worker, stop it before closing the pool so
-  its in-flight batch can finish:
-
-  ```ts
-  await worker.stop();
-  await sql.end();
-  ```
-
-If you route through a transaction pooler such as PgBouncer, use session pooling
-(or a dedicated direct connection) for the embedding worker, which relies on
-transaction-scoped locks and leases.
+```ts
+await worker.stop();
+await sql.end();
+```
 
 ## Separate ingestion from embedding
 
@@ -142,7 +134,8 @@ See [Architecture and responsibilities](../concepts/architecture.md#access-contr
 ## Reindexing and cutover
 
 Index shape (dimensions, vector type) is immutable, and switching embedding
-models requires re-embedding. Do it as a build-and-cut-over, with no downtime:
+models requires re-embedding. Rebuild into a new schema and perform a controlled
+cutover:
 
 1. Create a new index schema with the new shape.
 2. Backfill records into it from your source of truth.
@@ -150,6 +143,11 @@ models requires re-embedding. Do it as a build-and-cut-over, with no downtime:
 4. Validate search quality.
 5. Switch application traffic to the new schema name.
 6. Drop the old index.
+
+To avoid an interruption while writes continue during backfill, the application
+must account for those concurrent changes—for example with dual writes or a
+final change-data catch-up before switching traffic. searchgres does not
+coordinate that application-level migration.
 
 The step-by-step version is in
 [Create and manage indexes](indexes.md#rebuild-and-cut-over).

@@ -12,8 +12,11 @@ BM25, vector search, RRF, candidate windows, and score semantics, read
 | a semantic arm **and** `fulltext` | Hybrid search (RRF fusion) |
 | none of the above | Filter-only listing, ordered by id |
 
-`semantic` is text searchgres embeds with the index's model. `vector` is a
-precomputed query vector that skips the model. They are mutually exclusive.
+`semantic` is non-empty text searchgres embeds with the index's model. `vector`
+is a precomputed query vector that skips the model. They are mutually exclusive.
+A vector must contain exactly `index.dimensions` finite numbers; a wrong length
+throws `DimensionMismatchError`. `fulltext`, when present, must also be
+non-empty.
 
 Every result is the full record plus a `score`:
 
@@ -175,12 +178,16 @@ Rules:
 
 | Option | Applies to | Meaning |
 | --- | --- | --- |
-| `limit` | all | Maximum results (default 10). |
-| `semanticThreshold` | semantic, hybrid | Minimum cosine similarity, `0`–`1`. |
-| `k` | hybrid | RRF constant (default 60). |
-| `candidateLimit` | hybrid | Candidates per arm before fusion (default 30). |
-| `fulltextWeight` | hybrid | Weight of the keyword arm, `0`–`1` (default 1). |
-| `semanticWeight` | hybrid | Weight of the semantic arm, `0`–`1` (default 1). |
+| `limit` | all | Integer from 1 to 1,000 (default 10). |
+| `semanticThreshold` | semantic, vector, hybrid | Finite minimum cosine similarity, `0`–`1`; requires a semantic or vector arm. |
+| `k` | hybrid | Nonnegative finite RRF constant (default 60). |
+| `candidateLimit` | hybrid | Integer from 1 to 1,000; candidates per arm before fusion (default 30). Internally raised to at least `limit`. |
+| `fulltextWeight` | hybrid | Finite weight of the keyword arm, `0`–`1` (default 1). |
+| `semanticWeight` | hybrid | Finite weight of the semantic arm, `0`–`1` (default 1). |
+
+`k`, `candidateLimit`, and the weights are rejected outside hybrid mode.
+Unknown keys, invalid combinations, and out-of-range values throw
+[`InvalidInputError`](../reference/errors.md).
 
 Hybrid search is a fused **top-k** operation: the score reflects rank within a
 candidate window, not absolute relevance, and there is no cursor. To see more
@@ -202,6 +209,8 @@ const next = await index.search({
 
 `order`, `after`, and `before` apply only to filter-only listing. Supplying them
 with a ranking arm is rejected — ranked results are top-k, not a paginated feed.
+`after` and `before` are mutually exclusive UUIDv7 record-id cursors. `order`
+defaults to `"desc"`.
 
 Next: [Build a RAG retriever](rag.md) or
 [Manage records and trees](records-and-trees.md).

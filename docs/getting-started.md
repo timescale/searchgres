@@ -60,8 +60,9 @@ await createIndex(sql, "docs_index", { dimensions: 1536 });
 ## 3. Open it
 
 Opening returns a handle you use for everything else. You supply the embedding
-model here; searchgres reads your provider's key from its own environment
-variable and never sees it.
+model here. The OpenAI provider package reads `OPENAI_API_KEY` when it makes a
+request; searchgres receives only the model object and never reads, stores, or
+logs the key.
 
 ```ts
 import { openIndex } from "searchgres";

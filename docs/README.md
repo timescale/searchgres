@@ -40,8 +40,8 @@ provisioning, and the reference API server with no provider key.
   stage in an application-controlled RAG pipeline.
 - **[Manage records and trees](guides/records-and-trees.md)** — read, patch,
   delete, subtree operations, and transactions.
-- **[Run in production](guides/production.md)** — pools, workers, observability,
-  access control, backups, and reindexing.
+- **[Run in production](guides/production.md)** — shutdown, workers,
+  observability, access control, backups, and reindexing.
 
 ## Evaluation and examples
 
