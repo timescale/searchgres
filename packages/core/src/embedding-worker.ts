@@ -1,4 +1,4 @@
-import { type Span, SpanStatusCode, trace } from "@opentelemetry/api";
+import type { Span } from "@opentelemetry/api";
 import {
   claimBatch,
   completeEmbedding,
@@ -15,9 +15,11 @@ import {
 } from "./embedding.ts";
 import { DimensionMismatchError, RateLimitError } from "./errors.ts";
 import type { Index } from "./open-index.ts";
-import { LIBRARY_VERSION } from "./version.ts";
-
-const tracer = trace.getTracer("searchgres", LIBRARY_VERSION);
+import {
+  runDetached,
+  runNonActiveOperation,
+  runOperation,
+} from "./operation.ts";
 
 const DEFAULT_LEASE_MS = 300_000; // 5 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -109,20 +111,25 @@ interface BatchOutcome {
 export async function processEmbeddings(
   index: Index,
   options: ProcessEmbeddingsOptions = {},
+  span: Span,
 ): Promise<ProcessEmbeddingsResult> {
   assertEmbeddingAvailable(index, "process embeddings");
-  const pass = await drainPass(index, {
-    batchSize: await resolveBatchSize(index, options.batchSize),
-    leaseMs: options.leaseDurationMs ?? DEFAULT_LEASE_MS,
-    maxAttempts: options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
-    maxBatches: options.maxBatches ?? Number.POSITIVE_INFINITY,
-    deadline:
-      options.maxDurationMs === undefined
-        ? Number.POSITIVE_INFINITY
-        : Date.now() + options.maxDurationMs,
-    ...(options.signal ? { signal: options.signal } : {}),
-    countRemaining: true,
-  });
+  const pass = await drainPass(
+    index,
+    {
+      batchSize: await resolveBatchSize(index, options.batchSize),
+      leaseMs: options.leaseDurationMs ?? DEFAULT_LEASE_MS,
+      maxAttempts: options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+      maxBatches: options.maxBatches ?? Number.POSITIVE_INFINITY,
+      deadline:
+        options.maxDurationMs === undefined
+          ? Number.POSITIVE_INFINITY
+          : Date.now() + options.maxDurationMs,
+      ...(options.signal ? { signal: options.signal } : {}),
+      countRemaining: true,
+    },
+    span,
+  );
   return { ...pass, remaining: pass.remaining ?? 0 };
 }
 
@@ -150,58 +157,44 @@ type DrainPassResult = Omit<ProcessEmbeddingsResult, "remaining"> & {
 async function drainPass(
   index: Index,
   options: DrainPassOptions,
+  span: Span,
 ): Promise<DrainPassResult> {
   const { batchSize, leaseMs, maxAttempts, maxBatches, deadline, signal } =
     options;
-  return tracer.startActiveSpan("embedding.process", async (span) => {
-    let claimed = 0;
-    let embedded = 0;
-    let failed = 0;
-    let cancelled = 0;
-    try {
-      for (let batch = 0; batch < maxBatches; batch++) {
-        if (signal?.aborted || Date.now() >= deadline) {
-          break;
-        }
-        const outcome = await runBatch(index, span, {
-          batchSize,
-          leaseMs,
-          maxAttempts,
-        });
-        claimed += outcome.claimed;
-        embedded += outcome.embedded;
-        failed += outcome.failed;
-        cancelled += outcome.cancelled;
-        // A batch that claimed nothing means the queue is drained for now.
-        if (outcome.claimed === 0 && outcome.cancelled === 0) {
-          break;
-        }
-      }
-      span.setAttributes({
-        "searchgres.embedding.claimed": claimed,
-        "searchgres.embedding.embedded": embedded,
-        "searchgres.embedding.failed": failed,
-        "searchgres.embedding.cancelled": cancelled,
-      });
-      if (!options.countRemaining) {
-        return { claimed, embedded, failed, cancelled };
-      }
-      const remaining = await pendingCount(index.sql, index.schema);
-      span.setAttribute("searchgres.embedding.remaining", remaining);
-      return { claimed, embedded, failed, cancelled, remaining };
-    } catch (error) {
-      span.recordException(
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      span.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    } finally {
-      span.end();
+  let claimed = 0;
+  let embedded = 0;
+  let failed = 0;
+  let cancelled = 0;
+  for (let batch = 0; batch < maxBatches; batch++) {
+    if (signal?.aborted || Date.now() >= deadline) {
+      break;
     }
+    const outcome = await runBatch(index, span, {
+      batchSize,
+      leaseMs,
+      maxAttempts,
+    });
+    claimed += outcome.claimed;
+    embedded += outcome.embedded;
+    failed += outcome.failed;
+    cancelled += outcome.cancelled;
+    // A batch that claimed nothing means the queue is drained for now.
+    if (outcome.claimed === 0 && outcome.cancelled === 0) {
+      break;
+    }
+  }
+  span.setAttributes({
+    "searchgres.embedding.claimed": claimed,
+    "searchgres.embedding.embedded": embedded,
+    "searchgres.embedding.failed": failed,
+    "searchgres.embedding.cancelled": cancelled,
   });
+  if (!options.countRemaining) {
+    return { claimed, embedded, failed, cancelled };
+  }
+  const remaining = await pendingCount(index.sql, index.schema);
+  span.setAttribute("searchgres.embedding.remaining", remaining);
+  return { claimed, embedded, failed, cancelled, remaining };
 }
 
 async function runBatch(
@@ -323,6 +316,17 @@ export function startEmbeddingWorker(
   index: Index,
   options: EmbeddingWorkerOptions = {},
 ): EmbeddingWorker {
+  return runNonActiveOperation(
+    "searchgres.embedding.worker.start",
+    { schema: index.schema },
+    () => startEmbeddingWorkerLoop(index, options),
+  );
+}
+
+function startEmbeddingWorkerLoop(
+  index: Index,
+  options: EmbeddingWorkerOptions,
+): EmbeddingWorker {
   assertEmbeddingAvailable(index, "start the embedding worker");
   const intervalMs = options.intervalMs ?? DEFAULT_WORKER_INTERVAL_MS;
   const pruneRetentionMs =
@@ -340,7 +344,7 @@ export function startEmbeddingWorker(
   const leaseMs = options.leaseDurationMs ?? DEFAULT_LEASE_MS;
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
 
-  const loop = (async () => {
+  const loop = runDetached(async () => {
     let consecutiveErrors = 0;
     // The model's max-per-call is static, so resolve the clamp once per worker
     // rather than once per tick. Resolved lazily inside the loop so a failing
@@ -348,33 +352,49 @@ export function startEmbeddingWorker(
     let batchSize: number | undefined;
     while (!signal.aborted) {
       try {
-        batchSize ??= await resolveBatchSize(index, options.batchSize);
+        const effectiveBatchSize =
+          batchSize ?? (await resolveBatchSize(index, options.batchSize));
+        batchSize = effectiveBatchSize;
         // One batch per iteration; `signal` lets stop() land between batches.
         // Idleness is decided from `claimed`/`cancelled`, so skip the pending
         // count that processEmbeddings reports as `remaining`.
-        const result = await drainPass(index, {
-          batchSize,
-          leaseMs,
-          maxAttempts,
-          maxBatches: 1,
-          deadline: Number.POSITIVE_INFINITY,
-          signal,
-          countRemaining: false,
-        });
+        const result = await runOperation(
+          "searchgres.embedding.process",
+          { schema: index.schema },
+          async (span) => {
+            const outcome = await drainPass(
+              index,
+              {
+                batchSize: effectiveBatchSize,
+                leaseMs,
+                maxAttempts,
+                maxBatches: 1,
+                deadline: Number.POSITIVE_INFINITY,
+                signal,
+                countRemaining: false,
+              },
+              span,
+            );
+            // Idle: prune terminal rows inside the tick span. Pruning remains
+            // best-effort and never turns a successful drain pass into an
+            // operation failure.
+            if (outcome.claimed === 0 && outcome.cancelled === 0) {
+              try {
+                await pruneQueue(index.sql, index.schema, pruneRetentionMs);
+              } catch (error) {
+                report(error, {
+                  phase: "prune",
+                  consecutiveErrors: 0,
+                  backoffMs: intervalMs,
+                });
+              }
+            }
+            return outcome;
+          },
+        );
         consecutiveErrors = 0;
         if (result.claimed > 0 || result.cancelled > 0) {
           continue; // keep draining while there is work
-        }
-        // Idle: prune terminal rows opportunistically, then wait.
-        try {
-          await pruneQueue(index.sql, index.schema, pruneRetentionMs);
-        } catch (error) {
-          // Best-effort; pruning never blocks the drain path.
-          report(error, {
-            phase: "prune",
-            consecutiveErrors: 0,
-            backoffMs: intervalMs,
-          });
         }
         await sleep(intervalMs, signal);
       } catch (error) {
@@ -395,12 +415,18 @@ export function startEmbeddingWorker(
         await sleep(backoffMs, signal);
       }
     }
-  })();
+  });
 
   return {
-    async stop() {
-      controller.abort();
-      await loop;
+    stop() {
+      return runOperation(
+        "searchgres.embedding.worker.stop",
+        { schema: index.schema },
+        async () => {
+          controller.abort();
+          await loop;
+        },
+      );
     },
   };
 }

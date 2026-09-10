@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OpenTelemetry parent spans for every public core operation that performs I/O,
+  with stable `searchgres.<domain>.<operation>` names, index schema, safe
+  operation/result attributes, single-record UUIDv7 correlation, consistent
+  error status, and child SQL spans. Continuous worker ticks are detached from
+  startup context and represented as independent traces; worker start and stop
+  have short lifecycle spans.
 - `noEmbedding`: an `EmbeddingModel` for handles that never generate vectors
   (ingest-only processes, precomputed-vector pipelines, keyword/filter-only
   search). Writes still queue embedding work for a handle opened with a real
@@ -21,12 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   database) and retried with silent backoff; without an OTel SDK there was no
   way to observe it. The server wires this to `console.error` by default and
   accepts `startServer(config, { onWorkerError })` to redirect it.
-- The `embedding.process` span now records a thrown pass (`ERROR` status +
-  exception event) and emits an `embedding.batch_failed` event for provider
+- The `searchgres.embedding.process` span records a thrown pass (`ERROR` status
+  + exception event) and emits an `embedding.batch_failed` event for provider
   failures the pass absorbs into the queue.
 
 ### Changed
 
+- SQL spans now use `SpanKind.CLIENT`; caller-level operation spans use
+  `SpanKind.INTERNAL`. SQL remains independently identifiable through the
+  `searchgres/sql` instrumentation scope and `searchgres.sql=true` attribute.
 - `upsert`, `upsertMany`, and `patch` reject an empty `content` and an
   empty-string `name` with `InvalidInputError`. Empty content could never be
   embedded and only produced a terminal `failed` queue row; use `null` for an

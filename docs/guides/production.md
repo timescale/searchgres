@@ -84,20 +84,47 @@ await index.pruneEmbeddingQueue({ retentionMs: 604_800_000 });
 
 ## Observability
 
-searchgres is instrumented with the OpenTelemetry API. If your app registers an
-OTel SDK you get traces automatically; if it doesn't, instrumentation is a
-no-op and costs nothing.
+searchgres is instrumented with the OpenTelemetry API. If your application
+registers an OTel SDK, every public operation that performs I/O creates an
+`INTERNAL` parent span. Without an SDK the spans are non-recording, nothing is
+exported, and only minimal OTel API and wrapper overhead remains.
 
-Every SQL statement emits a child span with the query text and timing, nested
-under the operation that issued it, on a dedicated `searchgres/sql`
-instrumentation scope — so you can filter those spans out in your SDK if they're
-too chatty. Parameter values (including vectors) are never attached to spans.
+Operation spans use the `searchgres` instrumentation scope and stable names:
 
-Each drain pass (`processEmbeddings`, or one worker tick) is an
-`embedding.process` span. A pass that throws gets `ERROR` status with the
-exception recorded; an ordinary provider failure that the pass absorbs (rows
+| Area | Span names |
+| --- | --- |
+| Index | `searchgres.index.create`, `searchgres.index.open`, `searchgres.index.drop` |
+| Records | `searchgres.record.upsert`, `searchgres.record.upsert_many`, `searchgres.record.insert`, `searchgres.record.insert_many`, `searchgres.record.get`, `searchgres.record.get_by_name`, `searchgres.record.patch`, `searchgres.record.delete`, `searchgres.record.delete_by_name` |
+| Search | `searchgres.search` |
+| Tree | `searchgres.tree.move`, `searchgres.tree.copy`, `searchgres.tree.delete`, `searchgres.tree.count`, `searchgres.tree.list`, `searchgres.tree.view` |
+| Embeddings | `searchgres.embedding.generate`, `searchgres.embedding.process`, `searchgres.embedding.queue.stats`, `searchgres.embedding.queue.prune`, `searchgres.embedding.failure.list`, `searchgres.embedding.failure.retry`, `searchgres.embedding.worker.start`, `searchgres.embedding.worker.stop` |
+
+Every operation carries `searchgres.index.schema`. Single-record operations
+also carry `searchgres.record.id` once a valid UUIDv7 is known. Depending on the
+operation, spans may include `searchgres.batch.size`, `searchgres.result.count`,
+`searchgres.search.mode`, `searchgres.tree.dry_run`, index vector shape, or
+embedding outcome counts. Bulk ID arrays, record names, tree paths, query text,
+filters, content, metadata, vectors, provider credentials, and SQL parameter
+values are never attached.
+
+Core SQL executed through the internal wrapper emits a `CLIENT` child span with
+query text and timing under the dedicated `searchgres/sql` instrumentation
+scope. The `searchgres.sql=true` marker lets an SDK processor or sampler target
+that detail independently. Operation and SQL spans inherit the caller's active
+context; otherwise the operation begins a new trace.
+
+`startEmbeddingWorker()` emits a short, non-active startup span, then detaches
+the background loop from the caller's trace. Every worker tick begins a new
+`searchgres.embedding.process` trace, and `worker.stop()` emits a short span
+covering graceful shutdown. A drain pass that throws gets `ERROR` status with
+the exception recorded. An ordinary provider failure absorbed by the pass (rows
 marked failed and left to retry) is an `embedding.batch_failed` event on an
 otherwise successful span.
+
+Every rejected public operation records the exception, sets `ERROR`, and adds
+`error.type`; typed searchgres errors also add `searchgres.error.code`. SQL
+failures are therefore visible on both the SQL child and caller-level operation
+span.
 
 ## Access control
 

@@ -1,4 +1,3 @@
-import { trace } from "@opentelemetry/api";
 import { type EmbeddingModel, embed, embedMany } from "ai";
 import {
   DimensionMismatchError,
@@ -7,9 +6,7 @@ import {
   RateLimitError,
 } from "./errors.ts";
 import type { Index } from "./open-index.ts";
-import { LIBRARY_VERSION } from "./version.ts";
-
-const tracer = trace.getTracer("searchgres", LIBRARY_VERSION);
+import { runOperation } from "./operation.ts";
 
 /** Fallback when a model reports no finite `maxEmbeddingsPerCall`. */
 const DEFAULT_BATCH_SIZE = 10;
@@ -79,9 +76,13 @@ export async function embedTexts(
   index: Index,
   texts: readonly string[],
 ): Promise<readonly (readonly number[])[]> {
-  return tracer.startActiveSpan("embedding.generate", async (span) => {
-    try {
-      span.setAttribute("searchgres.embedding.count", texts.length);
+  return runOperation(
+    "searchgres.embedding.generate",
+    {
+      schema: index.schema,
+      attributes: { "searchgres.embedding.count": texts.length },
+    },
+    async (span) => {
       const truncated = await Promise.all(
         texts.map((text) => index.truncate(text)),
       );
@@ -115,10 +116,8 @@ export async function embedTexts(
         }
       }
       return embeddings;
-    } finally {
-      span.end();
-    }
-  });
+    },
+  );
 }
 
 /**
