@@ -3,9 +3,15 @@ import type postgres from "postgres";
 import { z } from "zod";
 import { SCHEMA_FORMAT_VERSION } from "./create-index.ts";
 import {
+  type EmbeddingFailure,
+  type ListEmbeddingFailuresOptions,
+  listEmbeddingFailures,
   pruneQueue,
   type QueueStats,
   queueStats,
+  type RetryEmbeddingFailuresOptions,
+  type RetryEmbeddingFailuresResult,
+  retryEmbeddingFailures,
 } from "./db/embedding-queue.ts";
 import { getExtensionInfo, REQUIRED_EXTENSIONS } from "./db/extensions.ts";
 import { readIndexMarker } from "./db/marker.ts";
@@ -313,6 +319,20 @@ export class Index implements TransactionIndex {
   /** Aggregate embedding-queue snapshot for operational visibility. */
   async queueStats(): Promise<QueueStats> {
     return queueStats(this.sql, this.schema);
+  }
+
+  /** List current unresolved terminal embedding failures by ascending queue id. */
+  async listEmbeddingFailures(
+    options?: ListEmbeddingFailuresOptions,
+  ): Promise<readonly EmbeddingFailure[]> {
+    return listEmbeddingFailures(this.sql, this.schema, options);
+  }
+
+  /** Reset selected current terminal failures to immediately pending work. */
+  async retryEmbeddingFailures(
+    options: RetryEmbeddingFailuresOptions,
+  ): Promise<RetryEmbeddingFailuresResult> {
+    return retryEmbeddingFailures(this.sql, this.schema, options);
   }
 
   /** Delete terminal queue rows older than `retentionMs`. Returns rows removed. */

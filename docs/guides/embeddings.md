@@ -105,8 +105,10 @@ from inside it if you would rather give up than retry. A throwing callback is
 ignored.
 
 Ordinary per-row provider failures do not reach `onError`: they are recorded on
-the queue row (`last_error`), retried up to `maxAttempts`, and show up in
-[`queueStats().failed`](#monitor-the-queue).
+the queue row (`last_error`) and retried up to `maxAttempts`. If the current
+record version still has no vector after exhausting that budget, it shows up in
+[`queueStats().failed`](#monitor-the-queue) and
+[`listEmbeddingFailures()`](#inspect-and-retry-terminal-failures).
 
 It is concurrency-safe: run as many workers or processes against one index as you
 like — claims use `FOR UPDATE SKIP LOCKED`, so they never double-embed a row.
@@ -123,14 +125,61 @@ const stats = await index.queueStats();
 | `pending` | Rows awaiting a vector (`waiting` + `inFlight`). |
 | `inFlight` | Pending rows a drainer currently holds (lease not yet expired). |
 | `waiting` | Pending rows claimable right now. |
-| `failed` | Terminal failures still within the retention window. |
+| `failed` | Current record versions that exhausted their attempts and still have no vector. |
 | `oldestPendingAt` | Enqueue time of the oldest pending row, or `null` when idle. |
 
 A steadily rising `pending` or an old `oldestPendingAt` means your drain capacity
-isn't keeping up. A growing `failed` count means embedding is failing —
-inspect it and re-ingest affected records.
+isn't keeping up. A growing `failed` count means current record versions have
+exhausted their attempt budget. Inspect those failures rather than re-ingesting
+the records: an identical upsert is intentionally a no-op and does not enqueue
+fresh work.
 
-Prune terminal rows manually if you aren't running the worker's idle prune:
+### Inspect and retry terminal failures
+
+List current unresolved failures in ascending queue-id order:
+
+```ts
+const failures = await index.listEmbeddingFailures({ limit: 100 });
+
+for (const failure of failures) {
+  logger.error({
+    queueId: failure.queueId,
+    recordId: failure.recordId,
+    attempts: failure.attempts,
+    error: failure.lastError,
+    failedAt: failure.failedAt,
+  });
+}
+```
+
+Each result describes a failed job only while its `contentVersion` is still the
+record's current version and the record still lacks a vector. Historical jobs
+superseded by changed content or a supplied vector are excluded. To fetch the
+next page, pass the last result's `queueId` as `after`.
+
+After correcting a temporary network problem, revoked credential, or provider
+configuration, explicitly reset selected failures to pending work:
+
+```ts
+const result = await index.retryEmbeddingFailures({
+  queueIds: failures.map((failure) => failure.queueId),
+});
+// { retried, skipped }
+```
+
+Retry accepts at most 1,000 unique queue ids. It resets attempts and makes
+current failures immediately claimable. `skipped` counts jobs that became stale,
+were resolved or pruned, were already retried, or do not exist. Retrying is
+version-guarded and never resurrects work for old content.
+
+Rate limits normally do not appear here: searchgres refunds those attempts and
+leaves the work pending with the provider's backoff. Wrong-dimension output also
+leaves work pending and requires correcting the model/index configuration.
+Terminal retry is for ordinary failures whose underlying cause has been fixed;
+do not blindly retry a permanent error.
+
+Failure diagnostics are available only until terminal rows are pruned. Prune
+terminal rows manually if you aren't running the worker's idle prune:
 
 ```ts
 await index.pruneEmbeddingQueue({ retentionMs: 604_800_000 });
@@ -171,9 +220,10 @@ await ingest.upsertMany(records); // queues embedding work as usual
 ```
 
 Such a handle can write, read, run keyword and filter search, search by a
-precomputed `vector`, and inspect the queue. Anything that would have to call a
-model — `search({ semantic })`, `processEmbeddings()`, `startEmbeddingWorker()`
-— throws `EmbeddingUnavailableError` without touching the queue. A separate
+precomputed `vector`, inspect the queue, and reset selected terminal failures.
+Anything that would have to call a model — `search({ semantic })`,
+`processEmbeddings()`, `startEmbeddingWorker()` — throws
+`EmbeddingUnavailableError` without touching the queue. A separate
 process — the one that opens the index with an embedding model — drains it. See
 [Run in production](production.md).
 

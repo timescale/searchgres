@@ -56,12 +56,28 @@ Track [`queueStats()`](embeddings.md#monitor-the-queue) and alert on:
 
 - **`pending` trending up** or a stale **`oldestPendingAt`** — drain capacity is
   behind ingestion.
-- **`failed` rising** — embedding is failing for some records; inspect and
-  re-ingest them.
+- **`failed` rising** — current record versions exhausted their embedding
+  attempts and still have no vector; list and diagnose them.
 
 ```ts
 const { pending, failed, oldestPendingAt } = await index.queueStats();
+
+const failures = await index.listEmbeddingFailures({ limit: 100 });
 ```
+
+After correcting the underlying transient provider, credential, or network
+problem, reset selected rows explicitly:
+
+```ts
+await index.retryEmbeddingFailures({
+  queueIds: failures.map((failure) => failure.queueId),
+});
+```
+
+Do not use identical re-ingestion as recovery: an unchanged upsert is a no-op
+and does not enqueue new work. See
+[Inspect and retry terminal failures](embeddings.md#inspect-and-retry-terminal-failures)
+for pagination, retry, and pruning semantics.
 
 If you run `startEmbeddingWorker()`, pass
 [`onError`](embeddings.md#run-a-continuous-worker): the worker retries a

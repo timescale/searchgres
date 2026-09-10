@@ -352,6 +352,162 @@ test("an ordinary failure records last_error, retries, then terminally fails", a
   });
 });
 
+test("lists, paginates, and retries current terminal failures", async () => {
+  await withIndex(async (index, model) => {
+    model.handler = () => {
+      throw new Error("temporary network failure");
+    };
+    await index.upsertMany([
+      { content: "failure one", tree: "docs" },
+      { content: "failure two", tree: "docs" },
+      { content: "failure three", tree: "docs" },
+    ]);
+
+    await index.processEmbeddings({
+      maxAttempts: 1,
+      leaseDurationMs: 0,
+      maxBatches: 1,
+    });
+    await index.processEmbeddings({ maxAttempts: 1 });
+
+    const firstPage = await index.listEmbeddingFailures({ limit: 2 });
+    assert.equal(firstPage.length, 2);
+    const first = firstPage[0];
+    const second = firstPage[1];
+    assert.ok(first);
+    assert.ok(second);
+    assert.ok(BigInt(first.queueId) < BigInt(second.queueId));
+    assert.equal(first.contentVersion, 1);
+    assert.equal(first.attempts, 1);
+    assert.match(first.lastError ?? "", /temporary network failure/);
+    assert.ok(first.enqueuedAt instanceof Date);
+    assert.ok(first.failedAt instanceof Date);
+
+    const secondPage = await index.listEmbeddingFailures({
+      limit: 2,
+      after: second.queueId,
+    });
+    assert.equal(secondPage.length, 1);
+    assert.ok(BigInt(secondPage[0]?.queueId ?? "0") > BigInt(second.queueId));
+
+    // Queue administration does not itself generate vectors and is available
+    // to credential-separated handles.
+    const admin = await openIndex(sql, index.schema, {
+      embedding: noEmbedding,
+    });
+    const retried = await admin.retryEmbeddingFailures({
+      queueIds: firstPage.map((failure) => failure.queueId),
+    });
+    assert.deepEqual(retried, { retried: 2, skipped: 0 });
+    assert.equal((await index.queueStats()).pending, 2);
+    assert.equal((await index.queueStats()).failed, 1);
+
+    const rows = await queueRows(index.schema);
+    for (const row of rows.slice(0, 2)) {
+      assert.equal(row.outcome, null);
+      assert.equal(row.attempts, 0);
+      assert.equal(row.last_error, null);
+      assert.equal(row.visible_future, false);
+    }
+
+    model.handler = (values) => values.map(() => [0, 1, 0, 0]);
+    const drained = await index.processEmbeddings();
+    assert.equal(drained.embedded, 2);
+    assert.equal((await index.queueStats()).failed, 1);
+  });
+});
+
+test("stale terminal failures are neither listed nor retried", async () => {
+  await withIndex(async (index, model) => {
+    model.handler = () => {
+      throw new Error("old failure");
+    };
+    const inserted = await index.upsert({ content: "old", tree: "docs" });
+    await index.processEmbeddings({
+      maxAttempts: 1,
+      leaseDurationMs: 0,
+      maxBatches: 1,
+    });
+    await index.processEmbeddings({ maxAttempts: 1 });
+    const [failure] = await index.listEmbeddingFailures();
+    assert.ok(failure);
+    assert.equal((await index.queueStats()).failed, 1);
+
+    const record = await index.get(inserted.id);
+    await index.patch(record.id, record.versionHash, { content: "new" });
+
+    assert.deepEqual(await index.listEmbeddingFailures(), []);
+    assert.equal((await index.queueStats()).failed, 0);
+    assert.deepEqual(
+      await index.retryEmbeddingFailures({ queueIds: [failure.queueId] }),
+      { retried: 0, skipped: 1 },
+    );
+  });
+});
+
+test("concurrent embedding-failure retries reset a row only once", async () => {
+  await withIndex(async (index, model) => {
+    model.handler = () => {
+      throw new Error("retry race");
+    };
+    await index.upsert({ content: "race", tree: "docs" });
+    await index.processEmbeddings({
+      maxAttempts: 1,
+      leaseDurationMs: 0,
+      maxBatches: 1,
+    });
+    await index.processEmbeddings({ maxAttempts: 1 });
+    const [failure] = await index.listEmbeddingFailures();
+    assert.ok(failure);
+
+    const outcomes = await Promise.all([
+      index.retryEmbeddingFailures({ queueIds: [failure.queueId] }),
+      index.retryEmbeddingFailures({ queueIds: [failure.queueId] }),
+    ]);
+    assert.equal(
+      outcomes.reduce((total, outcome) => total + outcome.retried, 0),
+      1,
+    );
+    assert.equal(
+      outcomes.reduce((total, outcome) => total + outcome.skipped, 0),
+      1,
+    );
+  });
+});
+
+test("embedding-failure options are validated", async () => {
+  await withIndex(async (index) => {
+    await assert.rejects(
+      () => index.listEmbeddingFailures({ limit: 0 }),
+      InvalidInputError,
+    );
+    await assert.rejects(
+      () => index.listEmbeddingFailures({ after: "01" }),
+      InvalidInputError,
+    );
+    await assert.rejects(
+      () => index.listEmbeddingFailures({ after: "not-an-id" }),
+      InvalidInputError,
+    );
+    await assert.rejects(
+      () => index.listEmbeddingFailures({ extra: true } as never),
+      InvalidInputError,
+    );
+    await assert.rejects(
+      () => index.retryEmbeddingFailures({ queueIds: [] }),
+      InvalidInputError,
+    );
+    await assert.rejects(
+      () => index.retryEmbeddingFailures({ queueIds: ["1", "1"] }),
+      InvalidInputError,
+    );
+    await assert.rejects(
+      () => index.retryEmbeddingFailures({ queueIds: ["9223372036854775808"] }),
+      InvalidInputError,
+    );
+  });
+});
+
 test("queueStats reports pending, waiting, and failed", async () => {
   await withIndex(async (index) => {
     await index.upsertMany([
