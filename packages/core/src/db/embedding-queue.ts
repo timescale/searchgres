@@ -1,7 +1,71 @@
 import type postgres from "postgres";
+import { z } from "zod";
 import type { VectorType } from "../config.ts";
 import { InvalidInputError } from "../errors.ts";
 import { runSql } from "../sql/exec.ts";
+import { toValidationIssue } from "../validation.ts";
+
+const MAX_QUEUE_PAGE_SIZE = 1000;
+const MAX_RETRY_BATCH_SIZE = 1000;
+const POSTGRES_TEXT_OID = 25;
+const MAX_POSTGRES_BIGINT = 9_223_372_036_854_775_807n;
+
+const queueIdSchema = z
+  .string()
+  .regex(/^[1-9]\d*$/, "must be a canonical positive decimal string")
+  .refine((value) => {
+    try {
+      return BigInt(value) <= MAX_POSTGRES_BIGINT;
+    } catch {
+      return false;
+    }
+  }, "must fit in a PostgreSQL bigint");
+
+const listEmbeddingFailuresOptionsSchema = z
+  .strictObject({
+    limit: z.number().int().min(1).max(MAX_QUEUE_PAGE_SIZE).default(100),
+    after: queueIdSchema.optional(),
+  })
+  .default({ limit: 100 });
+
+const retryEmbeddingFailuresOptionsSchema = z.strictObject({
+  queueIds: z
+    .array(queueIdSchema)
+    .min(1)
+    .max(MAX_RETRY_BATCH_SIZE)
+    .refine(
+      (values) => new Set(values).size === values.length,
+      "must not contain duplicates",
+    )
+    .readonly(),
+});
+
+/** Options for keyset-paginating current unresolved embedding failures. */
+export type ListEmbeddingFailuresOptions = z.input<
+  typeof listEmbeddingFailuresOptionsSchema
+>;
+
+/** One terminal queue row that still describes its record's current state. */
+export interface EmbeddingFailure {
+  readonly queueId: string;
+  readonly recordId: string;
+  readonly contentVersion: number;
+  readonly attempts: number;
+  readonly lastError: string | null;
+  readonly enqueuedAt: Date;
+  readonly failedAt: Date;
+}
+
+/** Select terminal queue rows to make pending again. */
+export type RetryEmbeddingFailuresOptions = z.input<
+  typeof retryEmbeddingFailuresOptionsSchema
+>;
+
+/** Outcome of an explicit, version-guarded embedding retry request. */
+export interface RetryEmbeddingFailuresResult {
+  readonly retried: number;
+  readonly skipped: number;
+}
 
 /**
  * Operational queue engine for asynchronous embedding generation.
@@ -352,6 +416,147 @@ export async function pendingCount(
   return Number(row?.pending ?? 0);
 }
 
+/**
+ * List current unresolved terminal failures in ascending queue-id order.
+ * Historical failures are excluded once their record has moved to another
+ * content version or acquired an embedding.
+ */
+export async function listEmbeddingFailures(
+  sql: postgres.ISql,
+  schema: string,
+  options?: ListEmbeddingFailuresOptions,
+): Promise<readonly EmbeddingFailure[]> {
+  const parsed = parseQueueOptions(
+    listEmbeddingFailuresOptionsSchema,
+    options,
+    "listEmbeddingFailures",
+  );
+  const queue = sql`${sql(schema)}.embedding_queue`;
+  const record = sql`${sql(schema)}.record`;
+  const after =
+    parsed.after === undefined
+      ? sql``
+      : sql`and q.id > ${parsed.after}::pg_catalog.int8`;
+
+  const rows = await runSql(
+    sql<
+      {
+        queue_id: string;
+        record_id: string;
+        content_version: number;
+        attempts: number;
+        last_error: string | null;
+        enqueued_at: Date;
+        failed_at: Date;
+      }[]
+    >`
+      select
+        q.id::text as queue_id
+      , q.record_id
+      , q.content_version
+      , q.attempts
+      , q.last_error
+      , q.created_at as enqueued_at
+      , coalesce(q.updated_at, q.created_at) as failed_at
+      from ${queue} q
+      join ${record} r
+        on r.id = q.record_id
+       and r.content_version = q.content_version
+      where q.outcome = 'failed'
+        and r.embedding is null
+        ${after}
+      order by q.id
+      limit ${parsed.limit}
+    `,
+    {
+      spanName: "listEmbeddingFailures",
+      dbOperationName: "SELECT",
+      namespace: schema,
+    },
+  );
+
+  return rows.map((row) => ({
+    queueId: row.queue_id,
+    recordId: row.record_id,
+    contentVersion: row.content_version,
+    attempts: row.attempts,
+    lastError: row.last_error,
+    enqueuedAt: row.enqueued_at,
+    failedAt: row.failed_at,
+  }));
+}
+
+/**
+ * Reset selected current failures to immediately claimable pending work.
+ * Stale, resolved, already-retried, pruned, and unknown ids are skipped.
+ */
+export async function retryEmbeddingFailures(
+  sql: postgres.ISql,
+  schema: string,
+  options: RetryEmbeddingFailuresOptions,
+): Promise<RetryEmbeddingFailuresResult> {
+  const parsed = parseQueueOptions(
+    retryEmbeddingFailuresOptionsSchema,
+    options,
+    "retryEmbeddingFailures",
+  );
+  const queue = sql`${sql(schema)}.embedding_queue`;
+  const record = sql`${sql(schema)}.record`;
+  const [row] = await runSql(
+    sql<{ retried: string }[]>`
+      with requested as (
+        select id
+        from pg_catalog.unnest(
+          ${sql.array([...parsed.queueIds], POSTGRES_TEXT_OID)}::text[]::pg_catalog.int8[]
+        ) as input(id)
+      ),
+      reset as (
+        update ${queue} q
+        set outcome = null
+          , attempts = 0
+          , last_error = null
+          , visible_at = pg_catalog.now()
+          , updated_at = pg_catalog.now()
+        from requested wanted, ${record} r
+        where q.id = wanted.id
+          and q.outcome = 'failed'
+          and r.id = q.record_id
+          and r.content_version = q.content_version
+          and r.embedding is null
+        returning q.id
+      )
+      select count(*)::text as retried from reset
+    `,
+    {
+      spanName: "retryEmbeddingFailures",
+      dbOperationName: "UPDATE",
+      namespace: schema,
+    },
+  );
+  const retried = Number(row?.retried ?? 0);
+  return { retried, skipped: parsed.queueIds.length - retried };
+}
+
+function parseQueueOptions<T>(
+  schema: z.ZodType<T>,
+  input: unknown,
+  operation: string,
+): T {
+  const result = schema.safeParse(input);
+  if (result.success) {
+    return result.data;
+  }
+  const issues = result.error.issues.map(toValidationIssue);
+  const first = issues[0];
+  const detail = first
+    ? `${first.path.join(".") || "options"}: ${first.message}`
+    : "validation failed";
+  throw new InvalidInputError(`Invalid ${operation} options: ${detail}`, {
+    cause: result.error,
+    issues,
+  });
+}
+
 /** Aggregate queue snapshot for operational visibility. */
 export async function queueStats(
   sql: postgres.ISql,
@@ -372,9 +577,18 @@ export async function queueStats(
         count(*) filter (where outcome is null)::text as pending
       , count(*) filter (where outcome is null and visible_at > now())::text as in_flight
       , count(*) filter (where outcome is null and visible_at <= now())::text as waiting
-      , count(*) filter (where outcome = 'failed')::text as failed
+      , count(*) filter (
+          where q.outcome = 'failed'
+            and exists (
+              select 1
+              from ${sql`${sql(schema)}.record`} r
+              where r.id = q.record_id
+                and r.content_version = q.content_version
+                and r.embedding is null
+            )
+        )::text as failed
       , min(created_at) filter (where outcome is null) as oldest_pending_at
-      from ${queue}
+      from ${queue} q
     `,
     {
       spanName: "embeddingQueueStats",

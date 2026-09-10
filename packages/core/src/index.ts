@@ -8,7 +8,13 @@
 
 export * from "./config.ts";
 export * from "./create-index.ts";
-export type { QueueStats } from "./db/embedding-queue.ts";
+export type {
+  EmbeddingFailure,
+  ListEmbeddingFailuresOptions,
+  QueueStats,
+  RetryEmbeddingFailuresOptions,
+  RetryEmbeddingFailuresResult,
+} from "./db/embedding-queue.ts";
 export { dropIndex } from "./drop-index.ts";
 export { noEmbedding } from "./embedding.ts";
 export type {

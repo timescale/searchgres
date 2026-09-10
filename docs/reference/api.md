@@ -222,6 +222,8 @@ type Filter =
 | `processEmbeddings(options?)` | `ProcessEmbeddingsResult` | [Embeddings](../guides/embeddings.md) |
 | `startEmbeddingWorker(options?)` | `EmbeddingWorker` | [Embeddings](../guides/embeddings.md) |
 | `queueStats()` | `QueueStats` | [Embeddings](../guides/embeddings.md) |
+| `listEmbeddingFailures(options?)` | `readonly EmbeddingFailure[]` | Current unresolved terminal failures, keyset-paginated by queue id. |
+| `retryEmbeddingFailures(options)` | `RetryEmbeddingFailuresResult` | Version-guarded reset of selected failures to pending work. |
 | `pruneEmbeddingQueue({ retentionMs })` | `number` | [Embeddings](../guides/embeddings.md) |
 
 ```ts
@@ -263,8 +265,33 @@ type QueueStats = {
   pending: number;
   inFlight: number;
   waiting: number;
+  // Current record versions that exhausted attempts and still lack a vector.
   failed: number;
   oldestPendingAt: Date | null;
+};
+
+type ListEmbeddingFailuresOptions = {
+  limit?: number;  // default 100, maximum 1000
+  after?: string;  // queueId from the previous page
+};
+
+type EmbeddingFailure = {
+  queueId: string;           // PostgreSQL bigint represented without precision loss
+  recordId: string;
+  contentVersion: number;
+  attempts: number;
+  lastError: string | null;
+  enqueuedAt: Date;
+  failedAt: Date;
+};
+
+type RetryEmbeddingFailuresOptions = {
+  queueIds: readonly string[]; // 1–1000 unique ids
+};
+
+type RetryEmbeddingFailuresResult = {
+  retried: number;
+  skipped: number; // stale, resolved, pruned, already retried, or unknown
 };
 ```
 
@@ -281,8 +308,9 @@ const ingest = await openIndex(sql, "docs_index", { embedding: noEmbedding });
 ```
 
 Writes, reads, tree operations, `search` with `fulltext`, `filter`, or a
-precomputed `vector`, `queueStats()`, and `pruneEmbeddingQueue()` all work.
-Records written without a vector queue as usual and are drained by a handle
+precomputed `vector`, `queueStats()`, `listEmbeddingFailures()`,
+`retryEmbeddingFailures()`, and `pruneEmbeddingQueue()` all work. Records
+written without a vector queue as usual and are drained by a handle
 opened with a real model. `search({ semantic })`, `processEmbeddings()`, and
 `startEmbeddingWorker()` throw [`EmbeddingUnavailableError`](errors.md) before
 claiming any queue row or running any query. Compare by identity:
