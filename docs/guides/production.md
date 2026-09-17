@@ -31,8 +31,10 @@ Because embedding work lives in a database queue, you can split responsibilities
   drains the queue.
 
 This keeps provider keys off your write path and lets you scale embedding
-independently. Any number of drainers can run concurrently against one index
-without double-embedding.
+independently. Multiple drainers can run concurrently against one index using
+lease-based claims and fenced write-back. A lease expiry or retry can repeat a
+provider call; this is not exactly-once embedding execution. See the
+[worker lifecycle](embeddings.md#run-a-continuous-worker).
 
 Choose a drain strategy:
 
@@ -72,9 +74,13 @@ and does not enqueue new work. See
 for pagination, retry, and pruning semantics.
 
 If you run `startEmbeddingWorker()`, pass
-[`onError`](embeddings.md#run-a-continuous-worker): the worker retries a
-failing pass silently otherwise, so a revoked key or wrong-dimension model
-shows up only as `pending` climbing.
+[`onError`](embeddings.md#run-a-continuous-worker) to observe thrown drain-pass
+faults (such as wrong dimensions or database failures), rate limits, and
+idle-prune failures. Ordinary provider failures, including a revoked key, are
+recorded on queue rows without invoking the callback. Monitor queue backlog and
+terminal failures as well; `onError` alone is not a provider-health check.
+Terminal failures appear only after visibility expires and another claim sweep
+runs, so do not alert only on the terminal count.
 
 Prune terminal rows periodically if you don't run the worker's idle prune:
 
@@ -103,13 +109,14 @@ Every operation carries `searchgres.index.schema`. Single-record operations
 also carry `searchgres.record.id` once a valid UUIDv7 is known. Depending on the
 operation, spans may include `searchgres.batch.size`, `searchgres.result.count`,
 `searchgres.search.mode`, `searchgres.tree.dry_run`, index vector shape, or
-embedding outcome counts. Bulk ID arrays, record names, tree paths, query text,
-filters, content, metadata, vectors, provider credentials, and SQL parameter
-values are never attached.
+embedding outcome counts. Normal operation attributes deliberately exclude bulk
+ID arrays, record names, tree paths, query text, filters, content, metadata,
+vectors, provider credentials, and SQL parameter values. This is not a guarantee
+that error diagnostics are free of those values; see the warning below.
 
 Core SQL executed through the internal wrapper emits a `CLIENT` child span with
-query text and timing under the dedicated `searchgres/sql` instrumentation
-scope. The `searchgres.sql=true` marker lets an SDK processor or sampler target
+parameterized statement text and timing under the dedicated `searchgres/sql`
+instrumentation scope. The `searchgres.sql=true` marker lets an SDK processor or sampler target
 that detail independently. Operation and SQL spans inherit the caller's active
 context; otherwise the operation begins a new trace.
 
@@ -117,14 +124,25 @@ context; otherwise the operation begins a new trace.
 the background loop from the caller's trace. Every worker tick begins a new
 `searchgres.embedding.process` trace, and `worker.stop()` emits a short span
 covering graceful shutdown. A drain pass that throws gets `ERROR` status with
-the exception recorded. An ordinary provider failure absorbed by the pass (rows
-marked failed and left to retry) is an `embedding.batch_failed` event on an
-otherwise successful span.
+the exception recorded. An ordinary provider failure absorbed by the pass (the
+diagnostic is recorded while rows stay pending) is an `embedding.batch_failed`
+event on an otherwise successful span.
 
 Every rejected public operation records the exception, sets `ERROR`, and adds
 `error.type`; typed searchgres errors also add `searchgres.error.code`. SQL
 failures are therefore visible on both the SQL child and caller-level operation
 span.
+
+**Treat error telemetry as sensitive.** Core records exception messages and stack
+traces, and `embedding.batch_failed` includes a bounded provider diagnostic.
+Those diagnostics and SQL error status descriptions can contain content,
+credentials, connection details, or other values echoed by a provider or driver.
+They are not covered by the normal-attribute exclusions above. Restrict access
+and retention in telemetry backends, and redact or remove exception/event
+attributes and status descriptions in your processor or exporter before sending
+them outside a trusted boundary. Apply the same policy to queue `lastError`
+diagnostics and application logging. CLI/MCP output redaction is separate and
+does not sanitize core telemetry.
 
 ## Access control
 

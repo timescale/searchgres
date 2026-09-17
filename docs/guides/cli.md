@@ -140,11 +140,49 @@ searchgres import -r ./documents --tree docs
 searchgres export records.ndjson --tree docs
 ```
 
-Imports accept NDJSON, JSON, YAML and Markdown. They write batches of at most
-1,000 records, without HTTP request-byte limits. `--dry-run` validates without
-writing; `--fail-fast` stops on the first error. Failed imports return nonzero.
-Exports use keyset pagination and omit vectors; imports queue their regeneration.
-Export owns `--format` (`ndjson`, `json`, `yaml`, `md`), not display-format flags.
+Imports accept these input shapes:
+
+| Format | Input |
+| --- | --- |
+| NDJSON | One record object per nonblank line. |
+| JSON / YAML | One record object, an array of records, or an object with a `records` array. |
+| Markdown | One record per file: the body is `content`; optional YAML frontmatter supplies other record fields. |
+
+A record requires non-empty `content`. Optional fields are `id` (UUIDv7), `tree`
+(raw dotted path, default root `""`), `name` (non-empty or `null`), `meta` (JSON
+object), and `temporal` (`[instant]` or `[start, end]` with ISO timestamps).
+Omit `temporal` when absent. Unknown record/frontmatter keys are rejected; put
+application fields such as `title` under `meta`:
+
+```markdown
+---
+tree: docs.db
+name: indexes
+meta:
+  title: Database indexes
+  kind: guide
+---
+Postgres indexes make database queries faster.
+```
+
+Plain Markdown without frontmatter is also accepted. `--tree` supplies a default
+for records that omit a tree.
+
+Imports write batches of at most 1,000 records, without HTTP request-byte limits.
+Each batch is atomic, but the whole import is not: successful batches remain
+committed if another fails. Conflicts fail the batch unless `--replace` or
+`--ignore` is specified. `--dry-run` checks input shape without writing or
+checking database conflicts; `--fail-fast` stops on the first failed file or
+batch. Failed imports return nonzero.
+
+Exports use keyset pagination, not a snapshot. They retain record IDs, content,
+tree, name, metadata, and temporal values, but omit vectors, version fields,
+creation/update timestamps, and queue state. Importing into a new index creates
+fresh versions/timestamps and queues embeddings. This is a content-transfer
+format, not a full backup; use [PostgreSQL backups](production.md#backups-and-recovery)
+for recovery. Export owns `--format` (`ndjson`, `json`, `yaml`, `md`), not
+display-format flags. Markdown export requires an output directory and writes
+one `<id>.md` file per record.
 
 ## Embedding work
 

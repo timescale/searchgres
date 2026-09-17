@@ -128,9 +128,10 @@ No fact-extraction pipeline, opaque summarization, or RAG framework is imposed.
 | both ranked args plus `filter` | Filtered and RRF hybrid search retrieval |
 
 Every hit is the full record plus its score. Newly written records are available
-to BM25 and filters immediately; they join semantic and hybrid results after the
-built-in embedding queue is drained. Run a bounded `processEmbeddings()` pass or
-start a concurrency-safe background `EmbeddingWorker`.
+to BM25 and filters immediately, including the BM25 arm of hybrid search. Their
+vectors are needed only for semantic participation. Drain the built-in embedding
+queue with a bounded `processEmbeddings()` pass or a concurrency-safe background
+`EmbeddingWorker`.
 
 Read **[How search works](https://github.com/timescale/searchgres/blob/main/docs/concepts/how-search-works.md)**
 or jump to **[Search and filter](https://github.com/timescale/searchgres/blob/main/docs/guides/search.md)**.

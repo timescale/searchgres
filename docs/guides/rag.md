@@ -13,7 +13,7 @@ identity and chunk position so repeated ingestion updates in place:
 await index.upsertMany(
   documents.flatMap((document) =>
     chunkDocument(document).map((chunk, position) => ({
-      tree: `knowledge.${document.collection}.${document.slug}`,
+      tree: `tenants.${document.tenant}.${document.collection}.${document.slug}`,
       name: `chunk-${position}`,
       content: chunk.text,
       meta: {
@@ -30,12 +30,16 @@ await index.upsertMany(
 
 `chunkDocument` belongs to your application. It can preserve headings, attach
 neighbor information, or use a tokenizer appropriate to the generation model.
-searchgres treats each output as one searchable record.
+searchgres treats each output as one searchable record. Map tenant, collection,
+and slug values to valid `ltree` labels, and assign the tenant from trusted
+application data. Split large inputs into batches of at most 1,000 records.
+This hierarchy matches the retrieval scope below.
 
 ## 2. Generate embeddings
 
-Records work with BM25 and filters as soon as they are committed. Drain the
-queue before expecting them in semantic or hybrid results:
+Records work with BM25 and filters as soon as they are committed, including the
+BM25 arm of hybrid search. Drain the queue before expecting semantic matches or
+semantic contributions to their hybrid scores:
 
 ```ts
 await index.processEmbeddings({ batchSize: 50 });

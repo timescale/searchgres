@@ -177,7 +177,9 @@ publish with provenance. CI tests the packed core under Node, Bun, and Deno.
 Before tagging:
 
 1. Match versions in `packages/core/package.json` and `packages/core/src/version.ts`.
-2. Update `CHANGELOG.md`.
+2. Update `CHANGELOG.md` and set the pinned binary-installation example in
+   `docs/installation.md` to the release tag. It must name a release containing
+   the direct CLI assets, not an old server-era tag.
 3. Run `./bun run check:full`, review startup measurements and Compose gates,
    commit and merge to `main`.
 4. Tag that commit and push the immutable tag.
@@ -192,4 +194,7 @@ workflow rename with npm's trusted-publisher setting.
 After core publication succeeds, the release workflow builds the one binary on
 macOS, signs both macOS targets, and attaches all platform executables and their
 checksums to the tagged GitHub release. The binary reports core's library
-version; it does not have an independently versioned product API.
+version; it does not have an independently versioned product API. After the
+assets are published, verify both latest-release and pinned-tag installation
+into a temporary directory, then run the installed binary's `--version` and
+`mcp --help`.
