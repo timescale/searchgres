@@ -8,7 +8,7 @@ import {
   recordInputSchema,
   type SearchParams,
 } from "./inputs.ts";
-import { safeError } from "./runtime/report.ts";
+import { InputError, safeError } from "./runtime/report.ts";
 
 const MAX_BATCH_RECORDS = 1000;
 const importExtensions = new Set([
@@ -63,7 +63,7 @@ export async function importRecords(
             : candidate;
         const validated = recordInputSchema.safeParse(withDefaultTree);
         if (!validated.success) {
-          throw new Error(
+          throw new InputError(
             `invalid record: ${validated.error.issues.map((issue) => issue.message).join("; ")}`,
           );
         }
@@ -134,15 +134,15 @@ async function collectInputPaths(
     }
     const absolute = resolve(input);
     const details = await stat(absolute).catch(() => undefined);
-    if (!details) throw new Error(`File not found: ${input}`);
+    if (!details) throw new InputError(`File not found: ${input}`);
     if (details.isFile()) {
       paths.push(absolute);
       continue;
     }
     if (!details.isDirectory())
-      throw new Error(`Not a file or directory: ${input}`);
+      throw new InputError(`Not a file or directory: ${input}`);
     if (!recursive) {
-      throw new Error(
+      throw new InputError(
         `'${input}' is a directory. Use --recursive to import directories.`,
       );
     }
@@ -171,7 +171,7 @@ async function parseImportPath(
   explicitFormat: string | undefined,
 ): Promise<readonly Record<string, unknown>[]> {
   if (explicitFormat === "json5") {
-    throw new Error("import --format must be ndjson, json, yaml, or md");
+    throw new InputError("import --format must be ndjson, json, yaml, or md");
   }
   const source =
     path === "-" ? await Bun.stdin.text() : await Bun.file(path).text();
@@ -186,7 +186,9 @@ async function parseImportPath(
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("expected a record object or an array of record objects");
+    throw new InputError(
+      "expected a record object or an array of record objects",
+    );
   }
   return value as Record<string, unknown>;
 }
@@ -208,7 +210,7 @@ export async function exportRecords(
   options: ExportOptions,
 ): Promise<ExportSummary> {
   if (options.format === "md" && options.file === undefined) {
-    throw new Error("Markdown export requires an output directory");
+    throw new InputError("Markdown export requires an output directory");
   }
   const writer = await createExportWriter(options.file, options.format);
   let exported = 0;
@@ -300,7 +302,7 @@ async function createExportWriter(
       } else {
         // Concatenating one-element YAML sequences yields one valid sequence
         // without retaining earlier records.
-        sink.write(YAML.stringify([record]));
+        sink.write(`${YAML.stringify([record], null, 2).trimEnd()}\n`);
       }
       count += 1;
     },
@@ -315,7 +317,7 @@ async function createExportWriter(
 
 function markdownRecord(record: RecordInput): string {
   const { content, ...frontmatter } = record;
-  return `---\n${YAML.stringify(frontmatter).trimEnd()}\n---\n${content}`;
+  return `---\n${YAML.stringify(frontmatter, null, 2).trimEnd()}\n---\n${content}`;
 }
 
 /** Convert the canonical tstzrange text returned by PostgreSQL into input form. */

@@ -64,11 +64,11 @@ const temporalSchema = z
   .optional();
 const recordSchema = z.strictObject({
   id: uuidSchema.nullable().optional(),
-  content: z.string(),
+  content: z.string().min(1),
   meta: jsonObjectSchema.nullable().optional(),
   tree: z.string().nullable().optional(),
   temporal: temporalSchema,
-  name: z.string().nullable().optional(),
+  name: z.string().min(1).nullable().optional(),
 });
 const addressSchema = z.union([
   z.strictObject({ id: uuidSchema, select: storedSelectSchema }),
@@ -357,10 +357,10 @@ function registerWriteTools(server: McpServer, runtime: Runtime): void {
         id: uuidSchema,
         priorVersionHash: z.string().min(1),
         patch: z.strictObject({
-          content: z.string().nullable().optional(),
+          content: z.string().min(1).nullable().optional(),
           meta: jsonObjectSchema.nullable().optional(),
           tree: z.string().nullable().optional(),
-          name: z.string().nullable().optional(),
+          name: z.string().min(1).nullable().optional(),
           temporal: temporalSchema,
         }),
       }),

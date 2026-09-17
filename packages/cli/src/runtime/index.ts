@@ -41,6 +41,7 @@ export function createPool(config: RuntimeConfig) {
       },
     });
   } catch (error) {
+    if (error instanceof InvalidConfigError) throw error;
     throw new InvalidConfigError("Cannot configure PostgreSQL connection", {
       cause: error,
     });

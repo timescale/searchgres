@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { InputError } from "../runtime/report.ts";
 
 /**
  * Load `path` into `process.env` without overwriting anything already set, so
@@ -78,7 +79,7 @@ function remedy(name: string, value: string): string {
 export function dotenvLine(name: string, value: string): string {
   const problem = unrepresentable(value);
   if (problem !== undefined) {
-    throw new Error(
+    throw new InputError(
       `Cannot write ${name} to a .env file: ${problem}. ${remedy(name, value)}`,
     );
   }

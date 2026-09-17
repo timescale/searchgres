@@ -117,7 +117,14 @@ export function parseRuntimeConfig(input: unknown): RuntimeConfig {
   if (!result.success)
     throw new InvalidConfigError(
       "Invalid Searchgres configuration; check field names and values",
-      { cause: result.error },
+      {
+        cause: result.error,
+        issues: result.error.issues.map((issue) => ({
+          code: issue.code,
+          message: issue.message,
+          path: issue.path.map(String),
+        })),
+      },
     );
   return result.data;
 }

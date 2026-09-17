@@ -128,7 +128,7 @@ export function writeStructuredOutput(
   value = JSON.parse(JSON.stringify(value));
   if (format === "json") return void console.log(JSON.stringify(value));
   if (format === "yaml")
-    return void console.log(YAML.stringify(value).trimEnd());
+    return void console.log(YAML.stringify(value, null, 2).trimEnd());
 
   const collection = collectionFromEnvelope(value);
   for (const entry of collection) console.log(JSON.stringify(entry));

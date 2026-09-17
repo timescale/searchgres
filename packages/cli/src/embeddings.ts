@@ -66,6 +66,7 @@ export async function runEmbeddings(
         : config.worker.count;
       if (count < 1)
         throw new InputError("embeddings worker requires at least one worker");
+      if (count > 64) throw new InputError("--workers must be at most 64");
       runtime.startEmbeddingWorkers(count, {
         ...(flags.has("batch-size")
           ? { batchSize: integer("batch-size") as number }
