@@ -144,16 +144,16 @@ docker compose up --build
 ```
 
 It includes PostgreSQL, Ollama, automatic model download, strict index
-provisioning, and the API server. This is an alternate evaluation path, not a
+provisioning, and an embedding worker. This is an alternate evaluation path, not a
 requirement for the core library. See
 [Evaluate with Docker Compose](guides/docker-compose.md) for sample commands,
 performance expectations, persistence, and its evaluation-only security
 boundary.
 
-## Reference binaries
+## Reference binary
 
-The releases include compiled `searchgres` CLI, `searchgres-server`, and
-`searchgres-mcp` reference executables. Install the latest versions with:
+Releases include one compiled `searchgres` executable for direct PostgreSQL CLI
+operations, embedding workers, and `searchgres mcp`. Install it with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | sh
@@ -171,11 +171,11 @@ curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.s
   SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=v0.1.0 sh
 ```
 
-These binaries are maintained examples and evaluation tools over the same core,
-not required layers or co-equal products. See
-[Reference implementations and evaluation tools](reference-applications.md) for
-their roles and packaging boundaries. The server has no built-in authentication;
-read its [security warning](guides/server.md#security-boundary) before changing
-the default loopback binding.
+This binary is a maintained reference and evaluation tool over the same core,
+not a required layer or co-equal product. See
+[Reference implementations and evaluation tools](reference-applications.md) and
+the [CLI guide](guides/cli.md) for configuration and security boundaries. It
+holds database/provider credentials locally; no Searchgres network service is
+required.
 
 Next: [Get started](getting-started.md).

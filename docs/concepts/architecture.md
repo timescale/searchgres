@@ -16,7 +16,7 @@ solves retrieval mechanics while leaving application policy in the application.
 
 The boundary is compositional rather than restrictive. A hosted API, source-table
 indexer, agent tool, or RAG service can all be built around the same core. The
-repository's server, CLI, MCP server, and Compose stack demonstrate some of
+repository's direct CLI, MCP command, and Compose stack demonstrate some of
 those arrangements.
 
 ## One schema per index
@@ -81,10 +81,10 @@ A hosted or internal search API typically owns:
 - rate limits and network policy;
 - response projection and optional reranking.
 
-The included `searchgres-server` is a reference implementation, not a
-requirement. It demonstrates the pool, model, worker, and RPC mechanics but
-deliberately omits authentication and other production perimeter controls. An
-application can expose its own REST, GraphQL, RPC, job, or in-process interface.
+The included `searchgres` binary demonstrates pool, model, and worker ownership
+through direct CLI and MCP operations, not an HTTP server. An application can
+expose its own REST, GraphQL, RPC, job, or in-process interface and owns the
+necessary authentication and perimeter controls.
 See [Reference implementations and evaluation tools](../reference-applications.md).
 
 ## Access control with composable filters

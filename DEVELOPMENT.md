@@ -1,329 +1,195 @@
 # Development
 
-## Requirements
+## Requirements and toolchain
 
-- Node 22.18+ for the Node compatibility tests
-- Docker, for PostgreSQL integration tests and Compose development
-- Docker Compose 2.20.0+, for the evaluation stack and its dependency conditions
-
-Bun is not a prerequisite. `./bun` is a wrapper that downloads the pinned Bun
-into the git-ignored `download/` directory on first use and execs it, so every
-developer and every CI job runs the same version. Use it for **all** repository
-tooling, including nested calls inside scripts:
+Use the repository's pinned `./bun` wrapper for all workspace commands. It
+fetches the pinned Bun into ignored `download/` on first use. To change versions,
+update `version=` in `./bun` and the tag in `docker/Dockerfile.cli` together.
+Node 22.18+ is required for core's Node tests. Docker and Compose 2.20+ are
+required for database/evaluation checks.
 
 ```sh
 ./bun install
 ```
 
-To change the Bun version, edit `version=` in `./bun` and the `oven/bun` tag in
-`docker/Dockerfile.server`.
-
-Bun is the development toolchain only. `searchgres`, `@searchgres/protocol`,
-`@searchgres/filter`, `@searchgres/presentation`, and `@searchgres/client` must
-run on Node, Bun, and Deno:
-Biome bans the `Bun`/`Deno`
-globals and Bun-only/Deno-only specifiers there, and CI installs the packed
-tarball into a scratch project and imports it by package name under all three
-runtimes. Only `@searchgres/server`, `@searchgres/cli`, and `@searchgres/mcp` may use
-`Bun.*`, and they ship as compiled binaries rather than as importable source.
-
-## Workspace layout
+## Workspace and product boundaries
 
 | Package | Responsibility |
 | --- | --- |
-| `packages/core` | Runtime-agnostic Postgres search library; published as `searchgres`. |
-| `packages/protocol` | Runtime-neutral Zod RPC contract/OpenRPC source. |
-| `packages/filter` | Private runtime-neutral parser for the `searchgres` filter-expression DSL. |
-| `packages/presentation` | Private runtime-neutral record selector/projector shared by CLI and MCP. |
-| `packages/client` | Runtime-agnostic fetch JSON-RPC client. |
-| `packages/server` | Bun server component and the `searchgres-server` binary: config, RPC service, providers, tokenizer pool, worker lifecycle, provisioning. |
-| `packages/cli` | Bun-only `searchgres` binary: the unprivileged client, including import/export and its own flag/format helpers. It shares no code with `searchgres-server`. |
-| `packages/mcp` | Bun-only `searchgres-mcp` stdio server: twelve agent tools over the remote client. |
+| `packages/core` | Runtime-neutral published `searchgres` library, Node/Bun/Deno. |
+| `packages/cli` | Private Bun source for one compiled `searchgres` binary: direct DB commands, provisioning, workers, MCP stdio, config, filter DSL, presentation, tokenizers. |
 
-Dependency direction is intentionally one-way: CLI uses
-client/filter/presentation/protocol; MCP uses client/presentation/protocol;
-presentation, filter, and client use protocol; server uses core/protocol. CLI
-and MCP never import server or core. Core, protocol, filter, presentation, and
-client must not use Bun APIs.
+Core never depends on the CLI. The CLI calls core directly and owns its pools,
+provider credentials, and lifecycle. There is no server/client/protocol package.
+Core's `Truncator` API stays in core; model-pinned tokenizer assets and worker
+threads live under `packages/cli`. Biome keeps runtime-specific imports/globals
+out of core. CLI code can use Bun APIs.
 
-## Checks and tests
+## Checks
 
 ```sh
-./bun run check        # typecheck, lint, unit tests — no Docker needed
-./bun run check:full   # everything CI runs, database included
+./bun run check        # grammar freshness, types, lint, unit tests
+./bun run check:full   # above plus all database and compiled-binary tests
+./bun run compile
+./bun run bench:startup
 ```
 
-`check:full` is the pre-push gate. It runs the same scripts CI runs, including a
-freshness check for the generated filter railroad diagrams, and manages its own
-throwaway database via `scripts/with-postgres.ts` — the one place the
-container lifecycle is defined, shared with CI so the two cannot drift.
+`check:full` uses `scripts/with-postgres.ts` to build the PostgreSQL 18 image and
+create a unique disposable container on an ephemeral loopback port. It passes
+`TEST_DATABASE_URL` to tests and removes only its own container. It does not
+replace a local `pg:up` database or require port 5432 to be unused.
 
-Against a database you manage yourself:
+For a database you operate yourself:
 
 ```sh
-./bun run pg:up                            # build + start PostgreSQL 18
-./bun run test:db                          # build, compile all three binaries, run all suites
-./bun run --filter searchgres test:db      # just the core suite
-./bun run --filter @searchgres/server test:db   # just the compiled-server suite
+./bun run pg:up
+./bun run test:db
+./bun run --filter searchgres test:db
+./bun run --filter @searchgres/cli test:db  # compile first
 ./bun run pg:rm
 ```
 
-The filter DSL's authoritative ISO/IEC 14977 grammar and generated railroad
-reference are updated with:
+Core tests retain Node compatibility. CLI unit tests use Bun. Direct integration
+tests use PostgreSQL plus a deterministic fake OpenAI-compatible endpoint and
+exercise the compiled CLI and every MCP tool. The opt-in Compose smoke uses a
+real Ollama model.
+
+Cross-package sequencing stays in root `package.json`: build core before CLI.
+Package scripts do not call other packages. Avoid wildcard orchestration that
+continues downstream after a dependency failed. The package-local `dist/`
+contains implementation build output, not a published CLI API.
+
+## Filter DSL
 
 ```sh
 ./bun run generate:filter-grammar
 ./bun run check:filter-grammar
 ```
 
-`ebnf2railroad` is development-only; grammar generation is never part of package
-installation or runtime. The DSL's executable language examples live in
-`packages/filter/test/cases.yaml`: each case contains an expression and exactly
-one expected protocol result or structured error. The Node test harness loads
-that conformance file with the development-only `yaml` package. Keep generated
-limit and diagnostic-mechanics tests in TypeScript rather than encoding huge or
-programmatically constructed inputs in YAML.
+The ISO/IEC 14977 grammar is
+`packages/cli/src/filter/grammar/filter.ebnf`; the generated public railroad
+reference remains `docs/reference/filter-syntax.html`. Executable conformance
+cases are `packages/cli/src/filter/test/cases.yaml`. The parser emits core-shaped
+filters; there is no protocol AST package. `ebnf2railroad` and fixture `yaml`
+loading are development-only. Keep programmatic limits/diagnostics tests in
+TypeScript.
 
-The suites expect PostgreSQL at `TEST_DATABASE_URL`, defaulting to
-`postgresql://postgres@127.0.0.1:5432/postgres`. The image includes
-PostgreSQL 18, pgvector, pg_textsearch, and ltree.
-
-### How the scripts are organised
-
-Package scripts are single commands that run in their own package and never call
-another package. All cross-package sequencing lives in the root `package.json`
-as explicit `&&` chains. That ordering is load-bearing: the libraries are
-consumed downstream through their built `dist/` and exports map, so they must be
-built before the server and CLI are typechecked — which is why the chains are
-spelled out rather than using `--filter '*'`. `--filter '*'` respects dependency
-*order* but does not stop dependents when a dependency's script fails, turning
-one real error into a cascade of misleading ones.
-
-## Publishing the core package
-
-`packages/core` is the unscoped npm package `searchgres`. A push of a stable
-`vX.Y.Z` tag starts `.github/workflows/release.yml`; the workflow accepts only a
-tag whose commit is on `main` and whose version exactly matches
-`packages/core/package.json`. It runs the normal source checks, builds and packs
-the core, installs the tarball into a scratch consumer, verifies its public
-entry point and legal files, then publishes it with npm provenance.
-
-Releases are hand-versioned. Before tagging:
-
-1. Update `packages/core/package.json` and `packages/core/src/version.ts` to the
-   same version.
-2. Update `CHANGELOG.md`.
-3. Run `./bun run check:full`, commit the release changes, and merge them to
-   `main`.
-4. Tag that exact commit and push the tag:
-
-   ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-
-Do not move or reuse a published version tag. npm versions are immutable; a
-workflow rerun safely skips publication if that exact version already exists.
-
-The `searchgres` name is initially unclaimed, and npm cannot attach a trusted
-publisher to a package before its first publication. For the first release,
-create a short-lived granular npm publish token and add it as the repository
-Actions secret `NPM_TOKEN`. The workflow still requests GitHub's OIDC identity
-and passes `--provenance`, so the first tarball receives a provenance
-attestation. Afterward, configure the package on npm with this trusted
-publisher:
-
-- provider: **GitHub Actions**
-- organization: **timescale**
-- repository: **searchgres**
-- workflow: **release.yml**
-- environment: leave empty
-
-Then delete the `NPM_TOKEN` repository secret and revoke the bootstrap token.
-Future tags publish with short-lived npm credentials obtained through OIDC; no
-long-lived npm secret is needed. npm trusted publishing is workflow-filename
-sensitive, so coordinate any rename of `release.yml` with the package setting.
-
-## Building the binaries
-
-There are three, and the split is load-bearing:
-
-| Binary | Package | Commands | Needs |
-| --- | --- | --- | --- |
-| `searchgres` | `packages/cli` | records, trees, search | `fetch` only |
-| `searchgres-server` | `packages/server` | `config`, `init`, `serve`, `destroy` | PostgreSQL, core, provider credentials |
-| `searchgres-mcp` | `packages/mcp` | twelve MCP tools over stdio | `fetch`, MCP SDK |
-
-`bun build --compile` initializes a binary's entire module graph at startup
-whether a command uses it or not — a lazy `import()` does **not** defer it. A
-single binary therefore made every `searchgres search` pay for postgres, the
-embedding provider, and the prompt library: 68ms versus 20ms for the client
-alone. Keeping that code unreachable from `searchgres`'s entry point is the only
-mechanism that works, so **do not import `searchgres`, `postgres`,
-`@searchgres/server`, or `@clack/prompts` from `packages/cli/src`.**
-
-**The client binaries never import the server or each other.**
-`searchgres-server` owns a config file, a `.env`, and database and provider
-credentials; `searchgres` knows only a server URL (`--server` or
-`SEARCHGRES_URL`). Each binary package therefore keeps its own shell-facing
-helpers. Reusable runtime-neutral semantics belong in focused packages:
-selection and projection live only in `@searchgres/presentation`. Biome prevents
-MCP from importing CLI, server, core, or postgres and prevents CLI/server
-coupling.
-
-Build all three for the current host:
+## Building and distributing the binary
 
 ```sh
 ./bun run compile
 ./dist/searchgres --help
-./dist/searchgres-server --help
-./dist/searchgres-mcp --help
-```
-
-Build every release target (Linux/Windows/macOS, amd64 and arm64):
-
-```sh
+./dist/searchgres mcp --help
 ./bun run compile:all
 ```
 
-These root `dist/` filenames are the release contract consumed by `install.sh`.
-A GitHub release must attach every platform binary plus a sibling
-`<asset>.sha256` containing its SHA-256 digest. The installer downloads and
-verifies all three matching executables before moving any into place. Its local
-HTTP fixture tests run as part of `test:unit`.
+Only `searchgres` ships. `compile:all` produces Linux/Windows/macOS amd64/arm64
+assets and sibling SHA-256 files in root `dist/`. Root compile commands clear
+stale artifacts. The installer downloads/verifies one matching executable.
 
-On macOS, both commands replace Bun's signature with an ad-hoc signature carrying
-`scripts/macos-entitlements.plist`; `compile:all` does this for both macOS
-architectures before calculating their checksums. This makes local binaries
-immediately runnable and testable. Builds on other operating systems cannot run
-Apple's `codesign`, so the installer retains the same signing step as a fallback
-for downloaded macOS artifacts. To inspect a local build:
+Bun's compiled graph previously measured approximately 68 ms startup versus
+20 ms for the removed client-only CLI; lazy imports did not eliminate compiled
+module initialization. One binary is an intentional simplification, not a
+license for unbounded startup work. Provider, tokenizer, MCP, and prompt code
+remain; tokenizer threads are created only on first use. Measure the actual
+binary with `./bun run bench:startup` (30 warm-cache samples after three warmups
+for `--version`, `--help`, and unknown-option validation). Review material
+regressions rather than comparing results across different machines as a gate.
+
+Initial direct-binary baseline on the development macOS arm64 host (30 samples):
+`--version` median 77.0 ms / p95 79.3 ms; `--help` median 78.1 ms / p95 85.1 ms;
+unknown option median 77.1 ms / p95 78.2 ms. These are warm-cache process-start
+measurements, not database/provider latency or a cross-platform performance
+promise. The larger single graph has a measurable cost; keep monitoring it.
+
+On macOS, compile commands replace Bun's signature with an ad-hoc signature and
+`scripts/macos-entitlements.plist` for JIT support. All-target macOS builds are
+signed when built on macOS; the installer retains signing as a fallback for
+assets built elsewhere. To inspect:
 
 ```sh
 codesign --verify --strict dist/searchgres
 codesign -d --entitlements :- dist/searchgres
 ```
 
-The root build bundles the tokenizer worker first because `searchgres-server`
-embeds it. Package-local `dist/` directories contain compiled JavaScript and
-type declarations; the three native executables live only in the root `dist/`
-directory. Root compile commands clear that directory first so stale platform
-artifacts cannot mask failures.
+`packages/cli/scripts/bundle-tokenizer-worker.ts` generates ignored
+`packages/cli/src/tokenizer/tokenizer.worker.generated.cjs`. The binary imports
+it as embedded text and launches workers via `node:worker_threads` with `eval`.
+Tokenizer model assets are bundled; no Hugging Face network request is needed.
+Never manually edit or commit the generated worker, `dist/`, `.env`, or secrets.
 
-## Local setup
-
-Generate a reviewable server config and environment-file template without
-connecting to PostgreSQL or the embedding provider:
+## Local configuration and MCP
 
 ```sh
-./dist/searchgres-server config
+./dist/searchgres config
+./dist/searchgres init --config searchgres.yaml
+./dist/searchgres embeddings worker --config searchgres.yaml
+./dist/searchgres mcp --config searchgres.yaml
 ```
 
-Or supply explicit noninteractive arguments:
+The wizard is offline. `init --if-not-exists` strictly validates existing index
+shape, not just schema existence. Ordinary commands never auto-provision.
+See the [CLI guide](docs/guides/cli.md) for all commands and defaults and the
+[MCP guide](docs/mcp/index.md) for host configuration.
+
+Config lookup is explicit `--config`, `SEARCHGRES_CONFIG`, then
+`./searchgres.yaml`. `.env` next to the config loads without replacing process
+environment values; `--env-file` and `--no-env-file` override that behavior.
+Generated secret files use owner-only permissions and exclusive creation.
+
+The small dotenv reader/writer is owned here because there is no shared writer
+across dotenv and deployment dialects. Generated values reject line breaks,
+`#`, and leading/trailing whitespace instead of silently changing credentials.
+Percent-encode URL passwords (`%23` for `#`). Existing dotenv tests preserve
+round-trip behavior. Config files name secret environment variables, not literal
+connection strings or API keys.
+
+## Compose evaluation
 
 ```sh
-./dist/searchgres-server config \
-  --config searchgres.yaml \
-  --database-url-env SEARCHGRES_DATABASE_URL \
-  --schema docs \
-  --embedding-model text-embedding-3-small \
-  --dimensions 1536 \
-  --vector-type halfvec
-```
-
-After reviewing the generated files, initialize the configured database schema
-and start the server:
-
-```sh
-./dist/searchgres-server init --config searchgres.yaml
-./dist/searchgres-server serve --config searchgres.yaml
-```
-
-Use `init --if-not-exists` in idempotent automation. It accepts only an existing
-valid Searchgres index whose vector type and dimensions match the config; it
-never ignores malformed, incompatible, or ordinary same-named schemas.
-
-`init`, `serve`, and `destroy` load a `.env` next to the config by default without
-overwriting already-set process environment variables. Use
-`--env-file <path>` or `--no-env-file` to control that behavior.
-
-Use `--read-only` for a query-only server: it rejects mutation RPC methods and
-does not start the embedding worker, while semantic search still embeds query
-text on demand.
-
-## `.env` handling
-
-The interactive `searchgres-server config` wizard can generate a `.env`, so this
-repository owns both halves of the format. There is no dependency for it,
-deliberately:
-
-- `dotenv` has no writer, so the half where mistakes are costly would stay ours.
-- The dialects disagree on the cases that matter. `dotenv` reads `#` as starting
-  a comment and truncates there; common deployment consumers such as Docker
-  Compose's `env_file` take every character literally and do **not** strip
-  quotes.
-
-Because quoting cannot satisfy both (`K="v"` can reach a Compose-deployed server
-with literal quotes), `dotenvLine` writes only values that all three readers
-agree on and rejects the rest with a message pointing at the environment
-variable instead. Rejected: line breaks, `#`, and leading or trailing
-whitespace. Everything else — `=`, `:`, `/`, `@`, `?`, `$`, quotes, backslashes,
-inner spaces — is written literally and round-trips.
-
-Ordinary connection strings are unaffected: `#` is not legal in a URL outside a
-fragment, so `postgres://u:p#w@h/db` is already invalid (`new URL` throws) and
-the correct spelling, `postgres://u:p%23w@h/db`, contains no `#` and writes
-cleanly. The rejection message says so, rather than sending the user to an
-environment variable they do not need.
-
-memory-engine, for comparison, never generated a `.env`: it shipped a
-hand-maintained `.env.sample` to copy. We accept the extra responsibility
-because one-command setup is worth it, which is why the validation exists.
-
-## Docker Compose
-
-Start the complete evaluation stack—PostgreSQL, Ollama, model pull, strict
-provisioning, and the server—with:
-
-```sh
-docker compose up --build
-```
-
-The checked-in `docker/evaluation/searchgres.yaml` is mounted read-only into both
-provisioning and serving. No generated config, root `.env`, provider account, or
-API key is required. State survives `docker compose down`; use
-`docker compose down -v` for an explicit reset. The API is published only at
-`127.0.0.1:3000`, while PostgreSQL and Ollama have no host ports.
-
-Start only PostgreSQL for database development with:
-
-```sh
-docker compose up -d db
-docker compose exec db psql -U postgres -d postgres
-```
-
-Cheap deterministic topology checks run in `test:unit`; CI also runs
-`docker compose config --quiet` and builds the server image from the clean
-`.dockerignore` context. The real-model smoke test is opt-in because Ollama's
-image and model are large:
-
-```sh
+docker compose up -d --build
+docker compose wait model init
+./dist/searchgres --config docker/evaluation/searchgres.yaml \
+  --env-file docker/evaluation/.env.sample info
 ./bun run check:compose
 ./bun run test:compose
 ```
 
-The smoke script owns a unique Compose project and always removes its volumes.
-It tests semantic, BM25, and hybrid retrieval plus preserved-state restart and
-idempotent provisioning. Run the manual **Evaluation Compose smoke** GitHub
-Actions workflow as the Linux amd64 gate before releases and after stack/model
-changes. See
-[the evaluation guide](docs/guides/docker-compose.md) for operating and security
-caveats.
+Services are `db`, `ollama`, `model`, `init`, and `worker`. DB/Ollama ports are
+loopback-bound for host CLI access; semantic queries themselves require the
+provider. Init/worker use the same read-only config with container-specific
+environment values. See the [evaluation guide](docs/guides/docker-compose.md).
 
-## Generated files
+Cheap topology tests run with unit tests. CI builds `docker/Dockerfile.cli`
+from the clean `.dockerignore` context. The optional real-model smoke owns a
+unique project, ephemeral ports, and disposable volumes; it verifies direct
+CLI retrieval, worker processing, and preserved-state restart. Run the manual
+Compose workflow before releases and after stack/model changes.
 
-`packages/server/scripts/bundle-tokenizer-worker.ts` generates
-`packages/server/src/tokenizer.worker.generated.cjs`. It is ignored and must not
-be edited manually. Build/typecheck scripts regenerate it as needed.
+## Publishing the core package
 
-Never commit `dist/`, `.env`, credentials, or generated tokenizer-worker source.
+Core remains the unscoped npm package `searchgres`. A stable `vX.Y.Z` tag starts
+`.github/workflows/release.yml`. Its commit must be on `main` and its version
+must match `packages/core/package.json`. Release checks build/pack core, install
+it into a scratch npm consumer, verify its public entry point/legal files, and
+publish with provenance. CI tests the packed core under Node, Bun, and Deno.
+
+Before tagging:
+
+1. Match versions in `packages/core/package.json` and `packages/core/src/version.ts`.
+2. Update `CHANGELOG.md`.
+3. Run `./bun run check:full`, review startup measurements and Compose gates,
+   commit and merge to `main`.
+4. Tag that commit and push the immutable tag.
+
+Never move/reuse a published tag. A rerun skips an already-published npm version.
+For first publication, configure a short-lived granular `NPM_TOKEN` Actions
+secret. Afterward configure npm trusted publishing for `timescale/searchgres`,
+workflow `release.yml`, no environment; remove/revoke the bootstrap token.
+Later releases use GitHub OIDC credentials and npm provenance. Coordinate any
+workflow rename with npm's trusted-publisher setting.
+
+After core publication succeeds, the release workflow builds the one binary on
+macOS, signs both macOS targets, and attaches all platform executables and their
+checksums to the tagged GitHub release. The binary reports core's library
+version; it does not have an independently versioned product API.

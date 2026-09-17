@@ -1,53 +1,31 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
-  "vcs": {
-    "enabled": true,
-    "clientKind": "git",
-    "useIgnoreFile": true
-  },
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": false,
     "includes": [
       "**",
       "!**/dist",
       "!docs/reference/filter-syntax.html",
-      "!packages/server/assets"
+      "!packages/cli/assets"
     ]
   },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2
-  },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "style": {
-        "noNonNullAssertion": "error"
-      }
+      "style": { "noNonNullAssertion": "error" }
     }
   },
-  "javascript": {
-    "formatter": {
-      "quoteStyle": "double"
-    }
-  },
+  "javascript": { "formatter": { "quoteStyle": "double" } },
   "assist": {
     "enabled": true,
-    "actions": {
-      "source": {
-        "organizeImports": "on"
-      }
-    }
+    "actions": { "source": { "organizeImports": "on" } }
   },
   "overrides": [
     {
-      "includes": [
-        "packages/core/**",
-        "packages/filter/**",
-        "packages/presentation/**"
-      ],
+      "includes": ["packages/core/**"],
       "linter": {
         "rules": {
           "style": {
@@ -55,8 +33,8 @@
               "level": "error",
               "options": {
                 "deniedGlobals": {
-                  "Bun": "this package must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Bun global.",
-                  "Deno": "this package must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of the Deno global."
+                  "Bun": "Core must run on Node, Bun, and Deno.",
+                  "Deno": "Core must run on Node, Bun, and Deno."
                 }
               }
             },
@@ -65,11 +43,9 @@
               "options": {
                 "patterns": [
                   {
-                    "group": ["bun", "bun:*"],
-                    "message": "this package must run on Node, Bun, and Deno. Use node:-prefixed built-ins or web standards instead of Bun-only APIs."
-                  },
-                  {
                     "group": [
+                      "bun",
+                      "bun:*",
                       "jsr:*",
                       "jsr:*/**",
                       "npm:*",
@@ -77,7 +53,16 @@
                       "http://**",
                       "https://**"
                     ],
-                    "message": "this package must run on Node, Bun, and Deno. jsr:/npm:/URL specifiers are Deno-only; use a bare package specifier resolved from package.json."
+                    "message": "Core must remain runtime-neutral; use node: built-ins or standard package imports."
+                  },
+                  {
+                    "group": [
+                      "@searchgres/cli",
+                      "@searchgres/cli/**",
+                      "../cli/**",
+                      "../../cli/**"
+                    ],
+                    "message": "Core never depends on the reference binary."
                   }
                 ]
               }
@@ -88,94 +73,7 @@
     },
     {
       "includes": ["**/*.test.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noNonNullAssertion": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/cli/src/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": {
-              "level": "error",
-              "options": {
-                "patterns": [
-                  {
-                    "group": ["searchgres", "searchgres/**"],
-                    "message": "searchgres must stay thin: bun --compile initializes the whole module graph at startup, so importing the core library here costs every searchgres invocation. Database and provisioning work belongs in searchgres-server (packages/server/src/cli.ts)."
-                  },
-                  {
-                    "group": ["postgres", "postgres/**"],
-                    "message": "searchgres must stay thin: it talks to the server over fetch, never to PostgreSQL directly. Database work belongs in searchgres-server."
-                  },
-                  {
-                    "group": ["@searchgres/server", "@searchgres/server/**"],
-                    "message": "searchgres must stay thin: importing the server pulls the embedding provider and tokenizer pool into startup. This belongs in searchgres-server."
-                  },
-                  {
-                    "group": ["@clack/prompts", "@clack/prompts/**"],
-                    "message": "searchgres must stay thin: the prompt library is only needed by searchgres-server's interactive config command."
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/mcp/src/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": {
-              "level": "error",
-              "options": {
-                "patterns": [
-                  {
-                    "group": [
-                      "searchgres",
-                      "searchgres/**",
-                      "postgres",
-                      "postgres/**",
-                      "@searchgres/server",
-                      "@searchgres/server/**",
-                      "@searchgres/cli",
-                      "@searchgres/cli/**"
-                    ],
-                    "message": "searchgres-mcp is an unprivileged remote client; use @searchgres/client and runtime-neutral shared packages only."
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/server/src/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": {
-              "level": "error",
-              "options": {
-                "patterns": [
-                  {
-                    "group": ["@searchgres/cli", "@searchgres/cli/**"],
-                    "message": "searchgres-server shares no code with searchgres. It owns a config file, a .env, and database/provider credentials; searchgres knows only a server URL. Duplicate the helper here rather than coupling the privileged binary to the unprivileged one."
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
+      "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } }
     }
   ]
 }

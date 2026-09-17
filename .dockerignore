@@ -8,7 +8,7 @@ download
 .env.*
 coverage
 *.log
-packages/server/src/tokenizer.worker.generated.cjs
+packages/cli/src/tokenizer/tokenizer.worker.generated.cjs
 
-# The evaluation config is intentionally part of the clean server build context.
+# The evaluation config is intentionally part of the clean CLI build context.
 !docker/evaluation/searchgres.yaml

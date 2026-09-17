@@ -1,16 +1,16 @@
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
-import type { SearchgresClient } from "@searchgres/client";
+import { YAML } from "bun";
+import type { Index } from "searchgres";
+import { inputFormat, parseStructured } from "./format.ts";
 import {
   type RecordInput,
   recordInputSchema,
   type SearchParams,
-} from "@searchgres/protocol";
-import { YAML } from "bun";
-import { inputFormat, parseStructured } from "./format.ts";
+} from "./inputs.ts";
+import { safeError } from "./runtime/report.ts";
 
 const MAX_BATCH_RECORDS = 1000;
-const REQUEST_BUDGET_RATIO = 0.75;
 const importExtensions = new Set([
   ".ndjson",
   ".jsonl",
@@ -43,7 +43,7 @@ export interface ImportSummary {
 }
 
 export async function importRecords(
-  client: SearchgresClient,
+  client: Index,
   options: ImportOptions,
 ): Promise<ImportSummary> {
   const paths = await collectInputPaths(
@@ -87,11 +87,7 @@ export async function importRecords(
     };
   }
 
-  const info = await client.info();
-  const byteBudget = Math.floor(
-    info.maxRequestBodyBytes * REQUEST_BUDGET_RATIO,
-  );
-  const batches = chunkRecordsForRequest(records, byteBudget, options.mode);
+  const batches = chunkRecords(records);
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
@@ -100,12 +96,9 @@ export async function importRecords(
     try {
       const result =
         options.mode === "error"
-          ? await client.insertMany({ records: [...batch] })
-          : await client.upsertMany({
-              records: [...batch],
-              onConflict: options.mode,
-            });
-      for (const item of result.results) {
+          ? await client.insertMany(batch)
+          : await client.upsertMany(batch, { onConflict: options.mode });
+      for (const item of result) {
         if (item.status === "inserted") inserted += 1;
         else if (item.status === "updated") updated += 1;
         else skipped += 1;
@@ -120,49 +113,13 @@ export async function importRecords(
   return { read: records.length, inserted, updated, skipped, failed };
 }
 
-export function chunkRecordsForRequest(
+export function chunkRecords(
   records: readonly RecordInput[],
-  byteBudget: number,
-  mode: ImportMode,
 ): readonly (readonly RecordInput[])[] {
   const batches: RecordInput[][] = [];
-  let batch: RecordInput[] = [];
-  let bytes = envelopeBytes([], mode);
-
-  for (const record of records) {
-    const recordBytes =
-      utf8Bytes(JSON.stringify(record)) + (batch.length > 0 ? 1 : 0);
-    if (
-      batch.length > 0 &&
-      (batch.length >= MAX_BATCH_RECORDS || bytes + recordBytes > byteBudget)
-    ) {
-      batches.push(batch);
-      batch = [];
-      bytes = envelopeBytes([], mode);
-    }
-    batch.push(record);
-    bytes += recordBytes;
-  }
-  if (batch.length > 0) batches.push(batch);
+  for (let offset = 0; offset < records.length; offset += MAX_BATCH_RECORDS)
+    batches.push(records.slice(offset, offset + MAX_BATCH_RECORDS));
   return batches;
-}
-
-function envelopeBytes(
-  records: readonly RecordInput[],
-  mode: ImportMode,
-): number {
-  const method =
-    mode === "error"
-      ? "searchgres.v1.record.insertMany"
-      : "searchgres.v1.record.upsertMany";
-  return utf8Bytes(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: "999999999",
-      method,
-      params: mode === "error" ? { records } : { records, onConflict: mode },
-    }),
-  );
 }
 
 async function collectInputPaths(
@@ -247,7 +204,7 @@ export interface ExportSummary {
 }
 
 export async function exportRecords(
-  client: SearchgresClient,
+  client: Index,
   options: ExportOptions,
 ): Promise<ExportSummary> {
   if (options.format === "md" && options.file === undefined) {
@@ -268,13 +225,13 @@ export async function exportRecords(
         limit: pageSize,
         ...(after === undefined ? {} : { after }),
       });
-      for (const result of page.results) {
+      for (const result of page) {
         await writer.write(exportableRecord(result));
         exported += 1;
         if (!result.hasEmbedding) withoutEmbedding += 1;
       }
-      const last = page.results.at(-1);
-      if (last === undefined || page.results.length < pageSize) break;
+      const last = page.at(-1);
+      if (last === undefined || page.length < pageSize) break;
       after = last.id;
     }
   } finally {
@@ -287,7 +244,7 @@ export async function exportRecords(
 function exportableRecord(record: {
   readonly id: string;
   readonly content: string;
-  readonly meta: NonNullable<RecordInput["meta"]>;
+  readonly meta: Record<string, unknown>;
   readonly tree: string;
   readonly temporal: string | null;
   readonly name: string | null;
@@ -295,7 +252,7 @@ function exportableRecord(record: {
   return {
     id: record.id,
     content: record.content,
-    meta: record.meta,
+    meta: recordInputSchema.shape.meta.parse(record.meta),
     tree: record.tree,
     ...(record.temporal === null
       ? {}
@@ -379,10 +336,6 @@ function exportTimestamp(value: string): string {
   return new Date(milliseconds).toISOString();
 }
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).length;
-}
-
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return safeError(error).message;
 }

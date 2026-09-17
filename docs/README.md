@@ -22,7 +22,8 @@ policy, and retrieval pipeline.
 
 Want to evaluate it without writing an application? Use the
 **[Docker Compose stack](guides/docker-compose.md)** to run PostgreSQL, Ollama,
-provisioning, and the reference API server with no provider key.
+provisioning, and an embedding worker with no provider key. Use the compiled CLI
+directly against the database and provider.
 
 ## Core library guides
 
@@ -52,17 +53,17 @@ provisioning, and the reference API server with no provider key.
 
 ## Reference implementations and evaluation
 
-The core library is the primary product. The repository's server, client, CLI,
-MCP server, and Compose stack are maintained examples of how an application can
-be built around it; they are not required layers or co-equal library APIs.
+The core library is the primary product. The repository's compiled CLI (including
+MCP stdio) and Compose stack are maintained examples built directly around it;
+they are not required layers or co-equal library APIs.
 
 - **[Component overview and boundaries](reference-applications.md)** — understand
   what each reference component demonstrates and what is privately packaged.
 - **[Docker Compose evaluation](guides/docker-compose.md)** — try the complete
   reference stack locally without an API key.
-- **[API server](guides/server.md)** — study or run the single-index HTTP
-  reference implementation.
-- **[MCP server](mcp/index.md)** — adapt the reference API to agent tools.
+- **[CLI](guides/cli.md)** — provision an index, search, import/export, and run
+  embedding workers directly against PostgreSQL.
+- **[MCP](mcp/index.md)** — run `searchgres mcp` for direct database agent tools.
 
 ## Reference
 

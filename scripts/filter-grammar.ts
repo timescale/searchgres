@@ -2,7 +2,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const source = "packages/filter/grammar/filter.ebnf";
+const source = "packages/cli/src/filter/grammar/filter.ebnf";
 const target = "docs/reference/filter-syntax.html";
 const check = process.argv.includes("--check");
 const output = check

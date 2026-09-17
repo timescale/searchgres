@@ -1,4 +1,5 @@
 import { JSON5, YAML } from "bun";
+import { InputError } from "./runtime/report.ts";
 
 export type InputFormat = "json" | "ndjson" | "json5" | "yaml" | "md";
 export type OutputFormat = "json" | "ndjson" | "yaml";
@@ -33,19 +34,32 @@ export function parseStructured(
   format: InputFormat,
   allowCollections: boolean,
 ): unknown {
+  try {
+    return parseStructuredValue(source, format, allowCollections);
+  } catch (error) {
+    if (error instanceof InputError) throw error;
+    throw new InputError("Invalid structured input; check document syntax");
+  }
+}
+
+function parseStructuredValue(
+  source: string,
+  format: InputFormat,
+  allowCollections: boolean,
+): unknown {
   if (format === "json") return JSON.parse(source);
   if (format === "json5") return JSON5.parse(source);
   if (format === "yaml") return YAML.parse(source);
   if (format === "ndjson") {
     if (!allowCollections)
-      throw new Error("NDJSON requires a collection input");
+      throw new InputError("NDJSON requires a collection input");
     return source
       .split(/\r?\n/)
       .filter((line) => line.trim() !== "")
       .map((line) => JSON.parse(line));
   }
   if (format === "md") return parseMarkdownRecord(source);
-  throw new Error(`unsupported input format: ${format satisfies never}`);
+  throw new InputError(`unsupported input format: ${format satisfies never}`);
 }
 
 export function inputFormat(
@@ -57,7 +71,7 @@ export function inputFormat(
     if (["json", "ndjson", "json5", "yaml", "md"].includes(explicit)) {
       return explicit as InputFormat;
     }
-    throw new Error("format must be json, ndjson, json5, yaml, or md");
+    throw new InputError("format must be json, ndjson, json5, yaml, or md");
   }
   const lower = path.toLowerCase();
   if (lower.endsWith(".ndjson") || lower.endsWith(".jsonl")) return "ndjson";
@@ -110,6 +124,8 @@ export function writeStructuredOutput(
   value: unknown,
   format: OutputFormat,
 ): void {
+  // Core returns Dates; every output format presents the same ISO strings.
+  value = JSON.parse(JSON.stringify(value));
   if (format === "json") return void console.log(JSON.stringify(value));
   if (format === "yaml")
     return void console.log(YAML.stringify(value).trimEnd());
@@ -124,8 +140,12 @@ function collectionFromEnvelope(value: unknown): readonly unknown[] {
       return value.results;
     if ("entries" in value && Array.isArray(value.entries))
       return value.entries;
+    if ("failures" in value && Array.isArray(value.failures))
+      return value.failures;
   }
-  throw new Error("--ndjson applies only to commands that return a collection");
+  throw new InputError(
+    "--ndjson applies only to commands that return a collection",
+  );
 }
 
 function parseMarkdownRecord(source: string): Record<string, unknown> {
@@ -133,10 +153,10 @@ function parseMarkdownRecord(source: string): Record<string, unknown> {
   if (!normalized.startsWith("---\n")) return { content: source };
   const end = normalized.indexOf("\n---\n", 4);
   if (end === -1)
-    throw new Error("Markdown frontmatter is missing its closing ---");
+    throw new InputError("Markdown frontmatter is missing its closing ---");
   const parsed = YAML.parse(normalized.slice(4, end));
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Markdown frontmatter must be a YAML object");
+    throw new InputError("Markdown frontmatter must be a YAML object");
   }
   return {
     ...(parsed as Record<string, unknown>),
