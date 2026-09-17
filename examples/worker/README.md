@@ -15,3 +15,9 @@ node index.ts
 ```
 
 Send `SIGINT` or `SIGTERM` for graceful shutdown.
+
+The example reports safe error codes from `onError`, not raw provider/driver
+messages. Ordinary provider failures do not invoke that callback: monitor
+`queueStats()` and inspect `listEmbeddingFailures()` from your operational
+monitoring process as well. See the
+[embedding guide](../../docs/guides/embeddings.md#run-a-continuous-worker).

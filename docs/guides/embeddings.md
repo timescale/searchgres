@@ -14,7 +14,8 @@ appear in semantic results.
 1. You write a record without a vector.
 2. A database trigger enqueues embedding work for it.
 3. A drainer claims the work, calls your embedding model, and writes the vector.
-4. The record now participates in semantic and hybrid search.
+4. The record now participates in semantic search and the semantic arm of hybrid.
+   It could already match the BM25 arm before embedding.
 
 You choose how step 3 runs: a bounded pass on demand, or a continuous worker.
 
@@ -76,12 +77,16 @@ rows, so the work is preserved for a retry or a corrected configuration.
 For steady ingestion, run a background worker:
 
 ```ts
+import { SearchgresError } from "searchgres";
+
 const worker = index.startEmbeddingWorker({
   intervalMs: 1_000,             // poll delay when idle
   batchSize: 50,
   pruneRetentionMs: 604_800_000, // prune terminal rows when idle (7 days)
   onError(error, { phase, consecutiveErrors, backoffMs }) {
-    logger.error({ error, phase, consecutiveErrors, backoffMs }, "embedding worker");
+    // Do not send raw provider/driver diagnostics to an unrestricted log.
+    const code = error instanceof SearchgresError ? error.code : "INTERNAL";
+    logger.error({ code, phase, consecutiveErrors, backoffMs }, "embedding worker");
   },
 });
 
@@ -93,27 +98,34 @@ The worker processes a batch, immediately continues while work exists, and
 sleeps `intervalMs` when idle. `stop()` is graceful: it interrupts the idle wait,
 lets any in-flight batch finish, and never closes your pool.
 
-**Always pass `onError`.** The worker catches failures from individual drain or
-prune ticks and keeps its polling loop running: when a pass throws — a
-misconfigured model (`DimensionMismatchError`), a revoked key
-(`EmbeddingProviderError`), an unreachable database — it backs off
-exponentially (up to 60s) and retries. Process termination and fatal failures
-outside that guarded loop still stop the worker. `onError` is how you find out. It
-receives the error plus `phase` (`process` for a drain pass, `prune` for idle
-pruning), `consecutiveErrors`, and the `backoffMs` it is about to sleep. A
-`RateLimitError` is reported too, with the provider's retry delay as
-`backoffMs`, and does not count toward `consecutiveErrors`. Call `worker.stop()`
+**Pass `onError` and monitor the queue.** The callback reports faults that escape
+a drain pass, such as a wrong-dimension model (`DimensionMismatchError`) or a
+database failure. The worker backs off exponentially (up to 60s) and retries
+these failed passes. Idle-prune failures are reported too, but do not fail the
+drain pass. Process termination and fatal failures outside the guarded loop
+still stop the worker.
+
+The callback receives the error plus `phase` (`process` for a drain pass, `prune`
+for idle pruning), `consecutiveErrors`, and the `backoffMs` before the next tick.
+A `RateLimitError` is reported with the provider's retry delay (or the default
+backoff), and does not count toward `consecutiveErrors`. Call `worker.stop()`
 from inside it if you would rather give up than retry. A throwing callback is
 ignored.
 
-Ordinary per-row provider failures do not reach `onError`: they are recorded on
-the queue row (`last_error`) and retried up to `maxAttempts`. If the current
-record version still has no vector after exhausting that budget, it shows up in
-[`queueStats().failed`](#monitor-the-queue) and
-[`listEmbeddingFailures()`](#inspect-and-retry-terminal-failures).
+Ordinary provider failures, including rejected credentials and transient network
+errors during embedding, do not reach `onError`. They are recorded on the queue
+rows (`last_error`) and retried under the queue's attempt policy. Monitor
+[`queueStats()`](#monitor-the-queue) and
+[`listEmbeddingFailures()`](#inspect-and-retry-terminal-failures) as well: a
+worker can be running without callback errors while embedding work is failing.
+Terminal classification follows the visibility-expiry sweep described below.
 
-It is concurrency-safe: run as many workers or processes against one index as you
-like — claims use `FOR UPDATE SKIP LOCKED`, so they never double-embed a row.
+Multiple workers or processes can drain one index concurrently. Claims use
+`FOR UPDATE SKIP LOCKED` and a visibility lease, not exactly-once provider
+execution: after a lease expires, another worker can retry a row even if the
+original provider call is still running. Write-back is fenced against changed
+record inputs and already-finalized queue rows. Size `leaseDurationMs` for the
+whole batch, including tokenization, provider retries, and write-back.
 
 ## Monitor the queue
 
@@ -157,11 +169,15 @@ for (const failure of failures) {
     queueId: failure.queueId,
     recordId: failure.recordId,
     attempts: failure.attempts,
-    error: failure.lastError,
     failedAt: failure.failedAt,
   });
 }
 ```
+
+`failure.lastError` contains the stored provider/driver diagnostic and may
+include sensitive data. Inspect it only in a trusted environment; redact it
+before sending it to logs or other systems (see
+[Observability](production.md#observability)).
 
 Each result describes a failed job only while its `contentVersion` is still the
 record's current version and the record still lacks a vector. Historical jobs
@@ -202,10 +218,11 @@ All durations are milliseconds.
 
 - **`leaseDurationMs`** (default `300000`) — how long a claimed row is hidden from
   other drainers. If a drainer crashes, its rows reappear after the lease.
-- **`maxAttempts`** (default `3`) — attempt threshold used by each drainer's claim
-  sweep. Set it per `processEmbeddings()` call or when starting a worker; it is
-  not stored in the schema. Increasing it does not revive already-terminal rows;
-  use `retryEmbeddingFailures()` for those.
+- **`maxAttempts`** (default `3`) — queue-claim attempt threshold used by each
+  drainer's sweep, not a limit on provider HTTP requests. Set it per
+  `processEmbeddings()` call or when starting a worker; it is not stored in the
+  schema. Increasing it does not revive already-terminal rows; use
+  `retryEmbeddingFailures()` for those.
 - **`pruneRetentionMs`** (default `604800000`) — how long terminal rows are kept.
 
 ## Why this is safe
@@ -214,9 +231,11 @@ You rarely need to think about it, but the guarantees are worth knowing:
 
 - **Any writer enqueues.** The queue is driven by database triggers, so records
   written by direct SQL or another service are embedded too.
-- **The queue is the retry authority**, not the embedding SDK. Ordinary failures
-  are recorded and retried; the provider is called once per batch, outside any
-  transaction.
+- **The queue owns durable retries.** Within one claim, core calls the AI SDK's
+  embedding API with its default retry policy (up to two retries for retryable
+  failures). One queue attempt can therefore make multiple provider requests.
+  If generation still fails, the queue retains the work for a later attempt.
+  Provider calls run outside the claim transaction.
 - **Stale vectors can't win.** Every write-back is guarded by the record's
   version, so a vector generated for an old version of a record is discarded
   rather than overwriting a newer one.

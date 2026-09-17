@@ -68,9 +68,9 @@ available in `public`.
 
 ## Compared with a hosted search service
 
-searchgres is a library, but it can power a hosted or internal search API. The
-included server demonstrates one arrangement, and your application can expose
-another.
+searchgres is a library, but it can power a hosted or internal search API. Your
+application owns that API and its authentication, authorization, and deployment;
+the included CLI/MCP reference connects directly to PostgreSQL.
 
 Choose a turnkey hosted service when you want a vendor to own all database and
 search operations. Choose searchgres when owning PostgreSQL, model selection,
@@ -111,9 +111,9 @@ The core runs in the same process as your application and accepts a caller-owned
 `postgres.js` pool. This gives you direct types, transactions, and no network
 boundary.
 
-When processes or languages need remote access, put an API around it. You can
-use the included server/client or build a domain-specific service with enforced
-filters and response shaping.
+When processes or languages need remote access, put an API around it. Build a
+domain-specific service with enforced filters and response shaping; searchgres
+does not ship an HTTP server or remote client.
 
 ## Current core boundaries
 

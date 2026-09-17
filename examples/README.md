@@ -1,7 +1,7 @@
 # searchgres examples
 
-These examples use the published core library directly. They deliberately avoid
-the optional API server so the application/library boundary is visible.
+These examples use the published core library directly. They do not require the
+optional CLI/MCP binary, so the application/library boundary is visible.
 
 | Example | Demonstrates |
 | --- | --- |

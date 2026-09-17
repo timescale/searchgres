@@ -147,9 +147,14 @@ const page = await index.search({
 ## Embedding visibility
 
 A record is available to BM25 and filters immediately after it is written. It
-participates in semantic and hybrid retrieval only after it has an embedding.
-Provide one during ingest or process the database-backed embedding queue with
+can also appear in hybrid results through the BM25 arm before it has a vector;
+the missing semantic arm contributes zero to its RRF score. Semantic retrieval
+and the semantic arm of hybrid require a stored embedding. Provide one during
+ingest or process the database-backed embedding queue with
 `processEmbeddings()` or `startEmbeddingWorker()`.
+
+A query using `semantic` text still calls the configured embedding model,
+including in hybrid mode. Use a precomputed `vector` to avoid that provider call.
 
 ## Choosing a mode
 

@@ -2,8 +2,8 @@
 
 This guide takes you from an empty PostgreSQL database to working semantic,
 keyword, and hybrid search with the core TypeScript library. It should take a
-few minutes. To evaluate the optional server without writing code instead, use
-the [Docker Compose guide](guides/docker-compose.md).
+few minutes. To evaluate the optional direct CLI and MCP tools without writing
+code instead, use the [Docker Compose guide](guides/docker-compose.md).
 
 You will:
 
@@ -61,8 +61,9 @@ await createIndex(sql, "docs_index", { dimensions: 1536 });
 
 Opening returns a handle you use for everything else. You supply the embedding
 model here. The OpenAI provider package reads `OPENAI_API_KEY` when it makes a
-request; searchgres receives only the model object and never reads, stores, or
-logs the key.
+request; searchgres receives the model object rather than provider credential
+configuration. Provider error diagnostics can still echo sensitive values; see
+[telemetry precautions](guides/production.md#observability).
 
 ```ts
 import { openIndex } from "searchgres";
