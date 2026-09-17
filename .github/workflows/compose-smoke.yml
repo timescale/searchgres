@@ -15,4 +15,5 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+      - run: ./bun install --frozen-lockfile
       - run: ./bun run test:compose
