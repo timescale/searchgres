@@ -2,7 +2,7 @@
 set -eu
 
 REPOSITORY="timescale/searchgres"
-BINARIES="searchgres searchgres-server searchgres-mcp"
+BINARIES="searchgres"
 MAX_RETRIES=3
 TEMP_DIR=""
 

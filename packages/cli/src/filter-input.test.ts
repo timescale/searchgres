@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MAX_FILTER_SOURCE_BYTES } from "@searchgres/filter";
+import { MAX_FILTER_SOURCE_BYTES } from "./filter/index.ts";
 import {
   filterExpressionFromFlags,
   readBoundedFilterSource,

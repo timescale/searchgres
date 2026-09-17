@@ -1,176 +1,118 @@
-# Evaluate Searchgres with Docker Compose
+# Evaluate with Docker Compose
 
-The repository's root `compose.yaml` is a one-command **evaluation and local-demo
-stack**, not a production deployment. It runs PostgreSQL, a local embedding
-model, automatic model download and index provisioning, and the reference
-Searchgres API server. No provider account, API key, generated config, or
-locally installed Searchgres binary is required. See
-[Reference implementations and evaluation tools](../reference-applications.md)
-for the role of each non-core component.
+The core library is the product; this optional stack makes it easy to try the
+compiled CLI and MCP without a provider account. It runs PostgreSQL 18 with
+required extensions, Ollama, a model-pull job, strict index initialization, and
+one continuous embedding worker. There is no Searchgres HTTP service.
 
-## Requirements
+**Evaluation only:** PostgreSQL uses trust authentication and a privileged role;
+Ollama is unauthenticated. Both publish only on `127.0.0.1`. Do not expose them
+to untrusted networks or treat this as production deployment guidance.
 
-- Docker Engine or Docker Desktop
-- Docker Compose **2.20.0 or newer** (for health and one-shot dependency
-  conditions)
-- Several gigabytes of free disk space and at least 4 GB of available memory
+## Start and use from the host
 
-The pinned CPU-only Ollama image is several gigabytes unpacked, and
-`nomic-embed-text` adds roughly 275 MB. A cold first start downloads images and
-the model and may take several minutes. Later starts reuse named volumes.
-
-## Start the stack
-
-From a repository checkout:
+Requirements: Docker with Compose 2.20+ and sufficient memory/disk for PostgreSQL
+and the Ollama model. Ollama is CPU-only in this example; initial model pull and
+cold inference can take time.
 
 ```sh
-docker compose up --build
+git clone https://github.com/timescale/searchgres.git
+cd searchgres
+./bun install
+./bun run compile
+docker compose up -d --build
+# Wait for the one-shot jobs; up -d alone does not mean the model/index is ready.
+docker compose wait model init
+
+./dist/searchgres --config docker/evaluation/searchgres.yaml \
+  --env-file docker/evaluation/.env.sample info
+./dist/searchgres --config docker/evaluation/searchgres.yaml \
+  --env-file docker/evaluation/.env.sample create \
+  --content 'Postgres indexes make database queries faster' --tree docs.db
+./dist/searchgres --config docker/evaluation/searchgres.yaml \
+  --env-file docker/evaluation/.env.sample search --fulltext database
+./dist/searchgres --config docker/evaluation/searchgres.yaml \
+  --env-file docker/evaluation/.env.sample search \
+  --semantic 'speed up database queries' --fulltext database
 ```
 
-Compose starts five services:
+Wait for `embeddings status`/`get` to show generated vectors before expecting
+semantic record matches. The host CLI must also reach Ollama to embed **query
+text**, even when all stored vectors are already present.
 
-| Service | Purpose | Completion condition |
+To use MCP:
+
+```sh
+./dist/searchgres mcp --config docker/evaluation/searchgres.yaml \
+  --env-file docker/evaluation/.env.sample --workers 0
+```
+
+Zero avoids adding workers beyond Compose's worker; omit it to use MCP's default
+one-worker pool. Both choices are concurrency-safe. See [MCP setup](../mcp/index.md).
+
+## Services and configuration
+
+| Service | Purpose |
+| --- | --- |
+| `db` | PostgreSQL, required extensions, named data volume. |
+| `ollama` | OpenAI-compatible endpoint, named model volume. |
+| `model` | Idempotent pull of `nomic-embed-text`. |
+| `init` | `searchgres init --if-not-exists`; waits for healthy DB, does not need Ollama. |
+| `worker` | `searchgres embeddings worker`; waits for successful model/init jobs. |
+
+`init` and `worker` use the same single-binary image and mount the same config
+read-only. Host commands use that same config with environment-selected URLs:
+
+| Endpoint | Host | Containers |
 | --- | --- | --- |
-| `db` | PostgreSQL 18 with pgvector, pg_textsearch, and ltree | healthy |
-| `ollama` | CPU-only local embedding endpoint | healthy |
-| `model-pull` | Downloads `nomic-embed-text` into persistent storage | exits successfully |
-| `provision` | Creates or strictly validates the configured index | exits successfully |
-| `server` | Runs the Searchgres API and embedding worker | healthy |
+| PostgreSQL | `postgresql://postgres@127.0.0.1:5432/postgres` | `postgresql://postgres@db:5432/postgres` |
+| Embeddings | `http://127.0.0.1:11434/v1` | `http://ollama:11434/v1` |
 
-Model download progress is visible in the ordinary Compose output. Searchgres is
-ready when the `server` service is healthy, at:
+The host environment sample contains no secrets. No generated config or `.env`
+is required. Compose explicitly sets container endpoint values. Config files do
+not perform arbitrary environment interpolation: `urlEnv`/`baseUrlEnv` are
+explicit references.
 
-```text
-http://127.0.0.1:3000
-```
-
-Only that loopback API port is published. PostgreSQL and Ollama remain on the
-internal Compose network.
-
-## Try it
-
-The server image includes the unprivileged `searchgres` client:
+Override host ports with `SEARCHGRES_POSTGRES_PORT` and `SEARCHGRES_OLLAMA_PORT`:
 
 ```sh
-docker compose exec server \
-  searchgres --server http://127.0.0.1:3000 info
-
-docker compose exec server \
-  searchgres --server http://127.0.0.1:3000 create \
-  --content "Postgres-native semantic and BM25 search" \
-  --tree docs --name introduction
-
-docker compose exec server \
-  searchgres --server http://127.0.0.1:3000 search \
-  --semantic "database search"
-
-docker compose exec server \
-  searchgres --server http://127.0.0.1:3000 search \
-  --fulltext "Postgres" --semantic "database search"
+SEARCHGRES_POSTGRES_PORT=55432 SEARCHGRES_OLLAMA_PORT=11435 docker compose up -d
 ```
 
-New records enter an asynchronous embedding queue. The in-process worker normally
-embeds them within a few seconds; keyword search is available immediately.
+Then set matching `SEARCHGRES_DATABASE_URL` and
+`SEARCHGRES_EMBEDDING_BASE_URL` for host commands. Existing environment values
+win over `.env.sample`. Keep model, dimensions, and tokenizer policy consistent
+across all generators/readers; changing a model name is not a safe migration of
+existing vectors.
 
-A locally installed client can use the host endpoint instead:
+## Dependencies only and lifecycle
 
 ```sh
-searchgres --server http://127.0.0.1:3000 info
+docker compose up -d db                 # PostgreSQL-only exploration
+docker compose up -d db ollama model    # dependencies for host workers
 ```
 
-## Restart and reset
+When selecting dependencies only, run `searchgres init` and embedding processing
+from the host. Normal full-text/filter operations do not require provider I/O.
 
-Stop and remove containers while preserving the database and model:
+`docker compose down` preserves database/model volumes. `docker compose down -v`
+is an explicit destructive reset. Worker restart is bounded to three
+on-failure restarts. Worker shutdown has a 60-second application grace and a
+70-second Compose stop grace; abandoned claims recover through core leases.
+
+Inspect progress with `docker compose logs model init worker` and
+`searchgres embeddings status`. The worker's existence is not proof that every
+row has an embedding or that the provider is healthy.
+
+## Verification
 
 ```sh
-docker compose down
-docker compose up
+./bun run check:compose
+./bun run test:compose  # opt-in: builds/pulls images and a real model
 ```
 
-The model pull is content-addressed and idempotent. Provisioning uses
-`init --if-not-exists`, which accepts only a valid Searchgres index whose vector
-shape matches the checked-in config; it does not hide malformed schemas or
-configuration drift.
-
-Explicitly delete all evaluation data and the downloaded model:
-
-```sh
-docker compose down -v
-```
-
-## Inspect failures
-
-The one-shot dependencies deliberately prevent the API from starting if model
-pulling or provisioning fails:
-
-```sh
-docker compose ps
-docker compose logs model-pull
-docker compose logs provision
-docker compose logs db ollama server
-```
-
-There are no retry loops hiding permanent model, schema, or extension failures.
-After correcting a failure, run `docker compose up` again. Use `down -v` only
-when you intentionally want a clean database and model store.
-
-For database-only development:
-
-```sh
-docker compose up -d db
-docker compose exec db psql -U postgres -d postgres
-```
-
-Port 5432 is intentionally not published by the default stack.
-
-## Configuration and model
-
-Both provisioning and serving mount
-`docker/evaluation/searchgres.yaml` read-only. It configures:
-
-- schema `searchgres`;
-- `halfvec(768)` storage;
-- Ollama's OpenAI-compatible endpoint at `http://ollama:11434/v1`;
-- `nomic-embed-text` with its 8,192-token Nomic tokenizer preset;
-- a continuous embedding worker.
-
-The stack pins `ollama/ollama:0.15.4`, which publishes upstream amd64 and arm64
-images. Ollama is MIT-licensed, and the downloaded Nomic model reports the
-Apache-2.0 license. The default is CPU-only for portability; GPU-specific
-Compose configuration is intentionally out of scope.
-
-## Not for production
-
-The evaluation stack deliberately trades hardening for a reliable first run:
-
-- PostgreSQL uses trust authentication, and its role can install extensions and
-  create schemas.
-- Searchgres v1 has no built-in authentication.
-- Ollama is CPU-only and not tuned for production throughput.
-- There is no TLS termination, backup policy, resource limit, or observability
-  backend.
-
-The API is loopback-bound to reduce accidental exposure, but this is not a
-production security architecture. Production operators should provide managed
-credentials, authentication, authorization, TLS and network policy, rate
-limiting, backups, resource controls, observability, and an independently
-managed embedding provider. Read the reference server's
-[security boundary](server.md#security-boundary) before changing its bind
-address. Ollama is an evaluation choice, not a Searchgres core or server
-requirement.
-
-## Full smoke test
-
-Maintainers can run the opt-in real-model test:
-
-```sh
-./bun run test:compose
-```
-
-It uses a unique Compose project, starts from fresh volumes, creates and embeds
-two records, checks semantic/BM25/hybrid search, restarts without deleting state,
-verifies strict provisioning idempotency and persistence, and always removes its
-containers and volumes. It is intentionally manual because the image and model
-download are much heavier than ordinary unit tests. Maintainers should also run
-the manual **Evaluation Compose smoke** GitHub Actions workflow as the Linux
-amd64 release gate.
+The smoke test uses a unique project and ephemeral loopback host ports, exercises
+the compiled host CLI for all search arms, verifies container-worker and
+host-worker embedding, restarts with preserved volumes, checks idempotent init,
+and always removes its own volumes. CI also validates topology and builds the
+single-binary image from the clean Docker context.

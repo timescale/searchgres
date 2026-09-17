@@ -184,13 +184,13 @@ extensions configured. See **[Install searchgres](https://github.com/timescale/s
 ## Reference implementations
 
 The core library is the primary product. This repository also contains
-maintained reference implementations showing one way to compose a network
-server, typed client, CLI, and MCP tools around it. They are optional: you do not
-need them to use the library, and their interfaces do not constrain an
-application built directly on core.
+one maintained compiled `searchgres` CLI with direct PostgreSQL access, embedding
+workers, and `searchgres mcp` stdio tools. It is optional: you do not need it to
+use the library, and its interfaces do not constrain applications built on core.
+There is no Searchgres HTTP server or remote client to deploy.
 
-The Docker Compose stack combines the reference server with PostgreSQL and a
-local Ollama model for a no-API-key evaluation:
+The Docker Compose stack runs PostgreSQL, a local Ollama model, initialization,
+and an embedding worker for a no-API-key evaluation:
 
 ```bash
 git clone https://github.com/timescale/searchgres.git
@@ -201,8 +201,9 @@ docker compose up --build
 See **[Reference implementations and evaluation tools](https://github.com/timescale/searchgres/blob/main/docs/reference-applications.md)**
 for component roles and support boundaries, or start with the
 **[Docker Compose evaluation guide](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)**.
-The reference server has no built-in authentication and must not be exposed
-directly to an untrusted network.
+The evaluation database and Ollama endpoint are unauthenticated and
+loopback-bound. Never expose them to an untrusted network. The host CLI connects
+to both directly; see the guide for build, configuration, and search commands.
 
 ## Documentation
 

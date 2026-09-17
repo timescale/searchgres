@@ -1,17 +1,40 @@
 import { Command, InvalidArgumentError, Option } from "commander";
+import { LIBRARY_VERSION } from "searchgres";
 import { filterFlagNames, flagsFromOptions, runCommand } from "./cli.ts";
+import { generateConfig, provision } from "./config/provision.ts";
+import { runEmbeddings } from "./embeddings.ts";
+import { outputFormat, writeStructuredOutput } from "./format.ts";
+import { runMcp } from "./mcp/command.ts";
+import { InputError } from "./runtime/report.ts";
 
 /** Commander owns command discovery, help, arguments, and shell-facing errors. */
 export async function runProgram(argv: readonly string[]): Promise<void> {
+  if (
+    argv.includes("--no-env-file") &&
+    argv.some((arg) => arg === "--env-file" || arg.startsWith("--env-file="))
+  ) {
+    throw new InputError(
+      "--env-file and --no-env-file cannot be used together",
+    );
+  }
   const program = new Command()
     .name("searchgres")
     .description(
-      "Searchgres client: records, trees, import/export, and search. Provisioning and serving live in searchgres-server.",
+      "Postgres-native search: provisioning, records, trees, embeddings, and MCP for one configured index.",
     )
     .showSuggestionAfterError()
+    .exitOverride()
     .configureHelp({ showGlobalOptions: true })
-    .version("0.0.0")
-    .option("--server <url>", "server URL; defaults to SEARCHGRES_URL")
+    .version(LIBRARY_VERSION)
+    .option(
+      "--config <path>",
+      "config path; defaults to SEARCHGRES_CONFIG or ./searchgres.yaml",
+    )
+    .option(
+      "--env-file <path>",
+      "environment file; defaults to .env next to config",
+    )
+    .option("--no-env-file", "do not load an environment file")
     .addOption(
       new Option("--yaml", "emit YAML (the default)").conflicts([
         "json",
@@ -27,8 +50,102 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
     );
 
   action(
-    program.command("info").description("show server capabilities"),
+    program
+      .command("info")
+      .description("show index configuration and embedding queue status"),
     "info",
+  );
+  action(
+    program
+      .command("config")
+      .description("generate offline configuration (interactive on a TTY)")
+      .option("--schema <schema>", "index schema to put in configuration")
+      .option("--database-url-env <name>", "database URL environment variable")
+      .option("--embedding-model <model>", "OpenAI-compatible model")
+      .option("--dimensions <n>", "vector dimensions")
+      .option("--vector-type <type>", "vector or halfvec")
+      .option("--api-key-env <name>", "provider key environment variable")
+      .option("--base-url <url>", "OpenAI-compatible API root")
+      .option("--base-url-env <name>", "API root environment variable")
+      .option("--tokenizer <preset>", "exact tokenizer preset")
+      .option("--max-tokens <n>", "content token budget")
+      .option("--dry-run", "print config without writing files"),
+    "config",
+  );
+  action(
+    program
+      .command("init")
+      .description("create the configured index")
+      .option(
+        "--if-not-exists",
+        "validate and accept an existing matching index",
+      ),
+    "init",
+  );
+  action(
+    program
+      .command("destroy")
+      .description("drop the configured index")
+      .option("--yes", "confirm destruction"),
+    "destroy",
+  );
+  action(
+    program
+      .command("mcp")
+      .description("run MCP on stdio with background embedding workers")
+      .option("--workers <n>", "worker count; 0 disables background embedding")
+      .option("--read-only", "omit mutating tools and disable workers"),
+    "mcp",
+  );
+  const embeddings = program
+    .command("embeddings")
+    .description("process and inspect the embedding queue");
+  action(
+    embeddings
+      .command("process")
+      .description("drain currently claimable work and exit")
+      .option("--batch-size <n>", "records per batch")
+      .option("--max-batches <n>", "maximum batches; 1 for one batch")
+      .option("--max-duration <duration>", "budget checked between batches"),
+    "embeddings process",
+  );
+  action(
+    embeddings
+      .command("worker")
+      .description("run a continuous worker pool")
+      .option("--workers <n>", "number of concurrent workers")
+      .option("--batch-size <n>", "records per batch")
+      .option("--interval <duration>", "idle poll interval"),
+    "embeddings worker",
+  );
+  action(
+    embeddings.command("status").description("show queue statistics"),
+    "embeddings status",
+  );
+  action(
+    embeddings
+      .command("failures")
+      .description("list current terminal failures")
+      .option("--limit <n>", "page size, at most 1000")
+      .option("--after <queue-id>", "decimal bigint keyset cursor"),
+    "embeddings failures",
+  );
+  action(
+    embeddings
+      .command("retry")
+      .description("retry explicit failures or one traversal of all failures")
+      .option("--queue-id <ids...>", "decimal queue IDs")
+      .option("--all", "list and retry all current failures")
+      .option("--yes", "confirm --all"),
+    "embeddings retry",
+  );
+  action(
+    embeddings
+      .command("prune")
+      .description("remove old terminal queue rows")
+      .requiredOption("--older-than <duration>", "retention window")
+      .option("--yes", "confirm pruning"),
+    "embeddings prune",
   );
 
   const create = program
@@ -181,14 +298,6 @@ export async function runProgram(argv: readonly string[]): Promise<void> {
     "copy",
   );
 
-  const moved = new Set(["server", "serve", "config", "init", "destroy"]);
-  const [first] = argv;
-  if (first !== undefined && moved.has(first)) {
-    throw new Error(
-      `\`searchgres ${first}\` lives in the searchgres-server binary: run \`searchgres-server ${first === "server" ? "serve" : first}\``,
-    );
-  }
-
   await program.parseAsync(["node", "searchgres", ...argv]);
 }
 
@@ -255,10 +364,17 @@ function singleOptionValue(
 function action(command: Command, name: string): void {
   command.action(async (...actionArgs: unknown[]) => {
     const invoked = actionArgs.at(-1) as Command;
-    await runCommand(
-      name,
-      flagsFromOptions(invoked.optsWithGlobals()),
-      invoked.args,
-    );
+    const flags = flagsFromOptions(invoked.optsWithGlobals());
+    if (name === "config") return generateConfig(flags);
+    if (name === "init" || name === "destroy") {
+      if (flags.has("ndjson"))
+        throw new InputError("--ndjson requires a collection command");
+      writeStructuredOutput(await provision(name, flags), outputFormat(flags));
+      return;
+    }
+    if (name === "mcp") return runMcp(flags);
+    if (name.startsWith("embeddings "))
+      return runEmbeddings(name.slice("embeddings ".length), flags);
+    await runCommand(name, flags, invoked.args);
   });
 }

@@ -1,87 +1,81 @@
-// Runs a command against a throwaway Postgres container, then removes it.
-//
-// pg_textsearch has to be in shared_preload_libraries, so the integration
-// suites need our image rather than a stock one. This script exists so the
-// build/start/wait/teardown sequence is defined exactly once and shared by
-// local runs (`check:full`) and CI, instead of being duplicated as inline
-// workflow shell that can silently drift from what developers run.
-//
-//   ./bun scripts/with-postgres.ts ./bun run test:db
+// Own only a unique throwaway container and an ephemeral loopback port. Never
+// remove a user's pg:up container or require their port 5432 to be unused.
+import { randomUUID } from "node:crypto";
+
 const command = Bun.argv.slice(2);
-if (command.length === 0) {
-  console.error("usage: ./bun scripts/with-postgres.ts <command> [args...]");
-  process.exit(1);
-}
-
-const container = "searchgres-postgres";
-const image = "searchgres-postgres";
+if (!command.length)
+  throw new Error("usage: with-postgres.ts <command> [args...]");
+const container = `searchgres-test-${randomUUID()}`;
 const root = `${import.meta.dir}/..`;
-
-function spawn(cmd: readonly string[], quiet = false): number {
-  const { exitCode } = Bun.spawnSync({
-    cmd: [...cmd],
+function run(args: string[], capture = false) {
+  const result = Bun.spawnSync(args, {
     cwd: root,
-    stdout: quiet ? "ignore" : "inherit",
-    stderr: quiet ? "ignore" : "inherit",
+    stdout: capture ? "pipe" : "inherit",
+    stderr: capture ? "pipe" : "inherit",
   });
-  return exitCode;
+  if (result.exitCode !== 0)
+    throw new Error(`Command failed: ${args[0]} ${args[1]}`);
+  return capture ? result.stdout.toString().trim() : "";
 }
-
-function must(cmd: readonly string[]): void {
-  const exitCode = spawn(cmd);
-  if (exitCode !== 0) process.exit(exitCode);
-}
-
-function remove(): void {
-  spawn(["docker", "rm", "-f", container], true);
-}
-
-async function waitForReady(): Promise<void> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    // pg_isready inside the container: no host psql client needed, so a laptop
-    // and a CI runner behave the same.
-    const ready = spawn(
+let status = 1;
+try {
+  run(["./bun", "run", "pg:build"]);
+  run([
+    "docker",
+    "run",
+    "-d",
+    "--name",
+    container,
+    "-e",
+    "POSTGRES_HOST_AUTH_METHOD=trust",
+    "-p",
+    "127.0.0.1::5432",
+    "searchgres-postgres",
+  ]);
+  const address = run(["docker", "port", container, "5432/tcp"], true).split(
+    "\n",
+  )[0];
+  const port = address?.split(":").at(-1);
+  if (!port || !/^\d+$/.test(port))
+    throw new Error("Could not discover PostgreSQL test port");
+  let ready = false;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const result = Bun.spawnSync(
       [
         "docker",
         "exec",
         container,
-        "pg_isready",
+        "psql",
         "-U",
         "postgres",
         "-d",
         "postgres",
+        "-c",
+        "select 1",
       ],
-      true,
+      { stdout: "ignore", stderr: "ignore" },
     );
-    if (ready === 0) return;
+    if (result.exitCode === 0) {
+      ready = true;
+      break;
+    }
     await Bun.sleep(500);
   }
-  spawn(["docker", "logs", container]);
-  console.error("with-postgres: postgres did not become ready");
-  process.exit(1);
-}
-
-must(["./bun", "run", "pg:build"]);
-remove();
-must([
-  "docker",
-  "run",
-  "-d",
-  "--name",
-  container,
-  "-e",
-  "POSTGRES_HOST_AUTH_METHOD=trust",
-  "-p",
-  "127.0.0.1:5432:5432",
-  image,
-]);
-// Capture the status first, then tear down, then exit: calling process.exit()
-// inside the try would skip the finally block and leak the container.
-let status: number;
-try {
-  await waitForReady();
-  status = spawn(command);
+  if (!ready) throw new Error("PostgreSQL test database did not become ready");
+  const child = Bun.spawn(command, {
+    cwd: root,
+    env: {
+      ...process.env,
+      TEST_DATABASE_URL: `postgresql://postgres@127.0.0.1:${port}/postgres`,
+    },
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  status = await child.exited;
 } finally {
-  remove();
+  Bun.spawnSync(["docker", "rm", "-f", container], {
+    stdout: "ignore",
+    stderr: "ignore",
+  });
 }
 process.exit(status);

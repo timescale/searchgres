@@ -1,0 +1,18 @@
+# Keep this tag in step with the pinned /bun wrapper.
+FROM oven/bun:1.4.0 AS build
+WORKDIR /app
+COPY package.json bun.lock ./
+COPY packages/core/package.json packages/core/package.json
+COPY packages/cli/package.json packages/cli/package.json
+RUN bun install --frozen-lockfile
+COPY . .
+RUN printf '#!/bin/sh\nexec bun "$@"\n' > ./bun \
+  && chmod +x ./bun \
+  && ./bun run compile
+
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app/dist/searchgres /usr/local/bin/searchgres
+ENTRYPOINT ["searchgres"]
+CMD ["--help"]

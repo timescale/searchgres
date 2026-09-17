@@ -158,6 +158,39 @@ your threat model requires stronger physical or database enforcement.
 
 See [Architecture and responsibilities](../concepts/architecture.md#access-control-with-composable-filters).
 
+### Roles for the direct reference CLI/MCP
+
+Provision with a separate owner/admin role. Do not give a local MCP process the
+schema owner's credentials merely because the evaluation stack does. The
+binary does not manage database identities; select credentials through its
+configured database URL environment variable.
+
+For an existing index named `docs`, a database administrator can grant a
+pre-existing runtime role the following baseline privileges:
+
+```sql
+GRANT USAGE ON SCHEMA docs TO searchgres_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA docs TO searchgres_runtime;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA docs TO searchgres_runtime;
+GRANT EXECUTE ON ALL ROUTINES IN SCHEMA docs TO searchgres_runtime;
+```
+
+The role also needs database `CONNECT` and access to the extensions in `public`.
+These grants support writes, queue processing, and triggers but not provisioning
+or dropping the schema. Review inherited/PUBLIC privileges and memberships;
+these grants do not revoke previously granted access to other indexes. In a
+hardened database, revoke default public routine execution for the index and
+grant only the required roles. Set role login credentials/TLS through your
+normal database administration, not checked-in SQL or CLI tool inputs.
+
+For a separate read-only role, grant only schema usage, table SELECT, and the
+needed routine EXECUTE privileges; do not inherit the writer role. Use
+`searchgres mcp --read-only` to omit write tools and disable workers as well.
+Routine execution does not bypass underlying table privileges because core
+routines are security invoker. Read-only semantic search still needs provider
+credentials. Neither tool annotations nor caller-supplied filters replace
+PostgreSQL permissions.
+
 ## Reindexing and cutover
 
 Index shape (dimensions, vector type) is immutable, and switching embedding

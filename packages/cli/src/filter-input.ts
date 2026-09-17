@@ -2,10 +2,11 @@ import {
   type FilterExpressionError,
   MAX_FILTER_SOURCE_BYTES,
   parseFilter,
-} from "@searchgres/filter";
-import type { Filter } from "@searchgres/protocol";
+} from "./filter/index.ts";
 import type { Flags } from "./flags.ts";
 import { optionalFlag } from "./flags.ts";
+import type { Filter } from "./inputs.ts";
+import { InputError } from "./runtime/report.ts";
 
 const utf8BomBytes = 3;
 
@@ -16,7 +17,7 @@ export async function filterExpressionFromFlags(
   const inline = optionalFlag(flags, "filter");
   const file = optionalFlag(flags, "filter-file");
   if (inline !== undefined && file !== undefined) {
-    throw new Error("--filter cannot be combined with --filter-file");
+    throw new InputError("--filter cannot be combined with --filter-file");
   }
   if (inline !== undefined) return parseForCli(inline, "--filter");
   if (file === undefined) return undefined;
@@ -39,7 +40,7 @@ export async function readBoundedFilterSource(path: string): Promise<string> {
       ignoreBOM: true,
     }).decode(bytes);
   } catch (cause) {
-    throw new Error(
+    throw new InputError(
       `${path === "-" ? "stdin" : path}: filter source is not valid UTF-8`,
       {
         cause,
@@ -49,7 +50,7 @@ export async function readBoundedFilterSource(path: string): Promise<string> {
   if (source.startsWith("\uFEFF")) {
     source = source.slice(1);
     if (source.startsWith("\uFEFF")) {
-      throw new Error(
+      throw new InputError(
         `${path === "-" ? "stdin" : path}: filter source contains more than one UTF-8 BOM`,
       );
     }
@@ -63,7 +64,7 @@ function parseForCli(source: string, sourceName: string): Filter {
     return parseFilter(source, { sourceName });
   } catch (error) {
     if (isFilterExpressionError(error)) {
-      throw new Error(`Invalid filter expression: ${error.message}`, {
+      throw new InputError(`Invalid filter expression: ${error.message}`, {
         cause: error,
       });
     }
@@ -94,7 +95,7 @@ async function readBoundedBytes(
       if (done) break;
       length += value.byteLength;
       if (length > maximumBytes) {
-        throw new Error(
+        throw new InputError(
           `filter source exceeds ${MAX_FILTER_SOURCE_BYTES} UTF-8 bytes`,
         );
       }

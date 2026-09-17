@@ -1,166 +1,192 @@
+// Opt-in real-model evaluation through the compiled host CLI, not RPC.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { createServer } from "node:net";
 
+async function freePort(): Promise<string> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Cannot allocate test port");
+  const port = String(address.port);
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  return port;
+}
 const project = `searchgres-smoke-${randomBytes(5).toString("hex")}`;
-const serverUrl = "http://127.0.0.1:3000";
-const databaseRecordId = "01950000-0000-7000-8000-000000000001";
-const recipeRecordId = "01950000-0000-7000-8000-000000000002";
-let cleaningUp = false;
-let failed = false;
-
-async function compose(
-  args: readonly string[],
-  options: { readonly capture?: boolean; readonly allowFailure?: boolean } = {},
-): Promise<string> {
-  console.log(`+ docker compose -p ${project} ${args.join(" ")}`);
-  const capture = options.capture ?? false;
-  const process = Bun.spawn(["docker", "compose", "-p", project, ...args], {
-    stdin: "inherit",
+const environment = {
+  ...process.env,
+  SEARCHGRES_POSTGRES_PORT: await freePort(),
+  SEARCHGRES_OLLAMA_PORT: await freePort(),
+};
+let cliEnv: Record<string, string | undefined> = {};
+async function run(args: string[], env = environment, capture = false) {
+  const child = Bun.spawn(args, {
+    env,
     stdout: capture ? "pipe" : "inherit",
-    stderr: capture ? "pipe" : "inherit",
+    stderr: "inherit",
+    timeout: 300_000,
+    killSignal: "SIGKILL",
   });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    process.exited,
-    capture ? new Response(process.stdout).text() : Promise.resolve(""),
-    capture ? new Response(process.stderr).text() : Promise.resolve(""),
+  const [code, output] = await Promise.all([
+    child.exited,
+    capture ? new Response(child.stdout).text() : Promise.resolve(""),
   ]);
-  if (exitCode !== 0 && !options.allowFailure) {
-    if (stdout) processOutput(stdout, false);
-    if (stderr) processOutput(stderr, true);
-    throw new Error(`docker compose exited with status ${exitCode}`);
-  }
-  return stdout;
+  if (code !== 0)
+    throw new Error(`Command failed (${code}): ${args.join(" ")}`);
+  return output.trim();
 }
-
-function processOutput(output: string, error: boolean): void {
-  (error ? process.stderr : process.stdout).write(output);
-}
-
-async function cli(args: readonly string[]): Promise<unknown> {
-  const output = await compose(
-    [
-      "exec",
-      "-T",
-      "server",
-      "searchgres",
-      "--server",
-      serverUrl,
-      "--json",
-      ...args,
-    ],
-    { capture: true },
+const compose = (args: string[], capture = false) =>
+  run(["docker", "compose", "-p", project, ...args], environment, capture);
+async function cli(args: string[]) {
+  return JSON.parse(
+    await run(
+      [
+        "./dist/searchgres",
+        "--config",
+        "docker/evaluation/searchgres.yaml",
+        "--no-env-file",
+        "--json",
+        ...args,
+      ],
+      { ...environment, ...cliEnv },
+      true,
+    ),
   );
-  return JSON.parse(output);
 }
-
-async function waitForEmbedding(id: string): Promise<void> {
-  for (let attempt = 0; attempt < 180; attempt += 1) {
-    const result = (await cli(["get", id])) as {
-      readonly record?: { readonly hasEmbedding?: boolean };
-    };
-    if (result.record?.hasEmbedding === true) return;
-    await Bun.sleep(1_000);
-  }
-  throw new Error(`embedding queue did not complete record ${id}`);
-}
-
-function assertSearchContains(value: unknown, id: string, mode: string): void {
-  const result = value as {
-    readonly results?: readonly { readonly id?: string }[];
+async function endpoints() {
+  const db = (await compose(["port", "db", "5432"], true)).split(":").at(-1);
+  const ollama = (await compose(["port", "ollama", "11434"], true))
+    .split(":")
+    .at(-1);
+  cliEnv = {
+    SEARCHGRES_DATABASE_URL: `postgresql://postgres@127.0.0.1:${db}/postgres`,
+    SEARCHGRES_EMBEDDING_BASE_URL: `http://127.0.0.1:${ollama}/v1`,
   };
-  assert.ok(
-    result.results?.some((record) => record.id === id),
-    `${mode} search did not return ${id}`,
-  );
 }
-
-async function cleanup(): Promise<void> {
-  if (cleaningUp) return;
-  cleaningUp = true;
-  if (failed) {
-    await compose(["ps"], { allowFailure: true });
-    await compose(["logs", "--no-color"], { allowFailure: true });
+async function waitReady() {
+  for (let i = 0; i < 180; i++) {
+    try {
+      await cli(["info"]);
+      return;
+    } catch {
+      await Bun.sleep(1000);
+    }
   }
-  await compose(["down", "-v", "--remove-orphans"], { allowFailure: true });
+  throw new Error("Index did not become ready");
 }
-
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.once(signal, () => {
-    failed = true;
-    void cleanup().finally(() => process.exit(128));
-  });
+async function waitJobs() {
+  for (const service of ["model", "init"]) {
+    let completed = false;
+    for (let attempt = 0; attempt < 900; attempt++) {
+      const id = await run(
+        [
+          "docker",
+          "ps",
+          "-a",
+          "-q",
+          "--filter",
+          `label=com.docker.compose.project=${project}`,
+          "--filter",
+          `label=com.docker.compose.service=${service}`,
+        ],
+        environment,
+        true,
+      );
+      if (id) {
+        const state = await run(
+          [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.State.Status}} {{.State.ExitCode}}",
+            id,
+          ],
+          environment,
+          true,
+        );
+        if (state === "exited 0") {
+          completed = true;
+          break;
+        }
+        if (state.startsWith("exited "))
+          throw new Error(`${service} failed: ${state}`);
+      }
+      await Bun.sleep(1000);
+    }
+    if (!completed) throw new Error(`${service} did not finish`);
+  }
 }
-
+async function waitEmbedding(id: string) {
+  for (let i = 0; i < 180; i++) {
+    if ((await cli(["get", id])).record.hasEmbedding) return;
+    await Bun.sleep(1000);
+  }
+  throw new Error("Worker did not embed the record");
+}
 try {
-  await compose(["up", "-d", "--build", "--wait", "--wait-timeout", "900"]);
-  await cli(["info"]);
-
-  await cli([
-    "create",
-    "--id",
-    databaseRecordId,
-    "--content",
-    "Postgres-native semantic and BM25 database search with pgtextsearchmarker.",
-    "--tree",
-    "docs",
-    "--name",
-    "database-search",
-  ]);
-  await cli([
-    "create",
-    "--id",
-    recipeRecordId,
-    "--content",
-    "A chocolate cake recipe uses cocoa, flour, and sugar with cakemarker.",
-    "--tree",
-    "recipes",
-    "--name",
-    "chocolate-cake",
-  ]);
-  await Promise.all([
-    waitForEmbedding(databaseRecordId),
-    waitForEmbedding(recipeRecordId),
-  ]);
-
-  assertSearchContains(
-    await cli(["search", "--semantic", "database search", "--limit", "2"]),
-    databaseRecordId,
-    "semantic",
-  );
-  assertSearchContains(
-    await cli(["search", "--fulltext", "pgtextsearchmarker", "--limit", "2"]),
-    databaseRecordId,
-    "BM25",
-  );
-  assertSearchContains(
+  await run(["./bun", "run", "compile"]);
+  await compose(["up", "-d", "--build"]);
+  await endpoints();
+  await waitReady();
+  // Explicitly check one-shot completion; `up -d` alone is not readiness.
+  await waitJobs();
+  const first = (
     await cli([
-      "search",
-      "--semantic",
-      "database search",
-      "--fulltext",
-      "pgtextsearchmarker",
-      "--limit",
-      "2",
-    ]),
-    databaseRecordId,
-    "hybrid",
-  );
-
-  await compose(["stop"]);
-  await compose(["up", "-d", "--wait", "--wait-timeout", "300"]);
-  const provisionOutput = await compose(["run", "--rm", "provision"], {
-    capture: true,
-  });
-  assert.match(provisionOutput, /already exists and matches the server config/);
-  const persisted = (await cli(["get", databaseRecordId])) as {
-    readonly record?: { readonly id?: string };
-  };
-  assert.equal(persisted.record?.id, databaseRecordId);
-
-  console.log("Evaluation Compose smoke test passed");
-} catch (error) {
-  failed = true;
-  throw error;
+      "create",
+      "--content",
+      "PostgreSQL indexes make database queries faster",
+      "--tree",
+      "docs.db",
+    ])
+  ).record.id;
+  await cli([
+    "create",
+    "--content",
+    "Cats enjoy sleeping in warm places",
+    "--tree",
+    "docs.cats",
+  ]);
+  await waitEmbedding(first);
+  for (const args of [
+    ["--semantic", "database indexing"],
+    ["--fulltext", "database"],
+    ["--semantic", "database indexing", "--fulltext", "database"],
+    ["--tree", "docs.db"],
+  ]) {
+    assert.ok(
+      (await cli(["search", ...args])).results.some(
+        (r: { id: string }) => r.id === first,
+      ),
+    );
+  }
+  // Stop container workers so the host pass must actually embed a new record.
+  await compose(["stop", "worker"]);
+  const second = (
+    await cli([
+      "create",
+      "--content",
+      "More PostgreSQL database material",
+      "--tree",
+      "docs.db",
+    ])
+  ).record.id;
+  const pass = await cli(["embeddings", "process"]);
+  assert.ok(pass.embedded > 0);
+  assert.equal((await cli(["get", second])).record.hasEmbedding, true);
+  await compose(["down"]);
+  await compose(["up", "-d"]);
+  await endpoints();
+  await waitReady();
+  await waitJobs();
+  assert.equal((await cli(["init", "--if-not-exists"])).created, false);
+  assert.equal((await cli(["get", first])).record.hasEmbedding, true);
+  console.log("Direct Compose smoke passed");
 } finally {
-  await cleanup();
+  await compose(["down", "-v", "--remove-orphans"]);
 }

@@ -25,13 +25,13 @@ jobs:
       - run: ./bun run lint
       - run: docker compose config --quiet
 
-  docker-server:
-    name: Clean server image build
+  docker-cli:
+    name: Clean CLI image build
     runs-on: ubuntu-latest
     needs: check
     steps:
       - uses: actions/checkout@v5
-      - run: docker build -f docker/Dockerfile.server .
+      - run: docker build -f docker/Dockerfile.cli .
 
   test:
     name: Unit tests (node ${{ matrix.node }})
@@ -96,20 +96,6 @@ jobs:
       - run: ./bun install --frozen-lockfile
       - run: ./bun run build
 
-      - name: Import private runtime-neutral builds
-        run: |
-          script='const f = await import("./packages/filter/dist/index.js");
-                  const p = await import("./packages/presentation/dist/index.js");
-                  const filter = f.parseFilter("(tree docs)");
-                  const selection = p.parseSelection(["id"], { kind: "search-result" });
-                  if (filter.tree !== "docs" || !selection.fields.has("id"))
-                    throw new Error("private package smoke failed");'
-          case "${{ matrix.runtime }}" in
-            node) node --input-type=module -e "$script" ;;
-            bun)  ./bun -e "$script" ;;
-            deno) deno eval --no-lock "$script" ;;
-          esac
-
       # A real consumer installs with npm, so the scratch project does too —
       # this leg deliberately exercises the npm install path the published
       # package is consumed through, whatever runtime imports it afterwards.
@@ -151,12 +137,12 @@ jobs:
     name: ci
     if: always()
     runs-on: ubuntu-latest
-    needs: [check, docker-server, test, test-db, artifact]
+    needs: [check, docker-cli, test, test-db, artifact]
     steps:
       - name: Require every CI job to pass
         env:
           CHECK_RESULT: ${{ needs.check.result }}
-          DOCKER_SERVER_RESULT: ${{ needs['docker-server'].result }}
+          DOCKER_CLI_RESULT: ${{ needs['docker-cli'].result }}
           TEST_RESULT: ${{ needs.test.result }}
           TEST_DB_RESULT: ${{ needs['test-db'].result }}
           ARTIFACT_RESULT: ${{ needs.artifact.result }}
@@ -164,7 +150,7 @@ jobs:
           set -euo pipefail
           for result in \
             "$CHECK_RESULT" \
-            "$DOCKER_SERVER_RESULT" \
+            "$DOCKER_CLI_RESULT" \
             "$TEST_RESULT" \
             "$TEST_DB_RESULT" \
             "$ARTIFACT_RESULT"

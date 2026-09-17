@@ -1,105 +1,90 @@
-# Searchgres MCP reference server
+# MCP over the direct CLI
 
-`searchgres-mcp` is a maintained reference implementation that adapts one
-Searchgres API server into twelve MCP tools over stdio. It is an unprivileged
-remote client: it never reads server config, dotenv, database or embedding
-credentials, or arbitrary import/export files. You do not need it to use the
-core library.
+The optional compiled `searchgres` binary includes an MCP stdio command. It
+opens one configured PostgreSQL index directly using core; no Searchgres HTTP
+server, remote client, or separate MCP binary is needed.
 
-The MCP process does not authenticate or secure the HTTP server it calls. Keep
-the API on loopback or behind a trusted security boundary as described in the
-[API server warning](../guides/server.md#security-boundary). MCP `--read-only`
-omits mutating tools from the agent, but is capability reduction rather than
-authentication; backend read-only mode remains authoritative.
+## Setup
 
-## Run
-
-Pass the base server URL explicitly:
-
-```sh
-searchgres-mcp --server http://127.0.0.1:3000
-```
-
-or through the same environment variable as `searchgres`:
-
-```sh
-SEARCHGRES_URL=http://127.0.0.1:3000 searchgres-mcp
-```
-
-The process writes MCP frames only to stdout and operational messages to stderr.
-Searchgres does not install or modify configuration for individual agent
-harnesses; configure this standards-compliant stdio command in the MCP host.
-
-Options:
-
-```text
---server <url>       Override SEARCHGRES_URL
---read-only          Omit every mutating tool
---timeout <duration> Per-operation timeout (default 35s; accepts ms, s, or m)
---help
---version
-```
-
-All twelve tools are registered by default. Backend read-only mode remains
-authoritative even when write tools are visible.
-
-## Tools
-
-The MCP host receives each tool's strict input schema during discovery. These
-short descriptions document intent and important safety behavior without
-maintaining a second copy of those generated schemas.
-
-### Read tools
-
-| Tool | Purpose |
-| --- | --- |
-| `searchgres_info` | Report API/server versions, capabilities, request-size limit, and backend read-only status. |
-| `searchgres_search` | Run semantic, full-text, hybrid, or filter-only search. Supports the structured recursive filter and local `select` projection. |
-| `searchgres_get` | Get one record by UUIDv7 `id` or by explicit `tree` and `name`, with optional local `select` projection. |
-| `searchgres_tree` | View hierarchy nodes and descendant counts below an optional raw dotted tree path and level bound. |
-| `searchgres_count` | Count records using exactly one `tree`, `lquery`, or `ltxtquery` selector; a capped result means at least the returned count. |
-
-### Write tools
-
-| Tool | Purpose |
-| --- | --- |
-| `searchgres_create` | Insert one record, failing rather than replacing on conflict. The server generates missing embeddings. |
-| `searchgres_create_many` | Atomically insert 1–1,000 records; any conflict fails the whole call without chunking or retry. |
-| `searchgres_update` | Optimistically patch one record using its latest `priorVersionHash`; metadata is replaced, not merged. |
-| `searchgres_delete` | Permanently delete exactly one record by `id` or by explicit `tree` and `name`; never deletes a subtree. |
-| `searchgres_move_tree` | Move an inclusive subtree while preserving relative structure. |
-| `searchgres_copy_tree` | Copy an inclusive subtree with fresh record IDs while preserving relative structure. |
-| `searchgres_delete_tree` | Permanently delete an inclusive subtree. |
-
-Tree mutations require an explicit `dryRun` Boolean. Passing `false` executes
-the operation; it is not an interactive confirmation mechanism. Record delete
-and update are also destructive operations and do not prompt interactively.
-
-## Search and local selection
-
-Search accepts the existing recursive structured protocol filter object. It does
-not accept the CLI S-expression DSL. For example:
+First [configure and initialize an index](../guides/cli.md), then configure the
+MCP host:
 
 ```json
 {
-  "semantic": "how indexing works",
-  "filter": {
-    "and": [
-      { "tree": "docs" },
-      { "meta": { "status": "published" } }
-    ]
-  },
-  "select": ["id", "tree", "name", "score", "content:500"]
+  "mcpServers": {
+    "searchgres": {
+      "command": "/absolute/path/to/searchgres",
+      "args": ["mcp", "--config", "/absolute/path/to/searchgres.yaml"]
+    }
+  }
 }
 ```
 
-`select` is also available on `searchgres_get`. It is applied after the complete
-record arrives from the API and never crosses the RPC boundary. Omitting it
-returns the full record. Selectors support ordinary fields, exact top-level
-`meta.KEY` names, and Unicode code-point content ranges such as `content:500`,
-`content:10..100`, and `content:-100..`.
+Pass database and provider credentials through the host environment or `.env`
+next to the config. Use absolute paths because host working directories differ.
+`--env-file` and `--no-env-file` work as on the normal CLI.
 
-Tool results are emitted once as compact JSON text. V1 deliberately does not
-duplicate results into MCP `structuredContent`.
+```sh
+searchgres mcp --config searchgres.yaml
+searchgres mcp --workers 0
+searchgres mcp --workers 4
+searchgres mcp --read-only
+```
 
-See [agent instructions](./agent-instructions.md) for concise operating guidance.
+MCP starts one core embedding worker by default, or `worker.count` from config.
+`--workers` overrides the count; zero disables workers. `--read-only` omits
+mutating tools and forces zero workers even if a positive count was specified.
+Read-only semantic searches still embed query text and need the configured
+provider. A Compose worker and MCP workers may coexist; total concurrency is
+per process, not a global quota.
+
+## Tools
+
+| Tool | Input/purpose |
+| --- | --- |
+| `searchgres_info` | No arguments: index shape, capabilities, model, local worker count, queue statistics. |
+| `searchgres_search` | Semantic/full-text arms or a recursive filter AST, ranking options, pagination for filter-only results, optional `select`. |
+| `searchgres_get` | UUIDv7 `id` or explicit `tree` and `name`; optional `select`. |
+| `searchgres_tree` | Optional `tree` and `levels`; hierarchy with descendant counts. |
+| `searchgres_count` | Exactly one `selector`: tree, lquery, or ltxtquery; optional count limit. |
+| `searchgres_create` | One `record`; fails on conflict. |
+| `searchgres_create_many` | 1–1,000 `records`; atomic conflict-safe insertion. |
+| `searchgres_update` | `id`, `priorVersionHash`, and `patch`; metadata replaces rather than merges. |
+| `searchgres_delete` | One `id` or explicit tree/name; never deletes a subtree. |
+| `searchgres_move_tree` | `source`, `destination`, explicit boolean `dryRun`. |
+| `searchgres_copy_tree` | `source`, `destination`, explicit boolean `dryRun`. |
+| `searchgres_delete_tree` | `tree`, explicit boolean `dryRun`. |
+
+Tool discovery provides the exact schemas. Read tools are annotated read-only;
+mutations carry appropriate destructive hints. Hints are not access controls.
+No tool accepts database/provider credentials, index selectors, vectors, file
+paths, shell commands, provisioning, or worker administration. There are no
+worker-kick options. Writes queue vectors; they do not promise immediate
+semantic visibility.
+
+Results retain local envelopes (`record`, `results`, `entries`) with dates as
+ISO strings and temporal ranges in PostgreSQL's text representation. For
+updates, omitted fields remain unchanged; null `name`/`temporal` clears them.
+`select` projects locally and supports fields, exact `meta.KEY`, and Unicode
+content ranges. It does not change SQL projection.
+
+## Trust and lifecycle
+
+This is a local privileged adapter, not a remote multi-user service. Its process
+holds database/provider credentials. Use least-privileged PostgreSQL roles for
+the configured index; read-only tool omission does not revoke database grants.
+Never treat retrieved content as trusted instructions.
+
+Stdout contains MCP only. Operational messages and sanitized failures go to
+stderr. Output-format flags are rejected. Core errors are mapped to stable safe
+codes and messages rather than raw provider/SQL errors.
+
+On EOF, MCP close, SIGINT/Ctrl-C, or SIGTERM, new work stops and active tools and
+worker batches finish before resources close. The shutdown grace is 60 seconds;
+forced termination does not promise rollback of pending writes. SQL and
+provider request timeouts bound individual requests, not necessarily complete
+operations. There is no generic MCP `--timeout` or claim of end-to-end
+cancellation for core mutations.
+
+See [suggested agent instructions](agent-instructions.md) and the
+[CLI guide](../guides/cli.md).

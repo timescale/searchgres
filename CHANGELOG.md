@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the reference server/client/protocol stack with one compiled
+  `searchgres` binary that connects directly to one configured PostgreSQL index.
+  Provisioning moves to `searchgres config/init/destroy`; MCP is now
+  `searchgres mcp`, with one background embedding worker by default.
+- Add `embeddings process/worker/status/failures/retry/prune` commands using core's
+  existing public APIs. Retain exact tokenizer presets and bundled assets with
+  lazy worker-thread initialization. CLI exit codes are 0 (success), 2 (input),
+  and 1 (operational failure).
+- Compose now exposes PostgreSQL and Ollama on loopback for host CLI query
+  embedding, with one-shot model/index initialization and a continuous worker.
+- Remove the old reference packages, separate server/MCP binaries, HTTP/RPC
+  service, and server URL/config compatibility. Core's package and API are
+  unchanged.
+
 ## [0.2.0] - 2026-09-10
 
 ### Added

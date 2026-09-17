@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const installer = fileURLToPath(new URL("../install.sh", import.meta.url));
-const binaries = ["searchgres", "searchgres-server", "searchgres-mcp"];
+const binaries = ["searchgres"];
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -39,14 +39,14 @@ test("installer verifies and installs all release binaries", async () => {
 });
 
 test("a checksum failure installs nothing", async () => {
-  const fixture = await releaseFixture("searchgres-mcp");
+  const fixture = await releaseFixture("searchgres");
   try {
     const result = await runInstaller(
       fixture.baseUrl,
       fixture.installDirectory,
     );
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Checksum mismatch for searchgres-mcp-");
+    expect(result.stderr).toContain("Checksum mismatch for searchgres-");
     expect(await Bun.file(fixture.installDirectory).exists()).toBe(false);
   } finally {
     fixture.server.stop(true);
