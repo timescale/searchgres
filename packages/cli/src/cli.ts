@@ -30,6 +30,7 @@ import {
 } from "./inputs.ts";
 import {
   parseSelectFields,
+  presentRecord,
   projectSearchEnvelope,
 } from "./presentation/index.ts";
 import { installShutdown, openRuntime } from "./runtime/index.ts";
@@ -122,7 +123,9 @@ async function runSearch(client: Index, flags: Flags): Promise<void> {
     ),
   };
   output(
-    select === undefined ? result : projectSearchEnvelope(result, select),
+    select === undefined
+      ? { results: result.results.map(presentRecord) }
+      : projectSearchEnvelope(result, select),
     flags,
   );
 }
@@ -207,10 +210,17 @@ async function runGet(
   args: readonly string[],
 ): Promise<void> {
   if (args.length === 1)
-    return output({ record: await client.get(args[0] as string) }, flags);
+    return output(
+      { record: presentRecord(await client.get(args[0] as string)) },
+      flags,
+    );
   if (args.length === 2) {
     return output(
-      { record: await client.getByName(args[0] as string, args[1] as string) },
+      {
+        record: presentRecord(
+          await client.getByName(args[0] as string, args[1] as string),
+        ),
+      },
       flags,
     );
   }
@@ -263,10 +273,12 @@ async function runUpdate(
     );
   return output(
     {
-      record: await client.patch(
-        id,
-        requiredFlag(flags, "version-hash"),
-        patchInputSchema.parse(patch),
+      record: presentRecord(
+        await client.patch(
+          id,
+          requiredFlag(flags, "version-hash"),
+          patchInputSchema.parse(patch),
+        ),
       ),
     },
     flags,
@@ -366,7 +378,7 @@ async function outputCreated(
   write: { readonly id: string; readonly status: string },
   flags: Flags,
 ): Promise<void> {
-  const fetched = await client.get(write.id);
+  const fetched = presentRecord(await client.get(write.id));
   output({ result: write, record: fetched }, flags);
 }
 

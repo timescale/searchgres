@@ -180,8 +180,16 @@ based on enqueue time. There is no prune dry-run API.
 
 ## Errors, shutdown, and security
 
-Exit codes: `0` success, `2` usage/input errors, `1` operational failures.
-Sanitized structured Searchgres error codes on stderr provide more detail.
+Exit codes: `0` success; `2` when the request cannot succeed as written
+(usage and input errors, plus deterministic record-state mismatches:
+`NOT_FOUND`, `CONFLICT`, `STALE_VERSION`); `1` operational failures (database,
+provider, configuration). Structured errors on stderr carry a stable code.
+Validation and record-state messages are retained because they describe only
+the caller's own request; provider and driver messages are replaced by their
+code so remote text and credentials never reach output.
+
+Records are printed in the shape they are accepted: `temporal` is `null`, an
+ISO `[instant]`, or an ISO `[start, end]` interval; dates are ISO strings.
 The CLI never automatically replays a failed record/tree operation; embedding
 queue and SDK retries remain core behavior.
 

@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import {
+  ConflictError,
   InvalidConfigError,
   InvalidInputError,
+  NotFoundError,
   RateLimitError,
+  StaleVersionError,
 } from "searchgres";
 import { z } from "zod";
 import { installShutdown } from "./index.ts";
@@ -60,6 +63,13 @@ test("CLI exit codes and safe errors never expose provider/SQL secrets", () => {
     safeError(new InvalidConfigError("Missing environment variable KEY"))
       .message,
   ).toContain("KEY");
+  // Record-state mismatches are deterministic consequences of the request:
+  // exit 2 and keep core's message, which names only caller-supplied targets.
+  const stale = new StaleVersionError("01900000-0000-7000-8000-000000000001");
+  expect(exitCode(stale)).toBe(2);
+  expect(safeError(stale).message).toBe(stale.message);
+  expect(exitCode(new NotFoundError("docs.a/x"))).toBe(2);
+  expect(exitCode(new ConflictError("occupied"))).toBe(2);
   for (const error of [
     new RateLimitError("secret-key"),
     new Error("postgres://user:secret@host/db"),

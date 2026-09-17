@@ -161,7 +161,7 @@ test("direct CRUD, filters, trees, import/export, projection and temporal round 
       "--name",
       "intro",
     ],
-    1,
+    2,
   );
   const updated = (
     await cli([
@@ -182,8 +182,17 @@ test("direct CRUD, filters, trees, import/export, projection and temporal round 
       "--content",
       "stale",
     ],
-    1,
+    2,
   );
+  // Output presents temporal in its input shape, and a missing id is a
+  // request error (exit 2) that names only the caller-supplied target.
+  expect(created.record.temporal).toEqual(["2026-01-01T00:00:00.000Z"]);
+  expect(
+    (await cli(["get", "docs.db", "intro"])).value.record.temporal,
+  ).toEqual(["2026-01-01T00:00:00.000Z"]);
+  const missing = await cli(["get", "01900000-0000-7000-8000-00000000dead"], 2);
+  expect(missing.err).toContain("NOT_FOUND");
+  expect(missing.err).toContain("00000000dead");
   expect(updated.meta.kind).toBe("guide");
   const found = (
     await cli([
