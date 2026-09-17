@@ -253,7 +253,15 @@ test("bounded compiled worker uses embedded tokenizer assets and supports all se
     (await cli(["search", "--semantic", "database", "--fulltext", "database"]))
       .value.results.length,
   ).toBeGreaterThan(0);
-  expect((await cli(["embeddings", "status"])).value.pending).toBe(0);
+  expect((await cli(["embeddings", "status"])).value).toEqual({
+    pending: {
+      total: 0,
+      claimable: 0,
+      deferred: 0,
+      oldestAt: null,
+    },
+    failed: { terminal: 0 },
+  });
 }, 30000);
 
 async function connectMcp(args: string[]) {
