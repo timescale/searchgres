@@ -38,6 +38,24 @@ test("installer verifies and installs all release binaries", async () => {
   }
 });
 
+test("installer resolves the latest release when no version is pinned", async () => {
+  const fixture = await releaseFixture();
+  try {
+    const result = await runInstaller(
+      fixture.baseUrl,
+      fixture.installDirectory,
+      `${fixture.baseUrl}/latest`,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Searchgres v-test");
+    expect(
+      await Bun.file(join(fixture.installDirectory, "searchgres")).exists(),
+    ).toBe(true);
+  } finally {
+    fixture.server.stop(true);
+  }
+});
+
 test("a checksum failure installs nothing", async () => {
   const fixture = await releaseFixture("searchgres");
   try {
@@ -77,7 +95,12 @@ async function releaseFixture(corruptChecksum?: string): Promise<{
   const server = Bun.serve({
     port: 0,
     fetch(request) {
-      const body = assets.get(new URL(request.url).pathname);
+      const url = new URL(request.url);
+      if (url.pathname === "/latest") {
+        return Response.redirect(new URL("/releases/tag/v-test", url), 302);
+      }
+      if (url.pathname === "/releases/tag/v-test") return new Response("ok");
+      const body = assets.get(url.pathname);
       return body === undefined
         ? new Response("not found", { status: 404 })
         : new Response(body);
@@ -93,6 +116,7 @@ async function releaseFixture(corruptChecksum?: string): Promise<{
 async function runInstaller(
   baseUrl: string,
   installDirectory: string,
+  latestReleaseUrl?: string,
 ): Promise<{
   readonly exitCode: number;
   readonly stdout: string;
@@ -102,7 +126,10 @@ async function runInstaller(
     cmd: ["/bin/sh", installer],
     env: {
       ...process.env,
-      SEARCHGRES_VERSION: "v-test",
+      ...(latestReleaseUrl === undefined
+        ? { SEARCHGRES_VERSION: "v-test" }
+        : { SEARCHGRES_VERSION: undefined }),
+      SEARCHGRES_LATEST_RELEASE_URL: latestReleaseUrl,
       SEARCHGRES_RELEASE_BASE_URL: baseUrl,
       SEARCHGRES_INSTALL_DIR: installDirectory,
     },

@@ -117,8 +117,8 @@ resolve_install_dir() {
 }
 
 fetch_latest_version() {
-  url="$(curl -sSfL -o /dev/null -w '%{url_effective}' \
-    "https://github.com/${REPOSITORY}/releases/latest")"
+  latest_url="${SEARCHGRES_LATEST_RELEASE_URL:-https://github.com/${REPOSITORY}/releases/latest}"
+  url="$(curl -sSfL -o /dev/null -w '%{url_effective}' "$latest_url")"
   case "$url" in
     */releases/tag/*) ;;
     *) err "Failed to determine latest release from: ${url}" ;;
