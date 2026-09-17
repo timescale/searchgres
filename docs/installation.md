@@ -164,12 +164,11 @@ shell), downloads matching GitHub release assets, and verifies individual
 SHA-256 files before installing. The default destination is `~/.local/bin` when
 `~/.local` exists, otherwise `~/bin`.
 
-Override the destination or release tag on the receiving shell. Replace
-`vX.Y.Z` with a published release tag that includes the direct CLI assets:
+Override the destination or release tag on the receiving shell:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | \
-  SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=vX.Y.Z sh
+  SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=v0.3.0 sh
 ```
 
 This binary is a maintained reference and evaluation tool over the same core,
