@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-17
+
+### Fixed
+
+- Restore cross-platform reference-binary publishing by invoking the pinned Bun
+  executable directly, and verify that unpinned installer runs resolve the
+  latest GitHub release tag before downloading assets.
+
 ## [0.3.0] - 2026-09-17
 
 ### Changed

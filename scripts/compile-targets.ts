@@ -31,7 +31,7 @@ for (const { target, suffix } of targets) {
   console.log(`Compiling ${target} → ${output}`);
   const result = Bun.spawnSync({
     cmd: [
-      "bun",
+      process.execPath,
       "build",
       entrypoint,
       "--compile",
