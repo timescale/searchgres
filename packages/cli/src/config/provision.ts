@@ -169,7 +169,11 @@ export async function generateConfig(flags: Flags): Promise<void> {
     return;
   }
   await mkdir(dirname(path), { recursive: true });
-  const file = await open(path, "wx", 0o600);
+  const file = await open(path, "wx", 0o600).catch((error: unknown) => {
+    if ((error as { code?: string }).code === "EEXIST")
+      throw new InputError(`${path} already exists; refusing to overwrite it`);
+    throw error;
+  });
   try {
     await file.writeFile(rendered);
   } finally {

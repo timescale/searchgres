@@ -24,20 +24,26 @@ const temporalSchema = z
       value.length === 1 || Date.parse(value[0]) < Date.parse(value[1]),
     "interval start must be before its end",
   );
+// Mirror core's record rules so dry runs and MCP schemas reject what core would.
+const contentSchema = z.string().min(1, "content must not be empty");
+const nameSchema = z
+  .string()
+  .min(1, "name must not be empty; use null for an unnamed record")
+  .nullable();
 export const recordInputSchema = z.strictObject({
   id: uuidSchema.optional(),
-  content: z.string(),
+  content: contentSchema,
   meta: jsonObjectSchema.default({}),
   tree: treePathSchema.default(""),
   temporal: temporalSchema.optional(),
-  name: z.string().nullable().default(null),
+  name: nameSchema.default(null),
 });
 export const patchInputSchema = z
   .strictObject({
-    content: z.string().optional(),
+    content: contentSchema.optional(),
     meta: jsonObjectSchema.optional(),
     tree: treePathSchema.optional(),
-    name: z.string().nullable().optional(),
+    name: nameSchema.optional(),
     temporal: temporalSchema.nullable().optional(),
   })
   .refine(

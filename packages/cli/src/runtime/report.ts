@@ -1,11 +1,23 @@
 import {
   InvalidConfigError,
+  InvalidInputError,
   SearchgresError,
+  TreePathError,
   ValidationError,
 } from "searchgres";
 import { z } from "zod";
 
 export class InputError extends Error {}
+
+/**
+ * Reduce any failure to a stable code and a message safe to print or return
+ * to an MCP host.
+ *
+ * Validation diagnostics are retained: they are authored by core or by this
+ * binary about the caller's own input and are needed to correct it. Every
+ * other message is replaced by its code, because provider, driver, and
+ * unexpected errors can carry remote text, connection details, or secrets.
+ */
 export function safeError(error: unknown): {
   code: string;
   message: string;
@@ -24,24 +36,25 @@ export function safeError(error: unknown): {
       issues: error.issues.map((issue) => ({
         code: issue.code,
         path: issue.path.map(String),
-        message: "Invalid field value",
+        message: issue.message,
       })),
     };
   if (error instanceof SearchgresError) {
-    // Even typed provider errors can retain remote messages. Never return their
-    // raw messages or causes. Stable codes carry the operational distinction.
+    const retainMessage =
+      error instanceof InvalidConfigError ||
+      error instanceof InvalidInputError ||
+      error instanceof TreePathError;
     return {
       code: error.code,
-      message:
-        error instanceof InvalidConfigError
-          ? error.message
-          : `Searchgres operation failed (${error.code})`,
-      ...(error instanceof ValidationError
+      message: retainMessage
+        ? error.message
+        : `Searchgres operation failed (${error.code})`,
+      ...(error instanceof ValidationError && error.issues.length > 0
         ? {
             issues: error.issues.map((issue) => ({
               code: issue.code,
               path: issue.path,
-              message: "Invalid field value",
+              message: issue.message,
             })),
           }
         : {}),

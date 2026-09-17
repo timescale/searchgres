@@ -416,20 +416,31 @@ function renderTree(
   entries: readonly { readonly tree: string; readonly count: number }[],
   root: string,
 ): void {
-  const sorted = [...entries].sort((left, right) =>
-    left.tree.localeCompare(right.tree),
-  );
-  const baseDepth = root === "" ? 0 : root.split(".").length;
-  for (const [index, entry] of sorted.entries()) {
-    const depth =
-      entry.tree === "" ? 0 : entry.tree.split(".").length - baseDepth;
-    const label =
-      entry.tree === "" ? "." : (entry.tree.split(".").at(-1) ?? entry.tree);
-    const branch = index === sorted.length - 1 ? "└──" : "├──";
-    console.log(
-      `${"│   ".repeat(Math.max(0, depth))}${branch} ${label} (${entry.count})`,
-    );
+  // Group by parent so connectors reflect each node's own siblings.
+  const children = new Map<string, { tree: string; count: number }[]>();
+  for (const entry of entries) {
+    if (entry.tree === root) continue;
+    const parent = entry.tree.split(".").slice(0, -1).join(".");
+    const siblings = children.get(parent) ?? [];
+    siblings.push(entry);
+    children.set(parent, siblings);
   }
+  const rootEntry = entries.find((entry) => entry.tree === root);
+  console.log(`${root === "" ? "." : root} (${rootEntry?.count ?? 0})`);
+  const render = (parent: string, prefix: string): void => {
+    const siblings = [...(children.get(parent) ?? [])].sort((left, right) =>
+      left.tree.localeCompare(right.tree),
+    );
+    for (const [index, entry] of siblings.entries()) {
+      const last = index === siblings.length - 1;
+      const label = entry.tree.split(".").at(-1) ?? entry.tree;
+      console.log(
+        `${prefix}${last ? "└── " : "├── "}${label} (${entry.count})`,
+      );
+      render(entry.tree, `${prefix}${last ? "    " : "│   "}`);
+    }
+  };
+  render(root, "");
 }
 
 /** Map search/count flags to core options; exported for fast unit tests. */

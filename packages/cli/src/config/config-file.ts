@@ -1,4 +1,5 @@
 import { JSON5, YAML } from "bun";
+import { InputError } from "../runtime/report.ts";
 
 /**
  * Serialize a generated CLI config in the encoding its filename implies.
@@ -8,6 +9,6 @@ export function renderConfig(path: string, config: unknown): string {
   const name = path.toLowerCase();
   if (name.endsWith(".json5")) return `${JSON5.stringify(config, null, 2)}\n`;
   if (name.endsWith(".yaml") || name.endsWith(".yml"))
-    return `${YAML.stringify(config)}\n`;
-  throw new Error("Config path must end in .yaml, .yml, or .json5");
+    return `${YAML.stringify(config, null, 2)}\n`;
+  throw new InputError("Config path must end in .yaml, .yml, or .json5");
 }

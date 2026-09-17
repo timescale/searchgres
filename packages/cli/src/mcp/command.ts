@@ -39,6 +39,7 @@ export async function runMcp(flags: Flags): Promise<void> {
       : flags.has("workers")
         ? nonnegativeInteger(requiredFlag(flags, "workers"), "workers")
         : config.worker.count;
+    if (count > 64) throw new InputError("--workers must be at most 64");
     runtime.startEmbeddingWorkers(count);
     mcp.server.onclose = eof;
     process.stdin.once("end", eof);
