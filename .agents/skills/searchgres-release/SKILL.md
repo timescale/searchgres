@@ -37,7 +37,8 @@ A stable release version is `X.Y.Z`; its tag is `vX.Y.Z`.
   the current version, or a surprising jump, stop and ask the user to confirm.
 - In particular, do not infer a major-version jump from a likely typo.
 - Ensure the package version, `LIBRARY_VERSION`, lockfile workspace version,
-  changelog heading, and eventual tag all use the exact same version.
+  changelog heading, the pinned `SEARCHGRES_VERSION` command in
+  `docs/installation.md`, and eventual tag all use the exact same version.
 - npm versions are immutable. Never overwrite, move, or reuse a release tag.
 
 Before starting, run checks equivalent to:
@@ -66,12 +67,16 @@ Skip this section only when the exact release commit has already been merged to
    git switch -c "release/$version"
    ```
 
-2. Update exactly these version records:
+2. Update these version records and installation guidance:
    - `packages/core/package.json`
    - `packages/core/src/version.ts`
    - the `packages/core` workspace entry in `bun.lock`
+   - the pinned binary-install command in `docs/installation.md`, setting
+     `SEARCHGRES_VERSION=vX.Y.Z` to the release tag
 
    Do not regenerate the entire lockfile merely to change the workspace version.
+   Keep the default unpinned installer command intact: it must continue to resolve
+   the latest GitHub release automatically.
 
 3. Add a dated `## [X.Y.Z] - YYYY-MM-DD` section immediately below
    `## [Unreleased]` in `CHANGELOG.md`. Derive factual notes from the changes
@@ -129,7 +134,8 @@ Tag only after the release PR is merged.
 2. Verify all of the following before tagging:
    - `HEAD` is the intended merged release commit and is contained in
      `origin/main`.
-   - The package, library constant, lockfile, and changelog all say `X.Y.Z`.
+   - The package, library constant, lockfile, changelog, and pinned
+     `docs/installation.md` installer command all say `X.Y.Z`.
    - `vX.Y.Z` does not exist locally or remotely.
    - `searchgres@X.Y.Z` is not already published.
    - The CI push run for this `main` commit completed successfully.
@@ -199,8 +205,17 @@ A green workflow is necessary but not sufficient. Verify the public artifact:
 
    Require the imported version to equal `X.Y.Z` and remove the temporary
    directory afterward.
-5. Report the tag commit, main CI run, release workflow run, npm version,
-   `latest` dist-tag, provenance result, and fresh-install result.
+5. After the GitHub release assets are available, test `install.sh` twice in
+   separate temporary directories:
+   - without `SEARCHGRES_VERSION`, requiring it to resolve and install the actual
+     latest GitHub release;
+   - with `SEARCHGRES_VERSION=vX.Y.Z`, requiring the pinned tag to install.
+
+   Run each installed binary with `--version` and `mcp --help`, require the
+   reported version to equal `X.Y.Z`, and remove the temporary directories.
+6. Report the tag commit, main CI run, release workflow run, npm version,
+   `latest` dist-tag, provenance result, fresh npm-install result, GitHub release
+   assets, and both installer results.
 
 ## Failure rules
 
