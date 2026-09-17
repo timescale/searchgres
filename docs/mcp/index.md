@@ -62,6 +62,13 @@ paths, shell commands, provisioning, or worker administration. There are no
 worker-kick options. Writes queue vectors; they do not promise immediate
 semantic visibility.
 
+Tool calls are processed concurrently, not in arrival order. Responses may
+arrive out of order; clients must match them by JSON-RPC request ID. For dependent
+operations, await and check the first call's result before sending the next—for
+example, wait for a successful create before getting or updating that record.
+Independent calls may run in parallel. A successful write still does not imply
+that background embedding has finished.
+
 Results retain local envelopes (`record`, `results`, `entries`) with dates as
 ISO strings and `temporal` in its input shape: `null`, an ISO `[instant]`, or
 an ISO `[start, end]` interval. The `searchgres_info` queue uses nested

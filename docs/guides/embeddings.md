@@ -125,8 +125,8 @@ const stats = await index.queueStats();
 | Field | Meaning |
 | --- | --- |
 | `pending` | Rows awaiting a vector (`waiting` + `inFlight`). |
-| `inFlight` | Pending rows a drainer currently holds (lease not yet expired). |
-| `waiting` | Pending rows claimable right now. |
+| `inFlight` | Pending rows hidden by an unexpired lease or retry delay; not necessarily an active provider call. |
+| `waiting` | Pending rows visible to the next claim; exhausted rows are swept rather than retried. |
 | `failed` | Current record versions that exhausted their attempts and still have no vector. |
 | `oldestPendingAt` | Enqueue time of the oldest pending row, or `null` when idle. |
 
@@ -135,6 +135,15 @@ isn't keeping up. A growing `failed` count means current record versions have
 exhausted their attempt budget. Inspect those failures rather than re-ingesting
 the records: an identical upsert is intentionally a no-op and does not enqueue
 fresh work.
+
+Terminal failure is recorded during a claim sweep, not immediately when the
+last attempt fails. Attempts increment at claim time; the sweep only finalizes
+pending rows whose visibility timeout has expired and whose attempts meet the
+claiming drainer's `maxAttempts`. This protects unexpired claims, including a
+worker's still-running final attempt. Until a subsequent sweep runs, exhausted
+rows remain in `pending` (`inFlight` before visibility expires, then `waiting`)
+and are absent from `failed` and `listEmbeddingFailures()`. Inspecting queue
+status does not run the sweep.
 
 ### Inspect and retry terminal failures
 
@@ -193,7 +202,10 @@ All durations are milliseconds.
 
 - **`leaseDurationMs`** (default `300000`) — how long a claimed row is hidden from
   other drainers. If a drainer crashes, its rows reappear after the lease.
-- **`maxAttempts`** (default `3`) — attempts before a row is terminally `failed`.
+- **`maxAttempts`** (default `3`) — attempt threshold used by each drainer's claim
+  sweep. Set it per `processEmbeddings()` call or when starting a worker; it is
+  not stored in the schema. Increasing it does not revive already-terminal rows;
+  use `retryEmbeddingFailures()` for those.
 - **`pruneRetentionMs`** (default `604800000`) — how long terminal rows are kept.
 
 ## Why this is safe

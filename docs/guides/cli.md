@@ -184,6 +184,12 @@ nothing is claimable. Limits and cancellation are checked between batches.
 deferred rows are protected by an active lease or retry delay. Terminal failures
 are outside the pending total and remain until retried, superseded, or pruned.
 
+After the final failed attempt, a row remains pending until its visibility
+timeout expires and a subsequent worker poll or `process` invocation sweeps it
+to terminal failure. Thus `failed.terminal` and `failures` can lag the failed
+attempt. `status` and `info` only inspect the queue; they do not finalize rows.
+See the [queue lifecycle details](embeddings.md#monitor-the-queue).
+
 `worker` starts N concurrent core loops sharing one SQL pool, model, and
 truncator. It is not N tokenizer threads. Default count is one (configurable);
 zero is rejected for this command. Ordinary CLI commands never start workers.
