@@ -12,6 +12,7 @@ import {
 } from "../inputs.ts";
 import {
   parseSelection,
+  presentRecord,
   projectSearchEnvelope,
   projectStoredRecord,
 } from "../presentation/index.ts";
@@ -231,7 +232,9 @@ function registerReadTools(server: McpServer, runtime: Runtime): void {
         );
         const parsed = selection(select, "search-result");
         const result = { results: await runtime.index.search(params) };
-        return parsed ? projectSearchEnvelope(result, parsed) : result;
+        return parsed
+          ? projectSearchEnvelope(result, parsed)
+          : { results: result.results.map(presentRecord) };
       }),
   );
 
@@ -246,15 +249,15 @@ function registerReadTools(server: McpServer, runtime: Runtime): void {
     (args, extra) =>
       execute(runtime, extra, async () => {
         const parsed = selection(args.select, "stored-record");
-        const result = {
-          record:
-            "id" in args
-              ? await runtime.index.get(args.id)
-              : await runtime.index.getByName(args.tree, args.name),
+        const record =
+          "id" in args
+            ? await runtime.index.get(args.id)
+            : await runtime.index.getByName(args.tree, args.name);
+        return {
+          record: parsed
+            ? projectStoredRecord(record, parsed)
+            : presentRecord(record),
         };
-        return parsed
-          ? { record: projectStoredRecord(result.record, parsed) }
-          : result;
       }),
   );
 
@@ -373,17 +376,19 @@ function registerWriteTools(server: McpServer, runtime: Runtime): void {
     },
     (args, extra) =>
       execute(runtime, extra, async () => ({
-        record: await runtime.index.patch(args.id, args.priorVersionHash, {
-          ...(args.patch.content == null
-            ? {}
-            : { content: args.patch.content }),
-          ...(args.patch.meta == null ? {} : { meta: args.patch.meta }),
-          ...(args.patch.tree == null ? {} : { tree: args.patch.tree }),
-          ...(args.patch.name === undefined ? {} : { name: args.patch.name }),
-          ...(args.patch.temporal === undefined
-            ? {}
-            : { temporal: args.patch.temporal }),
-        }),
+        record: presentRecord(
+          await runtime.index.patch(args.id, args.priorVersionHash, {
+            ...(args.patch.content == null
+              ? {}
+              : { content: args.patch.content }),
+            ...(args.patch.meta == null ? {} : { meta: args.patch.meta }),
+            ...(args.patch.tree == null ? {} : { tree: args.patch.tree }),
+            ...(args.patch.name === undefined ? {} : { name: args.patch.name }),
+            ...(args.patch.temporal === undefined
+              ? {}
+              : { temporal: args.patch.temporal }),
+          }),
+        ),
       })),
   );
 

@@ -15,8 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `searchgres mcp`, with one background embedding worker by default.
 - Add `embeddings process/worker/status/failures/retry/prune` commands using core's
   existing public APIs. Retain exact tokenizer presets and bundled assets with
-  lazy worker-thread initialization. CLI exit codes are 0 (success), 2 (input),
-  and 1 (operational failure).
+  lazy worker-thread initialization. CLI exit codes are 0 (success), 2 (the
+  request cannot succeed as written: input errors, `NOT_FOUND`, `CONFLICT`,
+  `STALE_VERSION`), and 1 (operational failure).
+- CLI and MCP present `temporal` in its input shape (ISO `[instant]` or
+  `[start, end]`) instead of PostgreSQL range text, and retain core's
+  validation and record-state messages while keeping provider and driver
+  errors code-only.
 - Compose now exposes PostgreSQL and Ollama on loopback for host CLI query
   embedding, with one-shot model/index initialization and a continuous worker.
 - Remove the old reference packages, separate server/MCP binaries, HTTP/RPC

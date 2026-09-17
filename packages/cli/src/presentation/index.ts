@@ -29,7 +29,46 @@ export interface ParsedSelect {
 }
 
 type MutablePartial<T> = { -readonly [K in keyof T]?: T[K] };
-export type ProjectedSearchResult = MutablePartial<SearchResult> & {
+
+/**
+ * Temporal values are presented in the same shape they are accepted: one ISO
+ * instant, or an ISO `[start, end]` interval. Core returns PostgreSQL's
+ * canonical `tstzrange` text, which callers should never need to parse.
+ */
+export type PresentedTemporal = [string] | [string, string] | null;
+export type PresentedRecord<T extends StoredRecord> = Omit<T, "temporal"> & {
+  readonly temporal: PresentedTemporal;
+};
+
+export function presentTemporal(value: string | null): PresentedTemporal {
+  if (value === null) return null;
+  const match = /^[[(]"?(.+?)"?,"?(.+?)"?[)\]]$/.exec(value);
+  if (!match?.[1] || !match[2])
+    throw new Error("unexpected temporal range text from PostgreSQL");
+  const start = isoTimestamp(match[1]);
+  const end = isoTimestamp(match[2]);
+  return start === end ? [start] : [start, end];
+}
+
+function isoTimestamp(value: string): string {
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds))
+    throw new Error("unexpected temporal timestamp text from PostgreSQL");
+  return new Date(milliseconds).toISOString();
+}
+
+/** Present one core record or search result for CLI/MCP output. */
+export function presentRecord<T extends StoredRecord>(
+  record: T,
+): PresentedRecord<T> {
+  return { ...record, temporal: presentTemporal(record.temporal) };
+}
+
+export type ProjectedSearchResult = Omit<
+  MutablePartial<SearchResult>,
+  "temporal"
+> & {
+  temporal?: PresentedTemporal;
   readonly contentLength?: number;
 };
 
@@ -126,7 +165,11 @@ export function projectSearchEnvelope(
   };
 }
 
-export type ProjectedStoredRecord = MutablePartial<StoredRecord> & {
+export type ProjectedStoredRecord = Omit<
+  MutablePartial<StoredRecord>,
+  "temporal"
+> & {
+  temporal?: PresentedTemporal;
   readonly contentLength?: number;
 };
 
@@ -148,8 +191,7 @@ function projectRecord(
   result: StoredRecord | SearchResult,
   select: ParsedSelect,
 ): ProjectedSearchResult {
-  const projected: MutablePartial<SearchResult> & { contentLength?: number } =
-    {};
+  const projected: ProjectedSearchResult & { contentLength?: number } = {};
 
   if (select.fields.has("id")) projected.id = result.id;
   if (select.fields.has("content")) {
@@ -184,7 +226,8 @@ function projectRecord(
   }
   if (select.fields.has("tree")) projected.tree = result.tree;
   if (select.fields.has("name")) projected.name = result.name;
-  if (select.fields.has("temporal")) projected.temporal = result.temporal;
+  if (select.fields.has("temporal"))
+    projected.temporal = presentTemporal(result.temporal);
   if (select.fields.has("score") && "score" in result) {
     projected.score = result.score;
   }

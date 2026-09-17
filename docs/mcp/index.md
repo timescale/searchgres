@@ -63,8 +63,11 @@ worker-kick options. Writes queue vectors; they do not promise immediate
 semantic visibility.
 
 Results retain local envelopes (`record`, `results`, `entries`) with dates as
-ISO strings and temporal ranges in PostgreSQL's text representation. For
-updates, omitted fields remain unchanged; null `name`/`temporal` clears them.
+ISO strings and `temporal` in its input shape: `null`, an ISO `[instant]`, or
+an ISO `[start, end]` interval. For updates, omitted fields remain unchanged;
+null `name`/`temporal` clears them. Validation and record-state errors
+(`NOT_FOUND`, `CONFLICT`, `STALE_VERSION`) keep their message; other failures
+return only a stable code.
 `select` projects locally and supports fields, exact `meta.KEY`, and Unicode
 content ranges. It does not change SQL projection.
 

@@ -3,6 +3,8 @@ import test from "node:test";
 import type { SearchResult, StoredRecord } from "searchgres";
 import {
   parseSelection,
+  presentRecord,
+  presentTemporal,
   projectSearchEnvelope,
   projectSearchResult,
   projectStoredRecord,
@@ -137,4 +139,31 @@ test("rejects empty, unknown, and conflicting selectors", () => {
     assert.throws(() => select(selectors));
   }
   assert.doesNotThrow(() => select(["content:3", "content:..3"]));
+});
+
+test("temporal is presented in its input shape", () => {
+  assert.equal(presentTemporal(null), null);
+  assert.deepEqual(
+    presentTemporal('["2026-09-12 15:00:00+00","2026-09-12 15:00:00+00"]'),
+    ["2026-09-12T15:00:00.000Z"],
+  );
+  assert.deepEqual(
+    presentTemporal('["2026-01-01 00:00:00+00","2026-02-01 00:00:00+00")'),
+    ["2026-01-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z"],
+  );
+  const interval: StoredRecord = {
+    ...result,
+    temporal: '["2026-01-01 00:00:00+00","2026-02-01 00:00:00+00")',
+  };
+  assert.deepEqual(presentRecord(interval).temporal, [
+    "2026-01-01T00:00:00.000Z",
+    "2026-02-01T00:00:00.000Z",
+  ]);
+  assert.deepEqual(
+    projectStoredRecord(
+      interval,
+      parseSelection("temporal", { kind: "stored-record" }),
+    ),
+    { temporal: ["2026-01-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z"] },
+  );
 });

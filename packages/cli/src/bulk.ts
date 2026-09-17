@@ -8,6 +8,7 @@ import {
   recordInputSchema,
   type SearchParams,
 } from "./inputs.ts";
+import { presentTemporal } from "./presentation/index.ts";
 import { InputError, safeError } from "./runtime/report.ts";
 
 const MAX_BATCH_RECORDS = 1000;
@@ -251,14 +252,13 @@ function exportableRecord(record: {
   readonly temporal: string | null;
   readonly name: string | null;
 }): RecordInput {
+  const temporal = presentTemporal(record.temporal);
   return {
     id: record.id,
     content: record.content,
     meta: recordInputSchema.shape.meta.parse(record.meta),
     tree: record.tree,
-    ...(record.temporal === null
-      ? {}
-      : { temporal: parsePostgresRange(record.temporal) }),
+    ...(temporal === null ? {} : { temporal }),
     name: record.name,
   };
 }
@@ -318,24 +318,6 @@ async function createExportWriter(
 function markdownRecord(record: RecordInput): string {
   const { content, ...frontmatter } = record;
   return `---\n${YAML.stringify(frontmatter, null, 2).trimEnd()}\n---\n${content}`;
-}
-
-/** Convert the canonical tstzrange text returned by PostgreSQL into input form. */
-function parsePostgresRange(value: string): [string] | [string, string] {
-  const match = /^[[(]"?(.+?)"?,"?(.+?)"?[)\]]$/.exec(value);
-  if (!match?.[1] || !match[2])
-    throw new Error(`cannot export temporal range: ${value}`);
-  const start = exportTimestamp(match[1]);
-  const end = exportTimestamp(match[2]);
-  return start === end ? [start] : [start, end];
-}
-
-function exportTimestamp(value: string): string {
-  const milliseconds = Date.parse(value);
-  if (!Number.isFinite(milliseconds)) {
-    throw new Error(`cannot export temporal timestamp: ${value}`);
-  }
-  return new Date(milliseconds).toISOString();
 }
 
 function errorMessage(error: unknown): string {
