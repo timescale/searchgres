@@ -3,6 +3,7 @@ import test from "node:test";
 import type { SearchResult, StoredRecord } from "searchgres";
 import {
   parseSelection,
+  presentQueueStats,
   presentRecord,
   presentTemporal,
   projectSearchEnvelope,
@@ -139,6 +140,28 @@ test("rejects empty, unknown, and conflicting selectors", () => {
     assert.throws(() => select(selectors));
   }
   assert.doesNotThrow(() => select(["content:3", "content:..3"]));
+});
+
+test("queue state presents its subset relationships explicitly", () => {
+  const oldest = new Date("2026-09-17T12:00:00.000Z");
+  assert.deepEqual(
+    presentQueueStats({
+      pending: 5,
+      waiting: 2,
+      inFlight: 3,
+      failed: 4,
+      oldestPendingAt: oldest,
+    }),
+    {
+      pending: {
+        total: 5,
+        claimable: 2,
+        deferred: 3,
+        oldestAt: oldest,
+      },
+      failed: { terminal: 4 },
+    },
+  );
 });
 
 test("temporal is presented in its input shape", () => {

@@ -18,6 +18,7 @@ import {
   readRequiredEnvironment,
 } from "../config/config.ts";
 import { assertConfiguredIndexShape } from "../config/index-shape.ts";
+import { presentQueueStats } from "../presentation/index.ts";
 import { TokenizerPool } from "../tokenizer/tokenizer-pool.ts";
 import { safeError } from "./report.ts";
 
@@ -210,7 +211,7 @@ export async function openRuntime(
             workerCount: workers.length,
             truncation: t.kind,
           },
-          queue: await index.queueStats(),
+          queue: presentQueueStats(await index.queueStats()),
         };
       },
       close() {

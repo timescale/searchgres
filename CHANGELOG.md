@@ -19,9 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request cannot succeed as written: input errors, `NOT_FOUND`, `CONFLICT`,
   `STALE_VERSION`), and 1 (operational failure).
 - CLI and MCP present `temporal` in its input shape (ISO `[instant]` or
-  `[start, end]`) instead of PostgreSQL range text, and retain core's
-  validation and record-state messages while keeping provider and driver
-  errors code-only.
+  `[start, end]`) instead of PostgreSQL range text, retain core's validation
+  and record-state messages while keeping provider and driver errors code-only,
+  and present queue state as explicit nested pending/terminal-failure groups.
 - Compose now exposes PostgreSQL and Ollama on loopback for host CLI query
   embedding, with one-shot model/index initialization and a continuous worker.
 - Remove the old reference packages, separate server/MCP binaries, HTTP/RPC

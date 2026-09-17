@@ -1,4 +1,4 @@
-import type { SearchResult, StoredRecord } from "searchgres";
+import type { QueueStats, SearchResult, StoredRecord } from "searchgres";
 
 const bareSelectFields = [
   "id",
@@ -62,6 +62,31 @@ export function presentRecord<T extends StoredRecord>(
   record: T,
 ): PresentedRecord<T> {
   return { ...record, temporal: presentTemporal(record.temporal) };
+}
+
+/** Queue state with subset relationships made explicit for operators. */
+export interface PresentedQueueStats {
+  readonly pending: {
+    readonly total: number;
+    readonly claimable: number;
+    readonly deferred: number;
+    readonly oldestAt: Date | null;
+  };
+  readonly failed: {
+    readonly terminal: number;
+  };
+}
+
+export function presentQueueStats(stats: QueueStats): PresentedQueueStats {
+  return {
+    pending: {
+      total: stats.pending,
+      claimable: stats.waiting,
+      deferred: stats.inFlight,
+      oldestAt: stats.oldestPendingAt,
+    },
+    failed: { terminal: stats.failed },
+  };
 }
 
 export type ProjectedSearchResult = Omit<

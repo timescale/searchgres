@@ -8,6 +8,7 @@ import {
   requiredFlag,
 } from "./flags.ts";
 import { outputFormat, writeStructuredOutput } from "./format.ts";
+import { presentQueueStats } from "./presentation/index.ts";
 import { installShutdown, openRuntime } from "./runtime/index.ts";
 import { InputError } from "./runtime/report.ts";
 
@@ -114,7 +115,7 @@ export async function runEmbeddings(
           break;
         }
         case "status":
-          output(await index.queueStats());
+          output(presentQueueStats(await index.queueStats()));
           break;
         case "failures":
           output({

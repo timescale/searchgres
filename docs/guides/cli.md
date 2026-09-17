@@ -165,6 +165,25 @@ searchgres embeddings prune --older-than 7d --yes
 remaining work alone is not failure. Leased or delayed rows may remain even if
 nothing is claimable. Limits and cancellation are checked between batches.
 
+`status` and the `queue` object in `info` make queue subsets explicit:
+
+```json
+{
+  "pending": {
+    "total": 3,
+    "claimable": 1,
+    "deferred": 2,
+    "oldestAt": "2026-09-17T12:00:00.000Z"
+  },
+  "failed": { "terminal": 4 }
+}
+```
+
+`pending.total` is all non-terminal work and always equals
+`pending.claimable + pending.deferred`. Claimable rows may be claimed now;
+deferred rows are protected by an active lease or retry delay. Terminal failures
+are outside the pending total and remain until retried, superseded, or pruned.
+
 `worker` starts N concurrent core loops sharing one SQL pool, model, and
 truncator. It is not N tokenizer threads. Default count is one (configurable);
 zero is rejected for this command. Ordinary CLI commands never start workers.
