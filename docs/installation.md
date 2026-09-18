@@ -169,7 +169,7 @@ Override the destination or release tag on the receiving shell:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/timescale/searchgres-js/main/install.sh | \
-  SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=v0.3.1 sh
+  SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=v0.3.2 sh
 ```
 
 This binary is a maintained reference and evaluation tool over the same core,
