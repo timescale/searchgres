@@ -1,7 +1,7 @@
 # Generate embeddings
 
 A record is searchable by keyword and filters the moment you write it. Semantic
-search needs its embedding vector, and searchgres generates those
+search needs its embedding vector, and searchgres.js generates those
 **asynchronously** by default: a write enqueues the work, and a drainer produces
 the vector afterward.
 
@@ -31,7 +31,7 @@ await index.upsert({
 });
 ```
 
-You can also supply a vector later, with no content change; searchgres keeps it
+You can also supply a vector later, with no content change; searchgres.js keeps it
 and discards any queued work that referred to the old state, so a drainer can
 never overwrite it.
 
@@ -199,7 +199,7 @@ current failures immediately claimable. `skipped` counts jobs that became stale,
 were resolved or pruned, were already retried, or do not exist. Retrying is
 version-guarded and never resurrects work for old content.
 
-Rate limits normally do not appear here: searchgres refunds those attempts and
+Rate limits normally do not appear here: searchgres.js refunds those attempts and
 leaves the work pending with the provider's backoff. Wrong-dimension output also
 leaves work pending and requires correcting the model/index configuration.
 Terminal retry is for ordinary failures whose underlying cause has been fixed;

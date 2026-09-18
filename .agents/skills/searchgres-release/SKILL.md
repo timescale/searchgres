@@ -8,14 +8,15 @@ metadata:
   version: "1.0"
 ---
 
-# Searchgres release
+# searchgres.js release
 
 Release only the unscoped core npm package `searchgres` from `packages/core`.
-Do not publish private workspace packages or create binary releases.
+Do not publish private workspace packages. The tag workflow also publishes the
+reference binary assets; do not create a separate manual binary release.
 
 ## Establish current truth
 
-Work from the Searchgres repository root. Before changing or publishing anything:
+Work from the searchgres.js repository root. Before changing or publishing anything:
 
 1. Read `DEVELOPMENT.md`, especially **Publishing the core package**.
 2. Read `.github/workflows/release.yml` completely.
@@ -24,6 +25,12 @@ Work from the Searchgres repository root. Before changing or publishing anything
    the top of `CHANGELOG.md`.
 4. Check the latest published version and dist-tag with `npm view searchgres`.
 5. Check GitHub authentication with `gh auth status`.
+
+The canonical repository is `timescale/searchgres-js`; the npm package and CLI
+remain `searchgres`. Before releasing after a repository rename, confirm that
+npm's trusted publisher names `timescale/searchgres-js`, workflow `release.yml`,
+with no environment. Verify the packed repository/homepage/issues URLs and the
+new release provenance identify the canonical repository.
 
 Treat the checked-in workflow and development guide as authoritative when they
 conflict with this skill. Never expose npm credentials or GitHub tokens.

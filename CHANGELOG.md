@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Rename the project to searchgres.js and its GitHub repository to
+  `timescale/searchgres-js`. The npm package and CLI remain `searchgres`;
+  configuration, public APIs, MCP tool IDs, telemetry, and database formats
+  are unchanged.
+
 ## [0.3.1] - 2026-09-17
 
 ### Fixed

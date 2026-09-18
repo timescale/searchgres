@@ -55,7 +55,7 @@ export function safeError(error: unknown): {
       code: error.code,
       message: retainMessage
         ? error.message
-        : `Searchgres operation failed (${error.code})`,
+        : `searchgres.js operation failed (${error.code})`,
       ...(error instanceof ValidationError && error.issues.length > 0
         ? {
             issues: error.issues.map((issue) => ({
@@ -70,7 +70,7 @@ export function safeError(error: unknown): {
   return {
     code: "INTERNAL",
     message:
-      "Searchgres operation failed; check database connectivity and configuration",
+      "searchgres.js operation failed; check database connectivity and configuration",
   };
 }
 export function exitCode(error: unknown): number {

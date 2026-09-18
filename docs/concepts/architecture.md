@@ -1,11 +1,11 @@
 # Architecture and responsibilities
 
-searchgres is a library and a managed PostgreSQL index format. It deliberately
+searchgres.js is a library and a managed PostgreSQL index format. It deliberately
 solves retrieval mechanics while leaving application policy in the application.
 
 ## Responsibility boundary
 
-| searchgres owns | Your application owns |
+| searchgres.js owns | Your application owns |
 | --- | --- |
 | Index schema and schema-local SQL routines | Source documents and chunking |
 | BM25, HNSW, GiST, and GIN indexes | Embedding model and provider credentials |
@@ -21,7 +21,7 @@ those arrangements.
 
 ## One schema per index
 
-Each searchgres index is a literal caller-named PostgreSQL schema containing:
+Each searchgres.js index is a literal caller-named PostgreSQL schema containing:
 
 - a `record` table;
 - an `embedding_queue` table;
@@ -30,11 +30,11 @@ Each searchgres index is a literal caller-named PostgreSQL schema containing:
 - schema-local CRUD, tree, and search routines;
 - an immutable schema-format marker.
 
-There is no global searchgres catalog. Your application tracks its index names.
+There is no global searchgres.js catalog. Your application tracks its index names.
 Several schemas can share one `postgres.js` pool, and separate pools can point at
 different databases.
 
-Every runtime query is schema-qualified. searchgres never persistently mutates
+Every runtime query is schema-qualified. searchgres.js never persistently mutates
 the pool's `search_path` and never closes a pool it did not create.
 
 ## Why logic lives in PostgreSQL
@@ -111,12 +111,12 @@ unscoped handle or database role.
 
 For defense in depth, combine application enforcement with separate indexes,
 database roles and grants, or database-level policy appropriate to your threat
-model. `tree` and `meta` are data dimensions; searchgres does not claim that a
+model. `tree` and `meta` are data dimensions; searchgres.js does not claim that a
 caller-supplied filter is itself authentication.
 
 ## Derived content and pipelines
 
-searchgres begins at the record boundary. Before that boundary, your pipeline
+searchgres.js begins at the record boundary. Before that boundary, your pipeline
 may:
 
 - parse and chunk files;

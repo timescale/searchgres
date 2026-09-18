@@ -1,7 +1,7 @@
 # MCP over the direct CLI
 
 The optional compiled `searchgres` binary includes an MCP stdio command. It
-opens one configured PostgreSQL index directly using core; no Searchgres HTTP
+opens one configured PostgreSQL index directly using core; no searchgres.js HTTP
 server, remote client, or separate MCP binary is needed.
 
 ## Setup

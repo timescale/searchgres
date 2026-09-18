@@ -18,7 +18,7 @@ You will:
 - Node 22+ (or Bun 1.4+, or Deno 2+)
 - A PostgreSQL 18 database with the `vector`, `pg_textsearch`, and `ltree`
   extensions available. If you don't have one, see
-  [Install searchgres](installation.md) for a one-command Docker setup.
+  [Install searchgres.js](installation.md) for a one-command Docker setup.
 - An embedding provider. This guide uses OpenAI via the AI SDK; any provider
   works.
 
@@ -37,7 +37,7 @@ export OPENAI_API_KEY="sk-..."
 
 ## 1. Connect
 
-You create and own the database connection. searchgres never opens or closes it.
+You create and own the database connection. searchgres.js never opens or closes it.
 
 ```ts
 import postgres from "postgres";
@@ -61,7 +61,7 @@ await createIndex(sql, "docs_index", { dimensions: 1536 });
 
 Opening returns a handle you use for everything else. You supply the embedding
 model here. The OpenAI provider package reads `OPENAI_API_KEY` when it makes a
-request; searchgres receives the model object rather than provider credential
+request; searchgres.js receives the model object rather than provider credential
 configuration. Provider error diagnostics can still echo sensitive values; see
 [telemetry precautions](guides/production.md#observability).
 

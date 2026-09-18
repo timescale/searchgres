@@ -249,7 +249,7 @@ export function installShutdown(
       onClosing();
       const timer = setTimeout(() => {
         console.error(
-          "Searchgres shutdown grace expired; unfinished operations may have completed. Queue leases will recover abandoned claims.",
+          "searchgres.js shutdown grace expired; unfinished operations may have completed. Queue leases will recover abandoned claims.",
         );
         process.exit(1);
       }, graceMs);

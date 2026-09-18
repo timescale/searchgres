@@ -1,12 +1,12 @@
 # Build a RAG retriever
 
-searchgres can provide the retrieval stage of a RAG application without
+searchgres.js can provide the retrieval stage of a RAG application without
 prescribing chunking, prompting, or generation. This guide builds a small
 retriever that combines semantic meaning, exact terms, and application scope.
 
 ## 1. Model and ingest chunks
 
-Split source documents before the searchgres boundary. Preserve stable source
+Split source documents before the searchgres.js boundary. Preserve stable source
 identity and chunk position so repeated ingestion updates in place:
 
 ```ts
@@ -30,7 +30,7 @@ await index.upsertMany(
 
 `chunkDocument` belongs to your application. It can preserve headings, attach
 neighbor information, or use a tokenizer appropriate to the generation model.
-searchgres treats each output as one searchable record. Map tenant, collection,
+searchgres.js treats each output as one searchable record. Map tenant, collection,
 and slug values to valid `ltree` labels, and assign the tenant from trusted
 application data. Split large inputs into batches of at most 1,000 records.
 This hierarchy matches the retrieval scope below.

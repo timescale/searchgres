@@ -1,6 +1,7 @@
-# Install searchgres
+# Install searchgres.js
 
-The primary distribution is the runtime-agnostic TypeScript library. Install it
+searchgres.js is published on npm as `searchgres`. The primary distribution is
+the runtime-agnostic TypeScript library. Install it
 with `postgres.js` and the AI SDK provider of your choice:
 
 ```bash
@@ -11,7 +12,7 @@ npm install searchgres postgres @ai-sdk/openai
 postinstall script, provider credentials, or Bun-only runtime dependency.
 
 The [`postgres`](https://github.com/porsager/postgres) package is the database
-driver. searchgres uses the provider-agnostic [`ai`](https://ai-sdk.dev) package
+driver. searchgres.js uses the provider-agnostic [`ai`](https://ai-sdk.dev) package
 but no provider package; replace `@ai-sdk/openai` with Mistral, Google, another
 AI SDK provider, or your own compatible embedding model.
 
@@ -29,7 +30,7 @@ examples directly with Node requires Node 22.18 or newer.
 
 ## PostgreSQL
 
-searchgres targets **PostgreSQL 18** and requires three extensions:
+searchgres.js targets **PostgreSQL 18** and requires three extensions:
 
 | Extension | Provides | Minimum version |
 | --- | --- | --- |
@@ -64,7 +65,7 @@ required to create and use its index schema.
 ## Production PostgreSQL with Tiger Cloud
 
 [Tiger Cloud](https://www.tigerdata.com/cloud) is a turnkey managed PostgreSQL
-option for production searchgres workloads. PostgreSQL 18 and all three required
+option for production searchgres.js workloads. PostgreSQL 18 and all three required
 extensions—`pgvector`, `pg_textsearch`, and `ltree`—are available on the
 platform, so you do not need to build or operate a custom database image.
 
@@ -91,8 +92,8 @@ the core library against a local database while managing the application and
 embedding provider yourself.
 
 ```bash
-git clone https://github.com/timescale/searchgres.git
-cd searchgres
+git clone https://github.com/timescale/searchgres-js.git
+cd searchgres-js
 
 docker build -t searchgres-postgres -f docker/Dockerfile.postgres docker/
 
@@ -114,7 +115,7 @@ psql postgres://postgres@127.0.0.1:5432/postgres -c \
 
 ## You own the connection pool
 
-searchgres never creates, closes, or persistently reconfigures a connection.
+searchgres.js never creates, closes, or persistently reconfigures a connection.
 Create the pool, pass it to `createIndex()` and `openIndex()`, and close it when
 your application shuts down:
 
@@ -124,7 +125,7 @@ import postgres from "postgres";
 const sql = postgres(process.env.DATABASE_URL, { max: 10 });
 
 try {
-  // Use sql with searchgres.
+  // Use sql with searchgres.js.
 } finally {
   await sql.end();
 }
@@ -138,8 +139,8 @@ share one pool. See [Create and manage indexes](guides/indexes.md).
 For a no-API-key evaluation, run the optional Compose stack:
 
 ```bash
-git clone https://github.com/timescale/searchgres.git
-cd searchgres
+git clone https://github.com/timescale/searchgres-js.git
+cd searchgres-js
 docker compose up --build
 ```
 
@@ -156,7 +157,7 @@ Releases include one compiled `searchgres` executable for direct PostgreSQL CLI
 operations, embedding workers, and `searchgres mcp`. Install it with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/timescale/searchgres-js/main/install.sh | sh
 ```
 
 The installer detects Linux or macOS on amd64/arm64 (and Windows under a POSIX
@@ -167,7 +168,7 @@ SHA-256 files before installing. The default destination is `~/.local/bin` when
 Override the destination or release tag on the receiving shell:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/timescale/searchgres/main/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/timescale/searchgres-js/main/install.sh | \
   SEARCHGRES_INSTALL_DIR="$HOME/.local/bin" SEARCHGRES_VERSION=v0.3.1 sh
 ```
 
@@ -175,7 +176,7 @@ This binary is a maintained reference and evaluation tool over the same core,
 not a required layer or co-equal product. See
 [Reference implementations and evaluation tools](reference-applications.md) and
 the [CLI guide](guides/cli.md) for configuration and security boundaries. It
-holds database/provider credentials locally; no Searchgres network service is
+holds database/provider credentials locally; no searchgres.js network service is
 required.
 
 Next: [Get started](getting-started.md).

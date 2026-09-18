@@ -18,7 +18,7 @@ try {
       "--quiet",
       "--lint",
       "--title",
-      "Searchgres Filter Expression Syntax",
+      "searchgres.js Filter Expression Syntax",
       source,
       "--target",
       output,

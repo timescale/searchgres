@@ -45,7 +45,7 @@ export async function runMcp(flags: Flags): Promise<void> {
     process.stdin.once("end", eof);
     await mcp.connect(transport);
     console.error(
-      `Searchgres MCP running on stdio (${count} embedding workers)`,
+      `searchgres.js MCP running on stdio (${count} embedding workers)`,
     );
     await done;
   } finally {

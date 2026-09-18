@@ -1,7 +1,7 @@
 # Ingest records
 
 A record is one unit of searchable content—one caller-defined chunk, fact,
-summary, event, or other textual unit. searchgres does not split or transform
+summary, event, or other textual unit. searchgres.js does not split or transform
 source material for you; your application decides what representations to
 index. See [Model records](../concepts/record-model.md) for design guidance.
 
@@ -127,7 +127,7 @@ id and a name resolve to the same existing record are rejected with
 
 ## Index existing application data
 
-searchgres operates on records in its managed index schema, but those records
+searchgres.js operates on records in its managed index schema, but those records
 can be projections of arbitrary existing tables. Populate them through:
 
 - application jobs that read source rows and call `upsertMany()`;
@@ -138,7 +138,7 @@ can be projections of arbitrary existing tables. Populate them through:
 Writes performed through direct SQL still run the index's integrity and queue
 triggers. If projected content has no vector, it enters the embedding queue just
 like a library write. Keep remote embedding calls out of source-table triggers;
-let a separate searchgres worker process the queue asynchronously.
+let a separate searchgres.js worker process the queue asynchronously.
 
 See [Direct SQL](../reference/sql.md) for routine signatures.
 
