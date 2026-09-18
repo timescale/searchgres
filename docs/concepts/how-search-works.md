@@ -1,6 +1,6 @@
 # How search works
 
-searchgres combines multiple retrieval strategies because no single score
+searchgres.js combines multiple retrieval strategies because no single score
 captures every kind of relevance. Semantic similarity finds related meaning;
 BM25 finds exact language and identifiers; structured filters establish the
 scope in which either ranking should operate.
@@ -30,7 +30,7 @@ await index.search({
 });
 ```
 
-searchgres applies the index handle's truncator, calls its embedding model,
+searchgres.js applies the index handle's truncator, calls its embedding model,
 checks the returned dimensions, and searches the HNSW index with cosine
 distance. The public score is cosine similarity: higher is better, with a
 possible range of `[-1, 1]`.
@@ -52,7 +52,7 @@ await index.search({ fulltext: "HTTP 429 rate limit" });
 ```
 
 The score is a positive, query-dependent BM25 value. Its scale is not comparable
-to cosine similarity or to BM25 scores from a different query. searchgres
+to cosine similarity or to BM25 scores from a different query. searchgres.js
 returns only genuine lexical matches; it does not pad the result set to `limit`.
 
 ## Hybrid retrieval and RRF
@@ -68,7 +68,7 @@ await index.search({
 ```
 
 Raw BM25 and cosine scores have different meanings and scales, so adding them
-would make one scoring system dominate arbitrarily. searchgres instead uses
+would make one scoring system dominate arbitrarily. searchgres.js instead uses
 Reciprocal Rank Fusion (RRF):
 
 ```text

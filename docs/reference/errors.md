@@ -1,9 +1,9 @@
 # Errors and recovery
 
-Every error searchgres raises for a caller-facing condition — bad input, bad
+Every error searchgres.js raises for a caller-facing condition — bad input, bad
 configuration, a missing record, a conflict, a timeout, a provider failure —
 extends `SearchgresError` and carries a stable `code`. Catch the base class to
-detect any searchgres error, or a specific subclass to handle one case:
+detect any searchgres.js error, or a specific subclass to handle one case:
 
 ```ts
 import { SearchgresError, StaleVersionError } from "searchgres";
@@ -14,7 +14,7 @@ try {
   if (error instanceof StaleVersionError) {
     // re-read and retry
   } else if (error instanceof SearchgresError) {
-    // any other searchgres error
+    // any other searchgres.js error
   } else {
     throw error;
   }
@@ -146,25 +146,25 @@ A required extension is missing, too old, unavailable, or installed outside
 "wrong_schema"`).
 
 **Recover:** install/upgrade the extension in `public`, or grant the connecting
-role `CREATE EXTENSION`. See [Install searchgres](../installation.md).
+role `CREATE EXTENSION`. See [Install searchgres.js](../installation.md).
 
 ### `UnsupportedServerError` (`UNSUPPORTED_SERVER`)
 
-The PostgreSQL server is older than searchgres supports. Carries
+The PostgreSQL server is older than searchgres.js supports. Carries
 `serverVersionNum` and `minimumVersionNum`.
 
 **Recover:** use PostgreSQL 18 or newer.
 
 ### `InvalidIndexError` (`INVALID_INDEX`)
 
-`openIndex`/`dropIndex` targeted a schema that isn't a searchgres index (no valid
+`openIndex`/`dropIndex` targeted a schema that isn't a searchgres.js index (no valid
 version marker or the expected shape is missing). Carries `schema`.
 
 **Recover:** check the schema name, or create the index first.
 
 ### `SchemaVersionError` (`SCHEMA_VERSION`)
 
-The index was created by an incompatible searchgres schema format. Carries
+The index was created by an incompatible searchgres.js schema format. Carries
 `schema`, `schemaVersion`, and `supportedVersion`.
 
 **Recover:** create a new index and reindex; there is no in-place upgrade. See

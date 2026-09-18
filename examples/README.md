@@ -1,4 +1,4 @@
-# searchgres examples
+# searchgres.js examples
 
 These examples use the published core library directly. They do not require the
 optional CLI/MCP binary, so the application/library boundary is visible.

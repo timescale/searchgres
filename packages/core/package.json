@@ -36,8 +36,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/timescale/searchgres.git",
+    "url": "git+https://github.com/timescale/searchgres-js.git",
     "directory": "packages/core"
+  },
+  "homepage": "https://github.com/timescale/searchgres-js#readme",
+  "bugs": {
+    "url": "https://github.com/timescale/searchgres-js/issues"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

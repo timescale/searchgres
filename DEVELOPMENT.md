@@ -1,5 +1,9 @@
 # Development
 
+The project brand is `searchgres.js`; the npm package and CLI executable remain
+`searchgres`. Keep runtime identifiers (configuration, MCP tools, telemetry, and
+database format/locks) separate from display branding.
+
 ## Requirements and toolchain
 
 Use the repository's pinned `./bun` wrapper for all workspace commands. It
@@ -186,10 +190,10 @@ Before tagging:
 
 Never move/reuse a published tag. A rerun skips an already-published npm version.
 For first publication, configure a short-lived granular `NPM_TOKEN` Actions
-secret. Afterward configure npm trusted publishing for `timescale/searchgres`,
+secret. Afterward configure npm trusted publishing for `timescale/searchgres-js`,
 workflow `release.yml`, no environment; remove/revoke the bootstrap token.
 Later releases use GitHub OIDC credentials and npm provenance. Coordinate any
-workflow rename with npm's trusted-publisher setting.
+repository or workflow rename with npm's trusted-publisher setting.
 
 After core publication succeeds, the release workflow builds the one binary on
 macOS, signs both macOS targets, and attaches all platform executables and their

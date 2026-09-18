@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPOSITORY="timescale/searchgres"
+REPOSITORY="timescale/searchgres-js"
 BINARIES="searchgres"
 MAX_RETRIES=3
 TEMP_DIR=""
@@ -44,7 +44,7 @@ main() {
   trap cleanup 0
   trap 'exit 1' HUP INT TERM
 
-  info "Installing ${BOLD}Searchgres ${version}${RESET} (${os}/${arch})"
+  info "Installing ${BOLD}searchgres.js ${version}${RESET} (${os}/${arch})"
 
   for binary in $BINARIES; do
     asset="${binary}-${os}-${arch}${extension}"

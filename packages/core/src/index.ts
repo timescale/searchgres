@@ -1,5 +1,5 @@
 /**
- * searchgres — Postgres-native hybrid search.
+ * searchgres.js — Postgres-native hybrid search.
  *
  * Public entry point. Everything a consumer can use is re-exported here; any
  * module not reachable from this file is internal and may change without a

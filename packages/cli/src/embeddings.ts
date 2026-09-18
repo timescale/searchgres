@@ -81,7 +81,7 @@ export async function runEmbeddings(
           : {}),
       });
       console.error(
-        `Searchgres embedding worker pool running (${count} workers)`,
+        `searchgres.js embedding worker pool running (${count} workers)`,
       );
       await new Promise<void>((resolve) => {
         if (controller.signal.aborted) resolve();

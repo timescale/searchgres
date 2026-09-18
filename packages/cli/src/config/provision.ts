@@ -69,7 +69,7 @@ export async function generateConfig(flags: Flags): Promise<void> {
   let apiKey: string | undefined;
   const interactive = !flags.has("schema") && process.stdin.isTTY;
   if (interactive) {
-    clack.intro("Configure Searchgres");
+    clack.intro("Configure searchgres.js");
     const ask = async (message: string, initialValue?: string) => {
       const answer = await clack.text({
         message,

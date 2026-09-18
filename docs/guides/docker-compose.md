@@ -3,7 +3,7 @@
 The core library is the product; this optional stack makes it easy to try the
 compiled CLI and MCP without a provider account. It runs PostgreSQL 18 with
 required extensions, Ollama, a model-pull job, strict index initialization, and
-one continuous embedding worker. There is no Searchgres HTTP service.
+one continuous embedding worker. There is no searchgres.js HTTP service.
 
 **Evaluation only:** PostgreSQL uses trust authentication and a privileged role;
 Ollama is unauthenticated. Both publish only on `127.0.0.1`. Do not expose them
@@ -16,8 +16,8 @@ and the Ollama model. Ollama is CPU-only in this example; initial model pull and
 cold inference can take time.
 
 ```sh
-git clone https://github.com/timescale/searchgres.git
-cd searchgres
+git clone https://github.com/timescale/searchgres-js.git
+cd searchgres-js
 ./bun install
 ./bun run compile
 docker compose up -d --build

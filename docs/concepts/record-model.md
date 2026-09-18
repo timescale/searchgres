@@ -1,10 +1,10 @@
 # Model records
 
-A searchgres index stores **records**. One record is one independently
+A searchgres.js index stores **records**. One record is one independently
 searchable unit of text plus orthogonal annotations for hierarchy, metadata, and
 represented time.
 
-searchgres does not prescribe what a record means. It can be a document chunk,
+searchgres.js does not prescribe what a record means. It can be a document chunk,
 a support answer, an event, a source-code explanation, an extracted fact, a
 conversation turn, or a generated summary.
 
@@ -142,7 +142,7 @@ available while allowing specialized representations.
 
 ## Indexing existing application tables
 
-searchgres does not search arbitrary table layouts in place; its routines and
+searchgres.js does not search arbitrary table layouts in place; its routines and
 indexes operate on the index's `record` table. Existing data can feed that table
 through:
 
@@ -151,13 +151,13 @@ through:
 - `AFTER INSERT OR UPDATE` triggers on source tables;
 - change-data-capture consumers or job queues.
 
-The searchgres record trigger populates the embedding queue whenever an inserted
+The searchgres.js record trigger populates the embedding queue whenever an inserted
 or changed record needs a vector, including records written through direct SQL.
 This allows a database-native indexing pipeline without putting provider
 credentials in the source writer.
 
 When using a source-table trigger, keep the trigger small and deterministic. A
-common design is to project the source row into the searchgres record and let a
+common design is to project the source row into the searchgres.js record and let a
 separate worker perform remote embedding calls asynchronously.
 
 ## Multiple indexes

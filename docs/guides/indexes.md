@@ -2,7 +2,7 @@
 
 An index is a single PostgreSQL schema holding your records, search indexes,
 queue, triggers, and SQL routines. You choose its name and your application
-tracks it—searchgres keeps no registry and offers no discovery. See
+tracks it—searchgres.js keeps no registry and offers no discovery. See
 [Architecture and responsibilities](../concepts/architecture.md) for the full
 boundary.
 
@@ -101,16 +101,16 @@ index.dimensions; // 1536
 The `embedding` option is always required. Pass a real model when this handle
 will generate vectors, or the supported [`noEmbedding`](embeddings.md#credential-separation)
 sentinel for ingest-only, precomputed-vector, keyword, or filter-only handles.
-searchgres reads the vector shape from the database, not from what you pass, and
+searchgres.js reads the vector shape from the database, not from what you pass, and
 never compares or stores your model's identity.
 
-Opening a schema that isn't a searchgres index throws
+Opening a schema that isn't a searchgres.js index throws
 [`InvalidIndexError`](../reference/errors.md); one created by an incompatible
 version throws [`SchemaVersionError`](../reference/errors.md).
 
 ## Truncating long input
 
-An embedding provider has a token limit. searchgres never truncates silently;
+An embedding provider has a token limit. searchgres.js never truncates silently;
 opt in with a truncator applied to record content and query text:
 
 ```ts
@@ -158,6 +158,6 @@ move to a new embedding model, build a fresh index and cut over:
    ```
 
 `drop()` runs `DROP SCHEMA ... CASCADE` after confirming the schema really is a
-searchgres index.
+searchgres.js index.
 
 Next: [Ingest records](ingest.md).

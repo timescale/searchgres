@@ -1,15 +1,15 @@
-# searchgres
+# searchgres.js
 
 [![npm version](https://img.shields.io/npm/v/searchgres.svg)](https://www.npmjs.com/package/searchgres)
-[![CI](https://github.com/timescale/searchgres/actions/workflows/ci.yml/badge.svg)](https://github.com/timescale/searchgres/actions/workflows/ci.yml)
-[![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/timescale/searchgres/blob/main/LICENSE)
+[![CI](https://github.com/timescale/searchgres-js/actions/workflows/ci.yml/badge.svg)](https://github.com/timescale/searchgres-js/actions/workflows/ci.yml)
+[![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/timescale/searchgres-js/blob/main/LICENSE)
 
 **Excellent hybrid search in the Postgres you own.**
 
-searchgres is an open-source TypeScript library that combines BM25 keyword
+searchgres.js is an open-source TypeScript library that combines BM25 keyword
 search, vector search, Reciprocal Rank Fusion, and structured filters in
 PostgreSQL. Bring a [`postgres.js`](https://github.com/porsager/postgres)
-connection and an [AI SDK](https://ai-sdk.dev) embedding model; searchgres
+connection and an [AI SDK](https://ai-sdk.dev) embedding model; searchgres.js
 manages the search schema, indexes, and embedding workflow.
 
 - Find both **exact terms and related meaning**.
@@ -20,6 +20,8 @@ manages the search schema, indexes, and embedding workflow.
   model.
 
 ## Install and search
+
+searchgres.js is published on npm as `searchgres`.
 
 ```bash
 npm install searchgres postgres @ai-sdk/openai
@@ -33,7 +35,7 @@ import { createIndex, openIndex } from "searchgres";
 const sql = postgres(process.env.DATABASE_URL);
 
 try {
-  // Run once. An index is a Postgres schema managed by searchgres.
+  // Run once. An index is a Postgres schema managed by searchgres.js.
   await createIndex(sql, "docs_index", { dimensions: 1536 });
 
   const index = await openIndex(sql, "docs_index", {
@@ -70,19 +72,21 @@ try {
 
   for (const hit of hits) console.log(hit.score, hit.tree, hit.content);
 } finally {
-  await sql.end(); // searchgres never closes the caller-owned connection
+  await sql.end(); // searchgres.js never closes the caller-owned connection
 }
 ```
 
-See **[Get started](https://github.com/timescale/searchgres/blob/main/docs/getting-started.md)**
+See **[Get started](https://github.com/timescale/searchgres-js/blob/main/docs/getting-started.md)**
 for the complete walkthrough.
 
-## Why searchgres
+<a id="why-searchgres"></a>
+
+## Why searchgres.js
 
 ### Search quality beyond vector similarity
 
 Pure semantic search struggles with identifiers, exact phrases, dates, and
-scope. searchgres gives each query the retrieval strategy it needs:
+scope. searchgres.js gives each query the retrieval strategy it needs:
 
 - **BM25** for exact and lexical relevance.
 - **Vector search** for related meaning when wording differs.
@@ -94,7 +98,7 @@ scope. searchgres gives each query the retrieval strategy it needs:
 
 ### Postgres-native, not another retrieval stack
 
-A searchgres index is an ordinary PostgreSQL schema containing records, SQL
+A searchgres.js index is an ordinary PostgreSQL schema containing records, SQL
 routines, and native indexes: HNSW through `pgvector`, BM25 through
 `pg_textsearch`, GiST for hierarchy and time, and GIN for metadata.
 
@@ -104,7 +108,7 @@ PostgreSQL you control rather than in a separate proprietary service.
 
 ### Search mechanics without application policy
 
-searchgres owns the mechanics of retrieval, not your application architecture:
+searchgres.js owns the mechanics of retrieval, not your application architecture:
 
 - You own the connection pool, embedding provider, credentials, and source data.
 - You decide how to chunk, summarize, extract, or otherwise derive records.
@@ -133,8 +137,8 @@ vectors are needed only for semantic participation. Drain the built-in embedding
 queue with a bounded `processEmbeddings()` pass or a concurrency-safe background
 `EmbeddingWorker`.
 
-Read **[How search works](https://github.com/timescale/searchgres/blob/main/docs/concepts/how-search-works.md)**
-or jump to **[Search and filter](https://github.com/timescale/searchgres/blob/main/docs/guides/search.md)**.
+Read **[How search works](https://github.com/timescale/searchgres-js/blob/main/docs/concepts/how-search-works.md)**
+or jump to **[Search and filter](https://github.com/timescale/searchgres-js/blob/main/docs/guides/search.md)**.
 
 ## Compose it into your application
 
@@ -152,12 +156,12 @@ Authentication and authorization remain an application or database concern.
 Filters become an access-control boundary only when callers cannot bypass the
 layer that injects them or issue unrestricted database queries.
 
-See **[Architecture and responsibilities](https://github.com/timescale/searchgres/blob/main/docs/concepts/architecture.md)**
-and **[Choosing searchgres](https://github.com/timescale/searchgres/blob/main/docs/comparison.md)**.
+See **[Architecture and responsibilities](https://github.com/timescale/searchgres-js/blob/main/docs/concepts/architecture.md)**
+and **[Choosing searchgres.js](https://github.com/timescale/searchgres-js/blob/main/docs/comparison.md)**.
 
 ## Evidence behind the design
 
-The architecture behind searchgres was evaluated on conversational-memory and
+The architecture behind searchgres.js was evaluated on conversational-memory and
 multi-hop retrieval benchmarks using a simplified prototype based on the same
 core approach: one Postgres record table, BM25, HNSW vectors, RRF, and structured
 filters—without knowledge graphs or fact-extraction pipelines.
@@ -180,7 +184,7 @@ models, agent behavior, samples, and metrics also affect end-to-end scores.
 
 `createIndex()` installs missing extensions when its database role has the
 necessary privileges. The repository includes a PostgreSQL Dockerfile with the
-extensions configured. See **[Install searchgres](https://github.com/timescale/searchgres/blob/main/docs/installation.md)**.
+extensions configured. See **[Install searchgres.js](https://github.com/timescale/searchgres-js/blob/main/docs/installation.md)**.
 
 ## Reference implementations
 
@@ -188,20 +192,20 @@ The core library is the primary product. This repository also contains
 one maintained compiled `searchgres` CLI with direct PostgreSQL access, embedding
 workers, and `searchgres mcp` stdio tools. It is optional: you do not need it to
 use the library, and its interfaces do not constrain applications built on core.
-There is no Searchgres HTTP server or remote client to deploy.
+There is no searchgres.js HTTP server or remote client to deploy.
 
 The Docker Compose stack runs PostgreSQL, a local Ollama model, initialization,
 and an embedding worker for a no-API-key evaluation:
 
 ```bash
-git clone https://github.com/timescale/searchgres.git
-cd searchgres
+git clone https://github.com/timescale/searchgres-js.git
+cd searchgres-js
 docker compose up --build
 ```
 
-See **[Reference implementations and evaluation tools](https://github.com/timescale/searchgres/blob/main/docs/reference-applications.md)**
+See **[Reference implementations and evaluation tools](https://github.com/timescale/searchgres-js/blob/main/docs/reference-applications.md)**
 for component roles and support boundaries, or start with the
-**[Docker Compose evaluation guide](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)**.
+**[Docker Compose evaluation guide](https://github.com/timescale/searchgres-js/blob/main/docs/guides/docker-compose.md)**.
 The evaluation database and Ollama endpoint are unauthenticated and
 loopback-bound. Never expose them to an untrusted network. The host CLI connects
 to both directly; see the guide for build, configuration, and search commands.
@@ -210,35 +214,35 @@ to both directly; see the guide for build, configuration, and search commands.
 
 ### Learn the core library
 
-- [Get started](https://github.com/timescale/searchgres/blob/main/docs/getting-started.md)
-- [How search works](https://github.com/timescale/searchgres/blob/main/docs/concepts/how-search-works.md)
-- [Model records](https://github.com/timescale/searchgres/blob/main/docs/concepts/record-model.md)
-- [Architecture and responsibilities](https://github.com/timescale/searchgres/blob/main/docs/concepts/architecture.md)
-- [Create and manage indexes](https://github.com/timescale/searchgres/blob/main/docs/guides/indexes.md)
-- [Ingest records](https://github.com/timescale/searchgres/blob/main/docs/guides/ingest.md)
-- [Generate embeddings](https://github.com/timescale/searchgres/blob/main/docs/guides/embeddings.md)
-- [Search and filter](https://github.com/timescale/searchgres/blob/main/docs/guides/search.md)
-- [Build a RAG retriever](https://github.com/timescale/searchgres/blob/main/docs/guides/rag.md)
-- [Manage records and trees](https://github.com/timescale/searchgres/blob/main/docs/guides/records-and-trees.md)
-- [Run in production](https://github.com/timescale/searchgres/blob/main/docs/guides/production.md)
+- [Get started](https://github.com/timescale/searchgres-js/blob/main/docs/getting-started.md)
+- [How search works](https://github.com/timescale/searchgres-js/blob/main/docs/concepts/how-search-works.md)
+- [Model records](https://github.com/timescale/searchgres-js/blob/main/docs/concepts/record-model.md)
+- [Architecture and responsibilities](https://github.com/timescale/searchgres-js/blob/main/docs/concepts/architecture.md)
+- [Create and manage indexes](https://github.com/timescale/searchgres-js/blob/main/docs/guides/indexes.md)
+- [Ingest records](https://github.com/timescale/searchgres-js/blob/main/docs/guides/ingest.md)
+- [Generate embeddings](https://github.com/timescale/searchgres-js/blob/main/docs/guides/embeddings.md)
+- [Search and filter](https://github.com/timescale/searchgres-js/blob/main/docs/guides/search.md)
+- [Build a RAG retriever](https://github.com/timescale/searchgres-js/blob/main/docs/guides/rag.md)
+- [Manage records and trees](https://github.com/timescale/searchgres-js/blob/main/docs/guides/records-and-trees.md)
+- [Run in production](https://github.com/timescale/searchgres-js/blob/main/docs/guides/production.md)
 
 ### Examples and evaluation
 
-- [Runnable core-library examples](https://github.com/timescale/searchgres/tree/main/examples)
-- [Choosing searchgres](https://github.com/timescale/searchgres/blob/main/docs/comparison.md)
-- [Reference implementations and evaluation tools](https://github.com/timescale/searchgres/blob/main/docs/reference-applications.md)
-- [Evaluate with Docker Compose](https://github.com/timescale/searchgres/blob/main/docs/guides/docker-compose.md)
+- [Runnable core-library examples](https://github.com/timescale/searchgres-js/tree/main/examples)
+- [Choosing searchgres.js](https://github.com/timescale/searchgres-js/blob/main/docs/comparison.md)
+- [Reference implementations and evaluation tools](https://github.com/timescale/searchgres-js/blob/main/docs/reference-applications.md)
+- [Evaluate with Docker Compose](https://github.com/timescale/searchgres-js/blob/main/docs/guides/docker-compose.md)
 
 ### Reference
 
-- [API reference](https://github.com/timescale/searchgres/blob/main/docs/reference/api.md)
-- [Errors and recovery](https://github.com/timescale/searchgres/blob/main/docs/reference/errors.md)
-- [Direct SQL](https://github.com/timescale/searchgres/blob/main/docs/reference/sql.md)
+- [API reference](https://github.com/timescale/searchgres-js/blob/main/docs/reference/api.md)
+- [Errors and recovery](https://github.com/timescale/searchgres-js/blob/main/docs/reference/errors.md)
+- [Direct SQL](https://github.com/timescale/searchgres-js/blob/main/docs/reference/sql.md)
 
 ## License
 
-[Apache 2.0](https://github.com/timescale/searchgres/blob/main/LICENSE)
+[Apache 2.0](https://github.com/timescale/searchgres-js/blob/main/LICENSE)
 
-searchgres is derived from the search engine core of
+searchgres.js is derived from the search engine core of
 [Memory Engine](https://github.com/timescale/memory-engine). See the
-[NOTICE](https://github.com/timescale/searchgres/blob/main/NOTICE).
+[NOTICE](https://github.com/timescale/searchgres-js/blob/main/NOTICE).

@@ -47,7 +47,7 @@ test("installer resolves the latest release when no version is pinned", async ()
       `${fixture.baseUrl}/latest`,
     );
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Searchgres v-test");
+    expect(result.stdout).toContain("searchgres.js v-test");
     expect(
       await Bun.file(join(fixture.installDirectory, "searchgres")).exists(),
     ).toBe(true);

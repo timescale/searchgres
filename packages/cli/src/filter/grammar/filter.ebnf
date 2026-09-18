@@ -1,4 +1,4 @@
-(* Searchgres filter expression DSL. ISO/IEC 14977 EBNF. *)
+(* searchgres.js filter expression DSL. ISO/IEC 14977 EBNF. *)
 
 filter = spacing, expression, spacing ;
 

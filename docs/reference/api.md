@@ -77,7 +77,7 @@ throws [`InvalidIndexError`](errors.md), [`SchemaVersionError`](errors.md), or
 
 ### `dropIndex(sql, schema) → Promise<void>`
 
-Drops a searchgres index schema (`DROP SCHEMA ... CASCADE`) after verifying it is
+Drops a searchgres.js index schema (`DROP SCHEMA ... CASCADE`) after verifying it is
 one. Also available as `index.drop()`.
 
 ## The `Index` handle

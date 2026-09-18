@@ -1,11 +1,11 @@
 # Run in production
 
-searchgres is a library over a database you operate. This guide covers the
+searchgres.js is a library over a database you operate. This guide covers the
 operational concerns that go beyond a single process.
 
 ## Shutdown
 
-searchgres never closes the caller-owned database connection. Close it after
+searchgres.js never closes the caller-owned database connection. Close it after
 application work finishes:
 
 ```ts
@@ -90,7 +90,7 @@ await index.pruneEmbeddingQueue({ retentionMs: 604_800_000 });
 
 ## Observability
 
-searchgres is instrumented with the OpenTelemetry API. If your application
+searchgres.js is instrumented with the OpenTelemetry API. If your application
 registers an OTel SDK, every public operation that performs I/O creates an
 `INTERNAL` parent span. Without an SDK the spans are non-recording, nothing is
 exported, and only minimal OTel API and wrapper overhead remains.
@@ -129,7 +129,7 @@ diagnostic is recorded while rows stay pending) is an `embedding.batch_failed`
 event on an otherwise successful span.
 
 Every rejected public operation records the exception, sets `ERROR`, and adds
-`error.type`; typed searchgres errors also add `searchgres.error.code`. SQL
+`error.type`; typed searchgres.js errors also add `searchgres.error.code`. SQL
 failures are therefore visible on both the SQL child and caller-level operation
 span.
 
@@ -146,7 +146,7 @@ does not sanitize core telemetry.
 
 ## Access control
 
-searchgres has no user, account, or authorization model. The surrounding
+searchgres.js has no user, account, or authorization model. The surrounding
 application authenticates callers and can translate identity into mandatory
 `tree` or `meta` filters:
 
@@ -224,7 +224,7 @@ cutover:
 
 To avoid an interruption while writes continue during backfill, the application
 must account for those concurrent changes—for example with dual writes or a
-final change-data catch-up before switching traffic. searchgres does not
+final change-data catch-up before switching traffic. searchgres.js does not
 coordinate that application-level migration.
 
 The step-by-step version is in
@@ -234,5 +234,5 @@ The step-by-step version is in
 
 An index is ordinary PostgreSQL data in a schema you named. It is covered by your
 normal backup, point-in-time recovery, and replication setup — nothing
-searchgres-specific is required. Records with missing vectors are simply
+searchgres.js-specific is required. Records with missing vectors are simply
 re-embedded by draining the queue after a restore.

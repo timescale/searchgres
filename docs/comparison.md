@@ -1,6 +1,6 @@
-# Choosing searchgres
+# Choosing searchgres.js
 
-searchgres is a good fit when you want a TypeScript library to provide strong
+searchgres.js is a good fit when you want a TypeScript library to provide strong
 hybrid and structured retrieval over PostgreSQL you control. It is not a hosted
 vendor or a complete RAG framework; it is the search engine you compose into
 those systems.
@@ -10,7 +10,7 @@ those systems.
 `pgvector` provides vector types, operators, and indexes. It does not define a
 complete retrieval application.
 
-searchgres adds:
+searchgres.js adds:
 
 - BM25 through `pg_textsearch`;
 - RRF fusion of lexical and semantic rankings;
@@ -20,17 +20,17 @@ searchgres adds:
 - validation, typed errors, and OpenTelemetry instrumentation.
 
 Use raw pgvector when a single vector query and your own schema are all you
-need. Use searchgres when you would otherwise build and maintain the surrounding
+need. Use searchgres.js when you would otherwise build and maintain the surrounding
 retrieval engine yourself.
 
 ## Compared with a vector database
 
 Vector databases are optimized for nearest-neighbor search and can out-scale
-searchgres when the central problem is searching an enormous vector collection.
+searchgres.js when the central problem is searching an enormous vector collection.
 But vector scale is only one axis of a search system, and many applications do
 not need billions of vectors. They need more ways to express relevance.
 
-A vector database primarily answers “which embeddings are closest?” searchgres
+A vector database primarily answers “which embeddings are closest?” searchgres.js
 makes vectors one part of a broader retrieval model:
 
 - BM25 finds exact terms, identifiers, and phrases that semantic similarity can
@@ -44,13 +44,13 @@ makes vectors one part of a broader retrieval model:
 
 For many application and RAG workloads, that flexibility can matter more to
 search quality than specialized vector scale. The benchmark architecture behind
-searchgres used this combination to produce strong retrieval with a deliberately
+searchgres.js used this combination to produce strong retrieval with a deliberately
 simple data model.
 
 The operational substrate is also a major difference. PostgreSQL is a mature,
 popular relational database with real SQL and a widely understood ecosystem for
 transactions, backups, replication, monitoring, access control, and incident
-response. With searchgres you get:
+response. With searchgres.js you get:
 
 - one transactional database and backup system;
 - no synchronization between relational and vector stores;
@@ -59,27 +59,27 @@ response. With searchgres you get:
 - deployment, provider, and data ownership.
 
 Choose a specialized vector database when extreme vector scale is the dominant
-requirement. Choose searchgres when you want excellent hybrid and structured
+requirement. Choose searchgres.js when you want excellent hybrid and structured
 retrieval, SQL, and familiar PostgreSQL operations—and your workload fits on
 Postgres.
 
-searchgres requires PostgreSQL 18 with `pgvector`, `pg_textsearch`, and `ltree`
+searchgres.js requires PostgreSQL 18 with `pgvector`, `pg_textsearch`, and `ltree`
 available in `public`.
 
 ## Compared with a hosted search service
 
-searchgres is a library, but it can power a hosted or internal search API. Your
+searchgres.js is a library, but it can power a hosted or internal search API. Your
 application owns that API and its authentication, authorization, and deployment;
 the included CLI/MCP reference connects directly to PostgreSQL.
 
 Choose a turnkey hosted service when you want a vendor to own all database and
-search operations. Choose searchgres when owning PostgreSQL, model selection,
+search operations. Choose searchgres.js when owning PostgreSQL, model selection,
 and application policy is a benefit rather than a burden.
 
 ## Compared with a RAG framework
 
 A RAG framework may orchestrate loaders, chunkers, retrievers, prompts, models,
-and generation chains. searchgres focuses on retrieval.
+and generation chains. searchgres.js focuses on retrieval.
 
 It does not require a particular:
 
@@ -97,7 +97,7 @@ application. The [RAG guide](guides/rag.md) shows the latter.
 
 Memory products often decide what to remember, extract facts from conversations,
 build profiles, or maintain an application-specific memory lifecycle.
-searchgres does none of that automatically.
+searchgres.js does none of that automatically.
 
 It can store conversation turns, facts, summaries, decisions, or any other
 textual record, but your application decides what those records mean. The
@@ -112,13 +112,13 @@ The core runs in the same process as your application and accepts a caller-owned
 boundary.
 
 When processes or languages need remote access, put an API around it. Build a
-domain-specific service with enforced filters and response shaping; searchgres
+domain-specific service with enforced filters and response shaping; searchgres.js
 does not ship an HTTP server or remote client.
 
 ## Current core boundaries
 
 - PostgreSQL 18 and the three required extensions are mandatory.
-- Data must be represented as records in a searchgres index, although SQL,
+- Data must be represented as records in a searchgres.js index, although SQL,
   triggers, CDC, or application jobs can populate it from existing tables.
 - Chunking, fact extraction, summarization, and reranking are application stages,
   not core v1 features.

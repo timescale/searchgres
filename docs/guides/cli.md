@@ -2,7 +2,7 @@
 
 The compiled `searchgres` binary is an optional reference application over the
 [core library](../reference/api.md). It talks directly to PostgreSQL; there is
-no Searchgres HTTP server to deploy. Install it using the
+no searchgres.js HTTP server to deploy. Install it using the
 [installation guide](../installation.md), or build with `./bun run compile`.
 
 ## Configure one index

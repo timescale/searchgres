@@ -1,10 +1,10 @@
-# searchgres documentation
+# searchgres.js documentation
 
-searchgres is a Postgres-native search library for TypeScript. It combines BM25,
+searchgres.js is a Postgres-native search library for TypeScript. It combines BM25,
 vector search, Reciprocal Rank Fusion, and structured filters over a PostgreSQL
 index you own.
 
-Bring a `postgres.js` connection and an AI SDK embedding model. searchgres
+Bring a `postgres.js` connection and an AI SDK embedding model. searchgres.js
 manages the schema, native indexes, query routines, and asynchronous embedding
 workflow; your application retains control of its data model, provider, access
 policy, and retrieval pipeline.
@@ -18,7 +18,7 @@ policy, and retrieval pipeline.
 3. **[Model records](concepts/record-model.md)** — decide how content, trees,
    metadata, names, and temporal ranges represent your corpus.
 4. **[Architecture and responsibilities](concepts/architecture.md)** — see what
-   searchgres manages and what remains in your application.
+   searchgres.js manages and what remains in your application.
 
 Want to evaluate it without writing an application? Use the
 **[Docker Compose stack](guides/docker-compose.md)** to run PostgreSQL, Ollama,
@@ -27,7 +27,7 @@ directly against the database and provider.
 
 ## Core library guides
 
-- **[Install searchgres](installation.md)** — package, runtime, PostgreSQL,
+- **[Install searchgres.js](installation.md)** — package, runtime, PostgreSQL,
   extensions, and privileges.
 - **[Create and manage indexes](guides/indexes.md)** — dimensions, vector type,
   immutable index shape, multiple indexes, and cutovers.
@@ -46,7 +46,7 @@ directly against the database and provider.
 
 ## Evaluation and examples
 
-- **[Choosing searchgres](comparison.md)** — compare it with raw pgvector, vector
+- **[Choosing searchgres.js](comparison.md)** — compare it with raw pgvector, vector
   databases, hosted search, RAG frameworks, and memory systems.
 - **[Runnable examples](../examples/README.md)** — small core-library programs
   for basic search, RAG, document modeling, temporal search, and workers.
@@ -75,14 +75,14 @@ they are not required layers or co-equal library APIs.
 
 ## Core ideas
 
-- **You own the database and connection.** searchgres never creates or closes
+- **You own the database and connection.** searchgres.js never creates or closes
   your pool.
 - **An index is a PostgreSQL schema.** It contains ordinary records plus native
   BM25, HNSW, GiST, and GIN indexes.
 - **Retrieval modes compose with filters.** Search by meaning, exact terms,
   hierarchy, metadata, represented time, and regex in one query.
 - **Bring your own embedding model.** Any AI SDK embedding model works;
-  searchgres does not handle provider credentials.
+  searchgres.js does not handle provider credentials.
 - **Embedding is asynchronous by default.** New records work with BM25 and
   filters immediately and join semantic results after queue processing.
 - **Application policy stays outside core.** Chunking, derivation, reranking,

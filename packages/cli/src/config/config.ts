@@ -116,7 +116,7 @@ export function parseRuntimeConfig(input: unknown): RuntimeConfig {
   const result = runtimeConfigSchema.safeParse(input);
   if (!result.success)
     throw new InvalidConfigError(
-      "Invalid Searchgres configuration; check field names and values",
+      "Invalid searchgres.js configuration; check field names and values",
       {
         cause: result.error,
         issues: result.error.issues.map((issue) => ({

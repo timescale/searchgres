@@ -12,7 +12,7 @@ BM25, vector search, RRF, candidate windows, and score semantics, read
 | a semantic arm **and** `fulltext` | Hybrid search (RRF fusion) |
 | none of the above | Filter-only listing, ordered by id |
 
-`semantic` is non-empty text searchgres embeds with the index's model. `vector`
+`semantic` is non-empty text searchgres.js embeds with the index's model. `vector`
 is a precomputed query vector that skips the model. They are mutually exclusive.
 A vector must contain exactly `index.dimensions` finite numbers; a wrong length
 throws `DimensionMismatchError`. `fulltext`, when present, must also be

@@ -1,4 +1,4 @@
-searchgres
+searchgres.js
 Copyright 2026 Timescale, Inc., d/b/a Tiger Data
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@ This product is derived from the search engine core of Memory Engine
 (https://github.com/timescale/memory-engine), Copyright 2026 Timescale, Inc.,
 d/b/a Tiger Data, licensed under the Apache License, Version 2.0.
 
-Portions of searchgres — including the hybrid Reciprocal Rank Fusion scoring
+Portions of searchgres.js — including the hybrid Reciprocal Rank Fusion scoring
 model, the BM25 positive-match invariant, the filtered-HNSW semantic search
 approach, the record schema (hierarchical ltree paths, JSONB metadata,
 temporal ranges), and the embedding queue design — are adapted from that work.

@@ -5,7 +5,7 @@ also maintains one compiled `searchgres` executable for evaluation and as a
 reference for applications built directly on core. It is optional and does not
 constrain applications using the library.
 
-There is no Searchgres HTTP service, remote client, or separately published
+There is no searchgres.js HTTP service, remote client, or separately published
 protocol. The binary opens one configured PostgreSQL index and owns its pool,
 OpenAI-compatible model, tokenizer resources, and workers. `searchgres mcp`
 exposes twelve tools over stdio using that same runtime.
